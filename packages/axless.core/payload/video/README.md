@@ -46,6 +46,26 @@ interpolation it disappears and the variance drops threefold.
 
 Throughput on this machine: ~126 output fps at 640x360, single-threaded.
 
+## axprobe — the real frame rate
+
+```bash
+bin/axprobe video.mp4          # human readable
+bin/axprobe --json video.mp4  # {"fps":30,"width":640,...}
+```
+
+`InterpolatedVideo` spawns this and feeds the result into `originalFps`, so the
+capture cadence matches the actual clip instead of an assumed 30. Guessing is
+not harmless here: if the capture rate disagrees with the decoder, the blend
+drifts against the frames being produced, which is precisely the artefact
+interpolation exists to remove.
+
+Verified with two clips: a 30 fps file gives `originalFps=30` and a 33.33 ms
+capture interval, a 60 fps file gives `originalFps=60` and 16.67 ms - read from
+the container's `avg_frame_rate`, not the default.
+
+Rate sanity is enforced on the shell side (accepted only between 1 and 480), so
+a container that claims 0 or 2000 fps cannot poison the cadence.
+
 ## Building
 
 ```bash

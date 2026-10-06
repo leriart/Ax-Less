@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtMultimedia
+import Quickshell
+import Quickshell.Io
 import qs.modules.globals
 import qs.modules.services
 import qs.modules.theme
@@ -101,6 +103,54 @@ Item {
     // first play().
     signal started
 
+    // ── Real frame rate, read by the Go probe ─────────────────────
+    //
+    // The decoder does not advertise a frame rate through Qt, and guessing
+    // one makes the capture cadence drift against the frames actually being
+    // produced, which is exactly the artefact interpolation is meant to
+    // remove. axprobe reads avg_frame_rate straight out of the container.
+    //
+    // Kept as a declared fallback so the component still animates correctly
+    // before the probe answers, and if the binary is unavailable.
+    property string axprobePath: Qt.resolvedUrl("../../../../video/bin/axprobe")
+    property bool sourceProbed: false
+
+    function probeSource() {
+        if (!sourceFile || sourceProbed)
+            return;
+        sourceProbed = true;
+        var path = String(axprobePath).replace("file://", "");
+        if (!probeProc)
+            return;
+        probeProc.command = [path, "--json", "file://" + sourceFile];
+        probeProc.running = true;
+    }
+
+    Process {
+        id: probeProc
+        running: false
+        stdout: StdioCollector {
+            id: probeOut
+            onStreamFinished: {
+                var text = probeOut.text;
+                if (!text)
+                    return;
+                try {
+                    var info = JSON.parse(text);
+                    // Only accept a plausible rate: a container that claims
+                    // 0 or 2000 fps would otherwise poison the cadence.
+                    if (info && info.fps > 1 && info.fps < 480) {
+                        root.originalFps = info.fps;
+                    }
+                } catch (e) {
+                    console.warn("axprobe: no se pudo leer el fps:", e);
+                }
+            }
+        }
+    }
+
+    onSourceProbedChanged: if (sourceProbed) { }
+
     function playIfNeeded() {
         if (!sourceFile)
             return;
@@ -110,7 +160,12 @@ Item {
         }
     }
 
-    onSourceFileChanged: restart()
+    onSourceFileChanged: {
+        // A new file needs a new probe.
+        sourceProbed = false;
+        probeSource();
+        restart();
+    }
 
     onInterpolateChanged: {
         if (interpolate && multiplier > 1) {
@@ -138,7 +193,10 @@ Item {
         }
     }
 
-    Component.onCompleted: restart()
+    Component.onCompleted: {
+        probeSource();
+        restart();
+    }
 
     MediaPlayer {
         id: player

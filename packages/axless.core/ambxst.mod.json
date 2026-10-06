@@ -360,6 +360,16 @@
     {
       "type": "patch",
       "source": "patches/wallpaper-interpolation-i18n.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/cmd/axprobe/main.go",
+      "target": "video/cmd/axprobe/main.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/bin/axprobe",
+      "target": "video/bin/axprobe"
     }
   ]
 }

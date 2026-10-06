@@ -9,4 +9,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p bin
 CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o bin/axvideo ./cmd/axvideo
-echo "built: $(pwd)/bin/axvideo"
+CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o bin/axprobe ./cmd/axprobe
+echo "built: $(pwd)/bin/axvideo and bin/axprobe"

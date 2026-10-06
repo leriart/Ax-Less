@@ -8,6 +8,7 @@ package axvideo
 #include <libavutil/imgutils.h>
 #include <libavutil/motion_vector.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/mathematics.h>
 #include <libswscale/swscale.h>
 #include <stdlib.h>
 
@@ -20,6 +21,20 @@ static AVMotionVector *ax_mv(AVFrameSideData *sd, int i) {
 static int ax_mv_count(AVFrameSideData *sd) {
     return (int)(sd->size / sizeof(AVMotionVector));
 }
+// avg_frame_rate is a rational; dividing in Go needs the fields by value.
+static double ax_rate_num(AVRational r) { return (double)r.num / r.den; }
+// duration / nb_frames live on the stream, not the codec parameters.
+static double ax_stream_duration(AVStream *s) {
+    if (s->duration > 0) return (double)s->duration / AV_TIME_BASE;
+    return 0.0;
+}
+// The stream duration is often unset for mp4; the container duration is
+// authoritative and is what ffprobe reports as DURATION.
+static double ax_ctx_duration(AVFormatContext *f) {
+    return f->duration / AV_TIME_BASE;
+}
+static long long ax_stream_frames(AVStream *s) { return (long long)s->nb_frames; }
+static double ax_stream_fps(AVStream *s) { return av_q2d(s->avg_frame_rate); }
 
 // Raw planar/whatever frame -> tightly packed RGB24, which is what the rest
 // of this package works in.
@@ -74,6 +89,74 @@ type Frame struct {
 	// HasMotion is false for I-frames and for frames the decoder did not
 	// attach vectors to.
 	HasMotion bool
+}
+
+// Info describes a video file as libav sees it. This is how the shell gets
+// the *real* frame rate instead of assuming one: the capture cadence that
+// drives the interpolation has to match the source or the blend drifts
+// against the frames the decoder is producing.
+type Info struct {
+	Path       string  `json:"path"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	FPS        float64 `json:"fps"`
+	Duration   float64 `json:"duration"`
+	FrameCount int64   `json:"frame_count"`
+	HasFrameRate bool `json:"has_frame_rate"`
+	// Duration/fps disagreeing means the container lied about the rate; the
+	// shell uses FrameCount/Duration as the fallback.
+	EstimatedFPS float64 `json:"estimated_fps"`
+}
+
+// Probe reads a file's stream parameters without decoding a single frame.
+func Probe(path string) (*Info, error) {
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+
+	var fmtCtx *C.AVFormatContext
+	if C.avformat_open_input(&fmtCtx, cpath, nil, nil) < 0 {
+		return nil, fmt.Errorf("no se pudo abrir %s", path)
+	}
+	defer C.avformat_close_input(&fmtCtx)
+	if C.avformat_find_stream_info(fmtCtx, nil) < 0 {
+		return nil, errors.New("sin stream info")
+	}
+
+	vs := C.av_find_best_stream(fmtCtx, C.AVMEDIA_TYPE_VIDEO, -1, -1, nil, 0)
+	if vs < 0 {
+		return nil, errors.New("sin stream de video")
+	}
+	pst := C.ax_stream(fmtCtx, vs)
+	par := pst.codecpar
+	if par == nil {
+		return nil, errors.New("sin codecpar")
+	}
+
+	dur := float64(C.ax_stream_duration(pst))
+	if dur <= 0 {
+		dur = float64(C.ax_ctx_duration(fmtCtx))
+	}
+	info := &Info{
+		Path:        path,
+		Width:       int(par.width),
+		Height:      int(par.height),
+		Duration:    dur,
+		FrameCount:  int64(C.ax_stream_frames(pst)),
+		FPS:         float64(C.ax_stream_fps(pst)),
+	}
+	info.HasFrameRate = info.FPS > 0.1
+	// Only trust frames/duration when the container gave both and they
+	// roughly agree with the declared rate; otherwise it is metadata noise.
+	if dur > 0.5 && info.FrameCount > 0 {
+		est := float64(info.FrameCount) / dur
+		if info.FPS <= 0.1 || (est > info.FPS/2 && est < info.FPS*2) {
+			info.EstimatedFPS = est
+		}
+	}
+	if info.EstimatedFPS <= 0 {
+		info.EstimatedFPS = info.FPS
+	}
+	return info, nil
 }
 
 // Decoder wraps libavcodec via cgo.
