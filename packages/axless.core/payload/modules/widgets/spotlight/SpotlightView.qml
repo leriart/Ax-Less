@@ -73,42 +73,61 @@ PanelWindow {
     }
     property var pluginResults: []
 
-    visible: showHax
+    // axless.core: visibility follows the flag directly. The original bound it
+    // to showHax, which is only ever set inside onSpotlightOpenChanged - so if
+    // this window happened to be created while the flag was already true, the
+    // handler never fired for that value, showHax stayed false and the two
+    // drifted apart. A drifting overlay is not cosmetic: it is a full-screen
+    // surface with a click-catching MouseArea, so the shell stops taking input
+    // and the dashboard cannot be opened. _closing keeps the window alive for
+    // the length of the close animation.
+    visible: GlobalStates.haxVisible || _closing
+    property bool _closing: false
     exclusionMode: ExclusionMode.Ignore
+
+    // axless.core: the open sequence, callable both from the flag change and
+    // from Component.onCompleted when the window is created already open.
+    function _openNow() {
+        closeAnim.stop();
+
+        var bar = Visibilities.getBarForScreen(screen.name);
+        barBottom = bar ? bar.totalBarHeight : 40;
+        notchEndY = 40;
+
+        results = [];
+        cmdOutput = [];
+        cmdOutputText = "";
+        _forceTerminal = false;
+        _lastCmdVisible = false;
+        searchText = "";
+        selectedIndex = 0;
+        cancelCmdProcess();
+        stopMonitor();
+        loadHistory();
+        startClipWatcher();
+        if (weatherSearch) { try { weatherSearch.abort(); } catch(e) {} weatherSearch = null; }
+
+        animProgress = 0.0;
+        showHax = true;
+        _closing = false;
+
+        openAnim.start();
+        searchInput.clear();
+        searchInput.forceActiveFocus();
+
+        _debugOpenStart = Date.now();
+        debugOpenMs = -1;
+        _debugTimerRestart();
+    }
+
+    function _debugTimerRestart() {
+        _debugOpenTimer.restart();
+    }
 
     // Open/close handling
     onSpotlightOpenChanged: {
         if (spotlightOpen) {
-            closeAnim.stop();
-
-            var bar = Visibilities.getBarForScreen(screen.name);
-            barBottom = bar ? bar.totalBarHeight : 40;
-            notchEndY = 40;
-
-            // Reset state before showing
-            results = [];
-            cmdOutput = [];
-            cmdOutputText = "";
-            _forceTerminal = false;
-            _lastCmdVisible = false;
-            searchText = "";
-            selectedIndex = 0;
-            cancelCmdProcess();
-            stopMonitor();
-            loadHistory();
-            startClipWatcher();
-            if (weatherSearch) { try { weatherSearch.abort(); } catch(e) {} weatherSearch = null; }
-
-            animProgress = 0.0;
-            showHax = true;
-
-            openAnim.start();
-            searchInput.clear();
-            searchInput.forceActiveFocus();
-
-            _debugOpenStart = Date.now();
-            debugOpenMs = -1;
-            _debugOpenTimer.restart();
+            _openNow();
         } else {
             // axless.core: NothingLess guarded this branch with
             // `_pendingInternalClose` because its visibility came from a
@@ -119,6 +138,8 @@ PanelWindow {
             // driven purely by the flag now.
             _pendingInternalClose = false;
             openAnim.stop();
+            if (showHax)
+                _closing = true;
             stopMonitor();
             stopClipWatcher();
             showPreview = false;
@@ -168,6 +189,12 @@ PanelWindow {
         PropertyAction {
             target: spotlight
             property: "showHax"
+            value: false
+        }
+        // axless.core: the surface is released here, once the shrink is done.
+        PropertyAction {
+            target: spotlight
+            property: "_closing"
             value: false
         }
     }
@@ -292,13 +319,21 @@ PanelWindow {
                 }
             });
         });
+    }
 
-        // axless.core: the original auto-opened here because NothingLess runs
-        // this file as a standalone `qs` process, where nothing else could ask
-        // for it to show. Inside the Ambxst shell it is opened by the launcher
-        // keybind via GlobalStates.haxVisible, so auto-opening here made it pop
-        // up on every shell start and the keybind could not close it (the
-        // close path is guarded by _pendingInternalClose).
+    // axless.core: if the window is created while the launcher is already
+    // flagged open, onSpotlightOpenChanged never fires for that value, so the
+    // open sequence is started explicitly here.
+    Connections {
+        target: GlobalStates
+        function onHaxVisibleChanged() {
+            if (GlobalStates.haxVisible && !spotlight.showHax)
+                spotlight._openNow();
+        }
+        Component.onCompleted: {
+            if (GlobalStates.haxVisible)
+                spotlight._openNow();
+        }
     }
 
     // Debug mode

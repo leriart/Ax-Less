@@ -131,31 +131,31 @@ index b1aa3be..8f53307 100644
          const isActive = Visibilities.currentActiveModule === "launcher";
          if (isActive && GlobalStates.widgetsTabCurrentIndex === 0 && GlobalStates.launcherSearchText === "") {
              Visibilities.setActiveModule("");
-diff --git a/modules/services/Visibilities.qml b/modules/services/Visibilities.qml
-index ee97b09..9e36656 100644
---- a/modules/services/Visibilities.qml
-+++ b/modules/services/Visibilities.qml
-@@ -168,6 +168,20 @@ Singleton {
-     }
+diff --git a/modules/widgets/dashboard/LauncherButton.qml b/modules/widgets/dashboard/LauncherButton.qml
+index 6efef1d..996bda4 100644
+--- a/modules/widgets/dashboard/LauncherButton.qml
++++ b/modules/widgets/dashboard/LauncherButton.qml
+@@ -11,12 +11,18 @@ ToggleButton {
+     iconSize: Config.bar.launcherIconSize
+     tooltipText: I18n.t("bar.tooltip.launcher")
  
-     function setActiveModule(moduleName) {
-+        // axless.core: when Hax is the selected launcher, "launcher" and ""
-+        // refer to the Hax spotlight instead of the notch launcher. Putting
-+        // the branch here covers every caller at once - the bar's launcher
-+        // button, UserInfo, the keybinds, the IPC command and the dashboard -
-+        // which each call setActiveModule directly rather than going through
-+        // GlobalShortcuts.toggleLauncher().
++    // axless.core: with Hax selected the launcher is a standalone spotlight,
++    // so this button toggles it instead of the notch launcher. Visibilities is
++    // not imported for Config there, so the decision lives here too.
+     onToggle: function () {
++        GlobalStates.clearLauncherState();
 +        if (Config.notch && Config.notch.launcher === "hax") {
-+            if (moduleName === "launcher")
-+                GlobalStates.haxVisible = true;
-+            else if (moduleName === "")
-+                GlobalStates.haxVisible = false;
++            GlobalStates.haxVisible = !GlobalStates.haxVisible;
 +            return;
 +        }
-+
-         const focusedMonitor = AxctlService.focusedMonitor;
-         if (!focusedMonitor)
-             return;
+         if (GlobalStates.launcherOpen) {
+-            GlobalStates.clearLauncherState();
+             Visibilities.setActiveModule("");
+         } else {
+-            GlobalStates.clearLauncherState();
+             Visibilities.setActiveModule("launcher");
+         }
+     }
 diff --git a/modules/widgets/dashboard/controls/ShellPanel.qml b/modules/widgets/dashboard/controls/ShellPanel.qml
 index 9723b55..c6d407b 100644
 --- a/modules/widgets/dashboard/controls/ShellPanel.qml
@@ -183,6 +183,22 @@ index 9723b55..c6d407b 100644
                          NumberInputRow {
                              label: I18n.t("shell.hover_region_height")
                              value: Config.notch.hoverRegionHeight ?? 8
+diff --git a/modules/widgets/defaultview/UserInfo.qml b/modules/widgets/defaultview/UserInfo.qml
+index 1cfad22..f101757 100644
+--- a/modules/widgets/defaultview/UserInfo.qml
++++ b/modules/widgets/defaultview/UserInfo.qml
+@@ -35,6 +35,11 @@ Item {
+                 Visibilities.setActiveModule("overview");
+             } else if (Visibilities.currentActiveModule === "overview") {
+                 GlobalStates.launcherCurrentTab = 0;
++                // axless.core: same routing as the bar's launcher button.
++                if (Config.notch && Config.notch.launcher === "hax") {
++                    GlobalStates.haxVisible = !GlobalStates.haxVisible;
++                    return;
++                }
+                 Visibilities.setActiveModule("launcher");
+             } else if (Visibilities.currentActiveModule === "launcher") {
+                 Visibilities.setActiveModule("");
 diff --git a/shell.qml b/shell.qml
 index 888996d..a59ec74 100644
 --- a/shell.qml

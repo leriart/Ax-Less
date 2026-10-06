@@ -108,7 +108,31 @@ ship in the mod.
 - Do not ship `expectedSha256` for a payload file identical to the base; it is a
   no-op overlay that will fail the first time upstream touches it.
 
+## Credits
+
+This project exists because of the people who built the pieces it ports and
+the shell it runs on.
+
+- **Axenide** — original [Ambxst](https://github.com/Axenide/Ambxst) creator.
+  Everything here is a mod for that shell, and most of it is a port of features
+  Ambxst had not implemented.
+- **Leriart** — NothingLess developer and maintainer, and the author of this
+  mod. Most of the feature set originates there.
+- **Fabio** ([@fabiolopezperez-hue](https://github.com/fabiolopezperez-hue)) —
+  author of the **Hax** spotlight launcher, ported here essentially unchanged.
+  The plugins system, the calculator, the quick actions and the whole
+  spotlight are his work.
+- **outfoxxed** — creator of
+  [Quickshell](https://git.outfoxxed.me/outfoxxed/quickshell), the shell
+  toolkit both Ambxst and NothingLess are written against.
+
+NothingLess reimplements a number of services that Ambxst provides natively;
+those parts are deliberately not ported here, and the credit for them belongs
+to whoever wrote the Ambxst implementation.
+
 ## License
 
 AGPL-3.0, matching both upstreams ([Ambxst](https://github.com/Axenide/Ambxst)
 and NothingLess). See [LICENSE](LICENSE).
+
+Ambxst and the Ambxst logo are trademarks of Adriano Tisera (Axenide).
