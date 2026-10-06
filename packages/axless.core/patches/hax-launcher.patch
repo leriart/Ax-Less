@@ -1,0 +1,211 @@
+diff --git a/config/Config.qml b/config/Config.qml
+index e306828..53d9218 100644
+--- a/config/Config.qml
++++ b/config/Config.qml
+@@ -17,6 +17,7 @@ import "defaults/performance.js" as PerformanceDefaults
+ import "defaults/weather.js" as WeatherDefaults
+ import "defaults/desktop.js" as DesktopDefaults
+ import "defaults/lockscreen.js" as LockscreenDefaults
++import "defaults/hax.js" as HaxDefaults
+ import "defaults/prefix.js" as PrefixDefaults
+ import "defaults/system.js" as SystemDefaults
+ import "defaults/dock.js" as DockDefaults
+@@ -52,6 +53,7 @@ Singleton {
+     property bool weatherReady: false
+     property bool desktopReady: false
+     property bool lockscreenReady: false
++    property bool haxReady: false
+     property bool prefixReady: false
+     property bool systemReady: false
+     property bool dockReady: false
+@@ -59,7 +61,7 @@ Singleton {
+     property bool generalReady: false
+     property bool keybindsInitialLoadComplete: false
+ 
+-    property bool initialLoadComplete: themeReady && barReady && workspacesReady && overviewReady && notchReady && compositorReady && performanceReady && weatherReady && desktopReady && lockscreenReady && prefixReady && systemReady && dockReady && aiReady && generalReady
++    property bool initialLoadComplete: themeReady && barReady && workspacesReady && overviewReady && notchReady && compositorReady && performanceReady && weatherReady && desktopReady && lockscreenReady && prefixReady && systemReady && dockReady && aiReady && generalReady && haxReady
+ 
+     // Compatibility aliases
+     property alias loader: themeLoader
+@@ -678,6 +680,7 @@ Singleton {
+             property bool keepHidden: false
+             property string noMediaDisplay: "userHost"
+             property string customText: "Ambxst"
++            property string launcher: "default"
+             property bool disableHoverExpansion: true
+         }
+     }
+@@ -1358,6 +1361,47 @@ Singleton {
+         }
+     }
+ 
++    // ============================================
++    // HAX LAUNCHER (axless.core)
++    // ============================================
++    FileView {
++        id: haxLoader
++        path: root.configDir + "/hax.json"
++        atomicWrites: true
++        watchChanges: true
++        onLoaded: {
++            if (!root.haxReady) {
++                validateModule("hax", haxLoader, HaxDefaults.data, () => {
++                    root.haxReady = true;
++                });
++            }
++        }
++        onLoadFailed: function(error) { if (String(error).includes("FileNotFound") && !root.haxReady) {
++                handleMissingConfig("hax", haxLoader, HaxDefaults.data, () => {
++                    root.haxReady = true;
++                });
++            }
++        }
++        onFileChanged: {
++            root.pauseAutoSave = true;
++            reload();
++            root.pauseAutoSave = false;
++        }
++        onPathChanged: reload()
++        onAdapterUpdated: {
++            if (root.haxReady && !root.pauseAutoSave) {
++                haxLoader.writeAdapter();
++            }
++        }
++
++        adapter: JsonAdapter {
++            property bool customColorEnabled: false
++            property string customColor: "#ffb3ae"
++            property bool ocrEnabled: false
++            property string customShortcuts: "[]"
++        }
++    }
++
+     // Keybinds (binds.json)
+     // Timer to repair keybinds after initial load
+     Timer {
+@@ -3593,6 +3637,7 @@ Singleton {
+ 
+     // Notch configuration
+     property QtObject notch: notchLoader.adapter
++    property QtObject hax: haxLoader.adapter
+     property string notchTheme: notch.theme
+     property string notchPosition: notch.position
+ 
+@@ -3704,6 +3749,21 @@ Singleton {
+     function savePinnedApps() {
+         pinnedAppsLoader.writeAdapter();
+     }
++
++    function saveHax() {
++        haxLoader.writeAdapter();
++    }
++
++    // axless.core: NothingLess calls Config.saveHaxShortcuts() from its
++    // shortcut editor but never defined it. Serialise and persist.
++    function saveHaxShortcuts(list) {
++        try {
++            hax.customShortcuts = JSON.stringify(list || []);
++        } catch (e) {
++            hax.customShortcuts = "[]";
++        }
++        haxLoader.writeAdapter();
++    }
+     function saveAi() {
+         aiLoader.writeAdapter();
+     }
+diff --git a/config/defaults/notch.js b/config/defaults/notch.js
+index decb715..0298d2a 100644
+--- a/config/defaults/notch.js
++++ b/config/defaults/notch.js
+@@ -7,5 +7,6 @@ var data = {
+     "keepHidden": false,
+     "noMediaDisplay": "userHost",
+     "customText": "Ambxst",
+-    "disableHoverExpansion": true
++    "disableHoverExpansion": true,
++    "launcher": "default"
+ }
+diff --git a/modules/globals/GlobalStates.qml b/modules/globals/GlobalStates.qml
+index 04bebea..2fdb2b0 100644
+--- a/modules/globals/GlobalStates.qml
++++ b/modules/globals/GlobalStates.qml
+@@ -251,6 +251,9 @@ Singleton {
+     // Mirror Tool state
+     property bool mirrorWindowVisible: false
+ 
++    // axless.core: the standalone Hax spotlight launcher.
++    property bool haxVisible: false
++
+     // Settings Window state
+     property bool settingsWindowVisible: false
+     property int settingsTargetWorkspaceId: 0
+diff --git a/modules/services/GlobalShortcuts.qml b/modules/services/GlobalShortcuts.qml
+index b1aa3be..8f53307 100644
+--- a/modules/services/GlobalShortcuts.qml
++++ b/modules/services/GlobalShortcuts.qml
+@@ -155,6 +155,12 @@ QtObject {
+     }
+ 
+     function toggleLauncher() {
++        // axless.core: when Hax is selected, the keybind and the IPC command
++        // open the standalone Hax spotlight instead of the notch launcher.
++        if (Config.notch && Config.notch.launcher === "hax") {
++            GlobalStates.haxVisible = !GlobalStates.haxVisible;
++            return;
++        }
+         const isActive = Visibilities.currentActiveModule === "launcher";
+         if (isActive && GlobalStates.widgetsTabCurrentIndex === 0 && GlobalStates.launcherSearchText === "") {
+             Visibilities.setActiveModule("");
+diff --git a/modules/widgets/dashboard/controls/ShellPanel.qml b/modules/widgets/dashboard/controls/ShellPanel.qml
+index 9723b55..8a6268d 100644
+--- a/modules/widgets/dashboard/controls/ShellPanel.qml
++++ b/modules/widgets/dashboard/controls/ShellPanel.qml
+@@ -1041,6 +1041,28 @@ Item {
+                             }
+                         }
+ 
++                        // axless.core: choose the launcher the keybind opens.
++                        SelectorRow {
++                            label: I18n.t("settings.shell.notch_launcher")
++                            options: [
++                                {
++                                    label: I18n.t("common.default"),
++                                    value: "default"
++                                },
++                                {
++                                    label: "Hax",
++                                    value: "hax"
++                                }
++                            ]
++                            value: Config.notch.launcher ?? "default"
++                            onValueSelected: newValue => {
++                                if (newValue !== Config.notch.launcher) {
++                                    GlobalStates.markShellChanged();
++                                    Config.notch.launcher = newValue;
++                                }
++                            }
++                        }
++
+                         NumberInputRow {
+                             label: I18n.t("shell.hover_region_height")
+                             value: Config.notch.hoverRegionHeight ?? 8
+diff --git a/shell.qml b/shell.qml
+index 888996d..a59ec74 100644
+--- a/shell.qml
++++ b/shell.qml
+@@ -177,6 +177,15 @@ ShellRoot {
+         id: compositorConfig
+     }
+ 
++    // Hax spotlight launcher (axless.core). Created whenever Hax is the
++    // selected launcher so it can animate both in and out; its visibility is
++    // driven by GlobalStates.haxVisible.
++    Loader {
++        id: haxWindowLoader
++        active: SuspendManager.wakeReady && Config.notch && Config.notch.launcher === "hax"
++        source: "modules/widgets/spotlight/SpotlightView.qml"
++    }
++
+     // Screenshot tool
+     Variants {
+         model: Quickshell.screens

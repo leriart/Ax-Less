@@ -11,6 +11,8 @@ dependencies: one install gets everything.
 | Video wallpaper engine (interpolation + crossfade) | done |
 | Task board (dashboard tab + calendar) | done |
 | Per-monitor shell positions | done |
+| Remembered monitor positions | done |
+| Hax launcher (selectable) | done |
 | Translations (en / es / ru) | done |
 
 Everything is adapted to Ambxst's own services, colours and animation model.
@@ -40,6 +42,10 @@ request the model sees.
 | `modules/services/ai/ModelCapabilityProbe.qml` | Asks the model what it can do (Ollama `/api/show`, OpenAI-compatible `/v1/models/{model}`) instead of guessing from the name. |
 | `scripts/mcp_stdio_bridge.py` | stdio ↔ FIFO bridge for MCP servers (QML has no stdin). |
 | `scripts/ollama-ensure.sh` | Starts the local Ollama daemon if it is not answering. |
+| `modules/widgets/spotlight/SpotlightView.qml` | The Hax spotlight, ported from NothingLess with the adaptations listed below. |
+| `modules/widgets/spotlight/PluginManager.qml` + `HaxPlugin.qml` | The script/QML plugin system. |
+| `modules/widgets/spotlight/HaxTerminal.qml` | The embedded terminal (requires `QMLTermWidget`). |
+| `modules/components/CloseButton.qml` | The close button the spotlight uses; ported from NothingLess. |
 
 ### AI engine (replaces the base files)
 
@@ -527,6 +533,58 @@ and the layer that faded out is emptied so it stops holding the image or the
 video decoder. The wallpapers tab gains an interpolation toggle and an x2 to x5
 multiplier selector, inserted as siblings of the tint control in the filter
 bar.
+
+## Hax launcher
+
+Hax is NothingLess's own `SpotlightView.qml` (5227 lines), ported essentially
+unchanged. It is an alternative launcher chosen from **Settings -> Shell ->
+Notch -> Launcher** (`Config.notch.launcher`, values `default` and `hax`).
+Unlike the stock launcher, which lives in the notch, Hax opens as a standalone
+spotlight pill that grows from the top of the screen and expands into the full
+launcher, opened by the same launcher keybind and the same
+`ambxst run launcher` IPC command. The keybind path
+(`GlobalShortcuts.toggleLauncher`) branches on the setting and toggles
+`GlobalStates.haxVisible`, and `shell.qml` mounts `SpotlightView.qml` whenever
+Hax is selected.
+
+It keeps everything the original does: application search through
+`AppSearch`, the recursive-descent calculator, the `>` command mode, custom
+shortcuts, system actions, the plugin system (`PluginManager.qml` +
+`HaxPlugin.qml`, scripts under the plugins directory), file search, quick look,
+the clipboard/OCR/dictionary modes, timers and alarms, the weather lookup, and
+the embedded terminal (`HaxTerminal.qml`, which needs `QMLTermWidget`).
+
+### Adaptations
+
+The original was written for both NothingLess and Ax-shell but assumes a few
+things Ambxst does differently. Only those were changed:
+
+- **Visibility.** NothingLess has a per-screen `Visibilities.spotlight` module;
+  Ambxst's `Visibilities.moduleNames` does not. The window binds to
+  `GlobalStates.haxVisible` instead, and closing sets that flag rather than
+  calling `Visibilities.setActiveModule("")`.
+- **No self-quit.** The original quit its process when it hid; this runs inside
+  the Ambxst shell, so that was removed. The existing `openAnim`/`closeAnim`
+  still drive the grow/shrink animation.
+- **Config section.** `Config.hax` is new: `config/defaults/hax.js` plus a
+  `haxLoader` in `Config.qml` (`customColorEnabled`, `customColor`,
+  `ocrEnabled`, `customShortcuts`) and `saveHax`/`saveHaxShortcuts`.
+  NothingLess calls `Config.saveHaxShortcuts()` but never defines it; it is
+  implemented here so the shortcut editor works.
+- **`CloseButton`.** Not in Ambxst, so it is ported from NothingLess, with its
+  two `Anim.*` references translated to `Config.animDuration`.
+- **Plugin directory.** `~/.config/ambxst/hax/plugins` instead of
+  `~/.config/hax/plugins`.
+- **`pluginId` on a Process.** `PluginManager` assigned `pluginId` to a
+  `Process` it created dynamically; that property does not exist and the value
+  is never read, so the two assignments were dropped.
+- **Weather.** `WeatherService.defaultLocation` does not exist in Ambxst; the
+  location falls back to `Config.weather.location`.
+- **Subtitle.** The placeholder no longer says "for Hyprland".
+
+The package manager block was deliberately **not** ported: the original ships a
+hardcoded sudo password, which is a security bug, not a feature. The OCR index
+is inert in the original as well (its entry points are stubs).
 
 ## Task board
 

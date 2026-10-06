@@ -53,6 +53,19 @@ sees.
 - A wallpapers-tab toggle and an x2 to x5 multiplier selector drive the
   interpolator.
 
+### Launcher (Hax)
+
+The launcher can be the stock notch launcher or **Hax**, chosen from Settings
+-> Shell -> Notch. Hax is NothingLess's own `SpotlightView.qml`, ported
+essentially unchanged: a standalone spotlight pill that grows from the top of
+the screen, opened by the same keybind. It brings application search, the
+calculator, `>` command mode, custom shortcuts, system actions, the plugin
+system, file search, quick look, clipboard/OCR/dictionary modes, timers and
+alarms, and the weather lookup. The only changes are the ones Ambxst forces
+(visibility flag, no self-quit, a `Config.hax` section, a ported `CloseButton`,
+the plugin directory and the weather location); the package manager was not
+ported because the original ships a hardcoded sudo password.
+
 ### Dashboard task board
 
 A fourth dashboard tab (toggled with F5) with a kanban-style board and a

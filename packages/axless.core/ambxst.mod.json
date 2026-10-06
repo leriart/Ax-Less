@@ -4,7 +4,7 @@
   "id": "axless.core",
   "name": "Ax-Less Core",
   "version": "1.0.0",
-  "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support), an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions between wallpapers, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
+  "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support), an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
@@ -37,6 +37,8 @@
     "Runs hyprctl keyword and reload to apply compositor settings at runtime",
     "Runs niri msg to read and change output configuration at runtime",
     "Polls niri msg / hyprctl / mangoctl to remember monitor positions, re-applies them at startup, and stores the memory in ~/.local/share/ambxst/monitor-layout.json",
+    "Adds the Hax launcher as an alternative to the stock launcher, selected from Settings -> Shell -> Notch",
+    "Runs shell commands, file searches, system actions (lock / suspend / reboot / poweroff) and plugin scripts from the Hax launcher",
     "Replaces the compositor settings panel with one that shows only what the running compositor supports"
   ],
   "operations": [
@@ -404,6 +406,53 @@
     {
       "type": "patch",
       "source": "patches/wallpaper-crossfade.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-crossfade-cleanup.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/hax-i18n.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/config/defaults/hax.js",
+      "target": "config/defaults/hax.js"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/qmldir",
+      "target": "modules/widgets/spotlight/qmldir"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/SpotlightView.qml",
+      "target": "modules/widgets/spotlight/SpotlightView.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/PluginManager.qml",
+      "target": "modules/widgets/spotlight/PluginManager.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/HaxPlugin.qml",
+      "target": "modules/widgets/spotlight/HaxPlugin.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/HaxTerminal.qml",
+      "target": "modules/widgets/spotlight/HaxTerminal.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/components/CloseButton.qml",
+      "target": "modules/components/CloseButton.qml"
+    },
+    {
+      "type": "patch",
+      "source": "patches/hax-launcher.patch"
     }
   ]
 }
