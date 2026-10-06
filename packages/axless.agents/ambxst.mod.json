@@ -4,7 +4,7 @@
   "id": "axless.agents",
   "name": "Ax-Less Agent Platform",
   "version": "1.0.0",
-  "description": "Pluggable AI agent runtime for the assistant: MCP / HTTP-bridge / command agent connections with live tool discovery, a merged tool registry, multi-step chain enforcement, and a reworked AI engine with capability probing and OpenAI-compatible provider support.",
+  "description": "Pluggable AI agent runtime for the assistant: MCP / HTTP-bridge / command agent connections with live tool discovery, a merged tool registry, multi-step chain enforcement, and a reworked AI engine with capability probing and OpenAI-compatible provider support. Animates with Ambxst's native Config.animDuration.",
   "license": "GPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
@@ -15,12 +15,6 @@
     "testedBaseCommits": [
       "bc60230283a3822eec2e23c949f44990480d0f43"
     ]
-  },
-  "dependencies": [
-    "axless.motion"
-  ],
-  "dependencySources": {
-    "axless.motion": "https://github.com/leriart/Ax-Less/tree/main/packages/axless.motion"
   },
   "permissions": [
     "Replaces the AI engine (Ai.qml) and the assistant sidebar with the agent-capable versions",
@@ -87,11 +81,6 @@
     },
     {
       "type": "overlay",
-      "source": "payload/modules/bar/AiModeButton.qml",
-      "target": "modules/bar/AiModeButton.qml"
-    },
-    {
-      "type": "overlay",
       "source": "payload/scripts/mcp_stdio_bridge.py",
       "target": "scripts/mcp_stdio_bridge.py"
     },
@@ -100,7 +89,26 @@
       "source": "payload/scripts/ollama-ensure.sh",
       "target": "scripts/ollama-ensure.sh"
     },
-
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/server.py",
+      "target": "mcp/nothingclaw/server.py"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/context_budget.py",
+      "target": "mcp/nothingclaw/context_budget.py"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/requirements.txt",
+      "target": "mcp/nothingclaw/requirements.txt"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/README.md",
+      "target": "mcp/nothingclaw/README.md"
+    },
     {
       "type": "overlay",
       "source": "payload/modules/services/Ai.qml",
@@ -192,7 +200,6 @@
       "replace": true,
       "expectedSha256": "67e678486c4257bdbd3081a4045781a1e3c2816e827888d9a61308f5c6c7d87e"
     },
-
     {
       "type": "patch",
       "source": "patches/agent-platform.patch"

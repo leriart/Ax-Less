@@ -174,11 +174,10 @@ Popup {
                 Layout.preferredHeight: 48
 
                 Behavior on Layout.preferredWidth {
-                    enabled: Anim.animationsEnabled
+                    enabled: Config.animDuration > 0
                     NumberAnimation {
-                        duration: Anim.standardNormal
-                        easing.type: Anim.easing("standard").type
-                        easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+    easing.type: Easing.OutQuart
                     }
                 }
 
@@ -221,9 +220,9 @@ Popup {
                             }
 
                             Behavior on color {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 ColorAnimation {
-                                    duration: Anim.standardSmall
+                                    duration: Config.animDuration
                                 }
                             }
                         }
@@ -244,9 +243,9 @@ Popup {
                         visible: opacity > 0
 
                         Behavior on opacity {
-                            enabled: Anim.animationsEnabled
+                            enabled: Config.animDuration > 0
                             NumberAnimation {
-                                duration: Anim.standardSmall
+                                duration: Config.animDuration
                             }
                         }
                     }
@@ -257,9 +256,9 @@ Popup {
                     radius: Styling.radius(4)
 
                     Behavior on color {
-                        enabled: Anim.animationsEnabled
+                        enabled: Config.animDuration > 0
                         ColorAnimation {
-                            duration: Anim.standardSmall
+                            duration: Config.animDuration
                         }
                     }
                 }
@@ -296,11 +295,10 @@ Popup {
             property bool enableScrollAnimation: true
 
             Behavior on contentY {
-                enabled: Anim.animationsEnabled && modelList.enableScrollAnimation && !modelList.moving
+                enabled: Config.animDuration > 0 && modelList.enableScrollAnimation && !modelList.moving
                 NumberAnimation {
-                    duration: Anim.standardSmall
-                    easing.type: Anim.easing("standard").type
-                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+easing.type: Easing.OutQuart
                 }
             }
 
@@ -331,11 +329,10 @@ Popup {
                 y: modelList.currentIndex >= 0 ? modelList.currentIndex * 48 : 0
 
                 Behavior on y {
-                    enabled: Anim.animationsEnabled
+                    enabled: Config.animDuration > 0
                     NumberAnimation {
-                        duration: Anim.standardSmall
-                        easing.type: Anim.easing("standard").type
-                        easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+    easing.type: Easing.OutQuart
                     }
                 }
 
@@ -437,21 +434,19 @@ Popup {
                             color: iconRect.item
 
                             Behavior on color {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 ColorAnimation {
-                                    duration: Anim.standardSmall
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                 }
                             }
                         }
 
                         Behavior on color {
-                            enabled: Anim.animationsEnabled
+                            enabled: Config.animDuration > 0
                             ColorAnimation {
-                                duration: Anim.standardSmall
-                                easing.type: Anim.easing("standard").type
-                        easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+            easing.type: Easing.OutQuart
                             }
                         }
                     }
@@ -471,11 +466,10 @@ Popup {
                             elide: Text.ElideRight
 
                             Behavior on color {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 ColorAnimation {
-                                    duration: Anim.standardSmall
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                 }
                             }
                         }
@@ -490,11 +484,10 @@ Popup {
                             elide: Text.ElideRight
 
                             Behavior on color {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 ColorAnimation {
-                                    duration: Anim.standardSmall
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                 }
                             }
                         }
@@ -516,11 +509,10 @@ Popup {
                             visible: delegateBtn.isActiveModel
 
                             Behavior on color {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 ColorAnimation {
-                                    duration: Anim.standardSmall
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                 }
                             }
                         }

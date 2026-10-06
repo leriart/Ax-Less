@@ -167,45 +167,6 @@ index dd750c91..137fde97 100644
 +    // slow local model can finish its first token.
 +    "requestTimeoutSeconds": 240
  }
-diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
-index 554a38fc..dee01fc2 100644
---- a/modules/bar/BarContent.qml
-+++ b/modules/bar/BarContent.qml
-@@ -522,6 +522,16 @@ Item {
-                             enableShadow: root.shadowsEnabled
-                         }
- 
-+                        // axless.agents: chat/agent mode switch + agent picker.
-+                        Bar.AiModeButton {
-+                            id: aiModeButton
-+                            bar: root
-+                            startRadius: root.innerRadius
-+                            endRadius: root.innerRadius
-+                            layerEnabled: root.shadowsEnabled
-+                            Layout.alignment: Qt.AlignVCenter
-+                        }
-+
-                         SysTray {
-                             bar: root
-                             enableShadow: root.shadowsEnabled
-@@ -593,6 +603,17 @@ Item {
-                             enableShadow: root.shadowsEnabled
-                         }
- 
-+                        // axless.agents: chat/agent mode switch + agent picker.
-+                        Bar.AiModeButton {
-+                            id: aiModeButtonVert
-+                            bar: root
-+                            startRadius: root.innerRadius
-+                            endRadius: root.innerRadius
-+                            vertical: true
-+                            layerEnabled: root.shadowsEnabled
-+                            Layout.alignment: Qt.AlignVCenter
-+                        }
-+
-                         PresetsButton {
-                             id: presetsButtonVert
-                             startRadius: root.innerRadius
 diff --git a/modules/theme/Icons.qml b/modules/theme/Icons.qml
 index 3333506c..edcec820 100644
 --- a/modules/theme/Icons.qml

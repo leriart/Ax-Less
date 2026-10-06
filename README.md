@@ -13,8 +13,7 @@ multi-compositor parity (`hyprland | niri | mango`).
 
 | Package | Status | Summary |
 |---|---|---|
-| [`axless.motion`](packages/axless.motion) | done | Named motion profiles + `AnimatedBehavior`. Foundation mod. |
-| [`axless.agents`](packages/axless.agents) | done | Agent platform: MCP / HTTP-bridge / command agents, tool registry, reworked AI engine. Depends on `axless.motion`. |
+| [`axless.agents`](packages/axless.agents) | done | Agent platform: MCP / HTTP-bridge / command agents, tool registry, reworked AI engine. |
 
 ## Planned
 
@@ -35,8 +34,10 @@ Not yet implemented. Ordered roughly by value per unit of risk.
 
 ### Deliberately excluded
 
-- `Anim.qml`'s migration of the **1088** `Config.animDuration` call sites. The
-  singleton is ported in `axless.motion`; migrating the tree is a separate job.
+- NothingLess's animation system (`Anim.qml`, `AnimatedBehavior.qml`). Ported
+  code is translated to Ambxst's native `Config.animDuration` + `Easing.*`
+  instead, so the assistant matches the rest of the shell and there is no second
+  source of truth for durations.
 - `Surface`, `Speedometer`, `DiskBar`, `StatCard`, `CloseButton` — Ambxst's
   `StyledRect` and `Circular*` already cover them under other names.
 - Per-directory `qmldir` files. Ambxst resolves bar siblings with
@@ -56,12 +57,12 @@ Not yet implemented. Ordered roughly by value per unit of risk.
 
 ```bash
 for p in packages/*/; do ambxst mods install "$(realpath "$p")"; done
-for id in axless.motion axless.agents; do ambxst mods enable "$id"; done
+for id in $(ls packages); do ambxst mods enable "$id"; done
 ambxst reload
 ```
 
-Enable `axless.motion` before `axless.agents`; the agents UI animates through
-it.
+Each package stands alone: nothing here depends on anything outside the Ambxst
+tree, so `axless.agents` can be installed and enabled on its own.
 
 ## Conventions
 

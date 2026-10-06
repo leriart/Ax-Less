@@ -121,7 +121,7 @@ ColumnLayout {
                 spacing: 4
                 opacity: root.justCopied ? 1 : 0
                 Behavior on opacity {
-                    AnimatedBehavior { type: "emphasized"; size: "normal"; variant: "enter" }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Text {
@@ -163,7 +163,7 @@ ColumnLayout {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     Behavior on color {
-                        AnimatedBehavior { type: "standard"; size: "fast" }
+                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                     }
                 }
 
@@ -285,10 +285,10 @@ ColumnLayout {
                             && root._resolvedLang !== "txt"
 
                     SequentialAnimation on opacity {
-                        running: parent.visible && Anim.animationsEnabled
+                        running: parent.visible && Config.animDuration > 0
                         loops: Animation.Infinite
-                        NumberAnimation { to: 0.0; duration: Anim.emphasizedNormal; easing.type: Anim.easing("emphasized").type; easing.bezierCurve: Anim.easing("emphasized").bezierCurve || [] }
-                        NumberAnimation { to: 0.4; duration: Anim.emphasizedNormal; easing.type: Anim.easing("emphasized").type; easing.bezierCurve: Anim.easing("emphasized").bezierCurve || [] }
+                        NumberAnimation { to: 0.0; duration: Config.animDuration; easing.type: Easing.OutQuart }
+                        NumberAnimation { to: 0.4; duration: Config.animDuration; easing.type: Easing.OutQuart }
                     }
                 }
 

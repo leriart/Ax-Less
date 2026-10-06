@@ -181,16 +181,11 @@ Item {
         visible: root.active || slideAnimation.running
 
         Behavior on x {
-            // Use the spatial animation profile so the sidebar slide
-            // matches the rest of the shell (e.g. bar/notch flyouts).
-            // AnimatedBehaviour honours Anim.animationsEnabled + the
-            // active animation style — bypassing the raw Easing.OutCubic
-            // ensures game mode / "disabled" styles correctly snap the
-            // panel in place.
-            AnimatedBehavior {
+            enabled: Config.animDuration > 0
+            NumberAnimation {
                 id: slideAnimation
-                type: "spatial"
-                size: "default"
+                duration: Config.animDuration
+                easing.type: Easing.OutQuart
             }
         }
 
@@ -234,7 +229,7 @@ Item {
                                 radius: Styling.radius(4)
                                 opacity: parent.hovered ? 1 : 0
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
                             Accessible.role: Accessible.Button
@@ -260,7 +255,7 @@ Item {
                                 radius: Styling.radius(4)
                                 opacity: parent.hovered ? 1 : 0
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
                             Accessible.role: Accessible.Button
@@ -292,7 +287,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
 
@@ -366,7 +361,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
 
@@ -501,7 +496,7 @@ Item {
                                 opacity: agentSelectorClick.containsMouse ? 1 : 0
 
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
 
@@ -592,7 +587,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    AnimatedBehavior { type: "standard"; size: "fast" }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                 }
                             }
 
@@ -714,7 +709,7 @@ Item {
                             z: 10
 
                             Behavior on opacity {
-                                AnimatedBehavior { type: "standard"; size: "normal" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
 
                             ColumnLayout {
@@ -768,7 +763,7 @@ Item {
                                         property real confirmOpacity: confirmingDelete ? 1 : 0
 
                                         Behavior on confirmOpacity {
-                                            AnimatedBehavior { type: "emphasized"; size: "normal"; variant: "enter" }
+                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                         }
 
                                         // ── Row body (default state) ──
@@ -813,7 +808,7 @@ Item {
                                                         opacity: 1.0
                                                             - chatRow.confirmOpacity
                                                         Behavior on opacity {
-                                                            AnimatedBehavior { type: "emphasized"; size: "normal"; variant: "exit" }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.InQuad }
                                                         }
                                                     }
 
@@ -832,7 +827,7 @@ Item {
                                                         opacity: 1.0
                                                             - chatRow.confirmOpacity
                                                         Behavior on opacity {
-                                                            AnimatedBehavior { type: "emphasized"; size: "normal"; variant: "exit" }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.InQuad }
                                                         }
                                                     }
                                                 }
@@ -855,7 +850,7 @@ Item {
                                                         horizontalAlignment: Text.AlignHCenter
                                                         verticalAlignment: Text.AlignVCenter
                                                         Behavior on color {
-                                                            AnimatedBehavior { type: "standard"; size: "fast" }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                         }
                                                     }
 
@@ -897,7 +892,7 @@ Item {
                                             opacity: chatRow.confirmOpacity * 0.22
 
                                             Behavior on opacity {
-                                                AnimatedBehavior { type: "emphasized"; size: "normal"; variant: "enter" }
+                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                             }
                                         }
 
@@ -1154,13 +1149,13 @@ Item {
                             z: 4
 
                             Behavior on opacity {
-                                AnimatedBehavior { type: "standard"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
                             Behavior on height {
-                                AnimatedBehavior { type: "spatial"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
                             Behavior on anchors.bottomMargin {
-                                AnimatedBehavior { type: "spatial"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
 
                             StyledRect {
@@ -1204,10 +1199,10 @@ Item {
                             z: 5
 
                             Behavior on opacity {
-                                AnimatedBehavior { type: "standard"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
                             Behavior on height {
-                                AnimatedBehavior { type: "spatial"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
 
                             // Map (isLoading, streamingStatus, pendingToolCall)
@@ -1281,7 +1276,7 @@ Item {
                                     // dot for streaming, spinner for tool
                                     // run, pulsing outline for approval,
                                     // warning for error. Animations respect
-                                    // Anim.animationsEnabled (game mode).
+                                    // Config.animDuration > 0 (game mode).
                                     Item {
                                         Layout.preferredWidth: 16
                                         Layout.preferredHeight: 16
@@ -1302,7 +1297,7 @@ Item {
                                                 from: 0; to: 360
                                                 loops: Animation.Infinite
                                                 duration: 900
-                                                running: parent.visible && Anim.animationsEnabled
+                                                running: parent.visible && Config.animDuration > 0
                                             }
                                         }
 
@@ -1317,9 +1312,9 @@ Item {
                                             color: Colors.primary
                                             SequentialAnimation on opacity {
                                                 loops: Animation.Infinite
-                                                running: parent.visible && Anim.animationsEnabled
-                                                NumberAnimation { to: 1.0; duration: Anim.standardNormal; easing.type: Anim.easing("standard").type; easing.bezierCurve: Anim.easing("standard").bezierCurve || [] }
-                                                NumberAnimation { to: 0.4; duration: Anim.standardNormal; easing.type: Anim.easing("standard").type; easing.bezierCurve: Anim.easing("standard").bezierCurve || [] }
+                                                running: parent.visible && Config.animDuration > 0
+                                                NumberAnimation { to: 1.0; duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                NumberAnimation { to: 0.4; duration: Config.animDuration; easing.type: Easing.OutQuart }
                                             }
                                         }
 
@@ -1344,18 +1339,16 @@ Item {
 
                                             SequentialAnimation on scale {
                                                 loops: Animation.Infinite
-                                                running: parent.visible && Anim.animationsEnabled
+                                                running: parent.visible && Config.animDuration > 0
                                                 NumberAnimation {
                                                     from: 1.0; to: 1.18
-                                                    duration: Anim.standardLarge
-                                                    easing.type: Anim.easing("standard").type
-                                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                                easing.type: Easing.OutQuart
                                                 }
                                                 NumberAnimation {
                                                     from: 1.18; to: 1.0
-                                                    duration: Anim.standardLarge
-                                                    easing.type: Anim.easing("standard").type
-                                                    easing.bezierCurve: Anim.easing("standard").bezierCurve || []
+duration: Config.animDuration
+                                easing.type: Easing.OutQuart
                                                 }
                                             }
                                         }
@@ -1516,9 +1509,8 @@ Item {
                                     id: contentYAnim
                                     target: chatView
                                     property: "contentY"
-                                    duration: Anim.standardNormal
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                     // If the user grabs the scrollbar / wheel mid-
                                     // animation, kill it so the gesture feels direct.
                                     onStarted: chatView._userScrolledUp = false
@@ -1531,7 +1523,7 @@ Item {
                                         contentY = target;
                                         return;
                                     }
-                                    if (immediate || !Anim.animationsEnabled) {
+                                    if (immediate || !Config.animDuration > 0) {
                                         contentYAnim.stop();
                                         contentY = target;
                                         return;
@@ -2077,7 +2069,7 @@ Item {
                                                             opacity: 0.85
                                                             Layout.topMargin: 4
                                                             Behavior on opacity {
-                                                                AnimatedBehavior { type: "standard"; size: "normal" }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                             }
                                                         }
                                                     }
@@ -2243,7 +2235,7 @@ Item {
                                                             Layout.topMargin: 4
 
                                                             Behavior on opacity {
-                                                                AnimatedBehavior { type: "standard"; size: "normal" }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                             }
 
                                                             Button {
@@ -2267,7 +2259,7 @@ Item {
                                                                     border.width: 1
                                                                     border.color: Colors.outline
                                                                     Behavior on opacity {
-                                                                        AnimatedBehavior { type: "standard"; size: "fast" }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                                     }
                                                                 }
 
@@ -2305,7 +2297,7 @@ Item {
                                                                     opacity: parent.hovered ? 0.95 : 0.55
                                                                     radius: Styling.radius(4)
                                                                     Behavior on opacity {
-                                                                        AnimatedBehavior { type: "standard"; size: "fast" }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                                     }
                                                                 }
 
@@ -2343,7 +2335,7 @@ Item {
                                                                     opacity: parent.hovered ? 1 : 0.85
                                                                     radius: Styling.radius(4)
                                                                     Behavior on opacity {
-                                                                        AnimatedBehavior { type: "standard"; size: "fast" }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                                     }
                                                                 }
 
@@ -2379,7 +2371,7 @@ Item {
                                                             Layout.topMargin: 4
                                                             spacing: 6
                                                             Behavior on opacity {
-                                                                AnimatedBehavior { type: "standard"; size: "normal" }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                             }
                                                             Text {
                                                                 text: Icons.checkCircle
@@ -2410,7 +2402,7 @@ Item {
                                                             Layout.topMargin: 4
                                                             spacing: 6
                                                             Behavior on opacity {
-                                                                AnimatedBehavior { type: "standard"; size: "normal" }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                             }
                                                             Text {
                                                                 text: Icons.xCircle
@@ -2544,7 +2536,7 @@ Item {
 
                                                 // Animated typing indicator.
                                                 // Wraps the SequentialAnimation in
-                                                // `enabled: Anim.animationsEnabled`
+                                                // `enabled: Config.animDuration > 0`
                                                 // so the dots freeze in place when
                                                 // game mode is on or the user picked
                                                 // an "instant" animation style —
@@ -2554,7 +2546,7 @@ Item {
                                                 // visual benefit.
                                                 SequentialAnimation on opacity {
                                                     loops: Animation.Infinite
-                                                    running: Anim.animationsEnabled && Ai.isLoading
+                                                    running: Config.animDuration > 0 && Ai.isLoading
 
                                                     PauseAnimation {
                                                         duration: index * 200
@@ -2619,11 +2611,10 @@ Item {
                             transformOrigin: Item.Bottom
 
                             Behavior on popupOpacity {
-                                enabled: Anim.animationsEnabled
+                                enabled: Config.animDuration > 0
                                 NumberAnimation {
-                                    duration: Anim.standardSmall
-                                    easing.type: Anim.easing("standard").type
-                                    easing.bezierCurve: Anim.easing("standard").bezierCurve
+duration: Config.animDuration
+                easing.type: Easing.OutQuart
                                 }
                             }
 
@@ -2745,7 +2736,7 @@ Item {
                             width: Math.min(600, parent.width - 40)
 
                             Behavior on anchors.bottomMargin {
-                                AnimatedBehavior { type: "spatial"; size: "default" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
 
                             StyledRect {
@@ -3119,10 +3110,10 @@ Item {
                                                 opacity: sendOrStopButton.aiBusy ? 0 : 1
                                                 scale: sendOrStopButton.aiBusy ? 0.6 : 1.0
                                                 Behavior on opacity {
-                                                    AnimatedBehavior { type: "emphasized"; size: "normal" }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                 }
                                                 Behavior on scale {
-                                                    AnimatedBehavior { type: "emphasized"; size: "normal" }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                 }
                                             }
                                             Text {
@@ -3134,10 +3125,10 @@ Item {
                                                 opacity: sendOrStopButton.aiBusy ? 1 : 0
                                                 scale: sendOrStopButton.aiBusy ? 1.0 : 0.6
                                                 Behavior on opacity {
-                                                    AnimatedBehavior { type: "emphasized"; size: "normal" }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                 }
                                                 Behavior on scale {
-                                                    AnimatedBehavior { type: "emphasized"; size: "normal" }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                                 }
                                             }
                                         }
@@ -3148,7 +3139,7 @@ Item {
                                                 ? (parent.hovered ? Colors.surfaceBright : Qt.darker(Colors.surfaceBright, 1.4))
                                                 : (parent.hovered ? Colors.surfaceBright : "transparent")
                                             Behavior on color {
-                                                AnimatedBehavior { type: "standard"; size: "fast" }
+                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                                             }
                                         }
 
@@ -3193,7 +3184,7 @@ Item {
                             visible: mainChatArea.isWelcome
 
                             Behavior on opacity {
-                                AnimatedBehavior { type: "standard"; size: "fast" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
 
                             opacity: visible ? 1 : 0

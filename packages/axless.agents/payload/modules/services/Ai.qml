@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.config
 import qs.modules.services
+import qs.modules.globals
 import "ai"
 import "ai/strategies"
 
@@ -1428,7 +1429,7 @@ Singleton {
         for (let sep of ["\n\n", "\n", ". "]) {
             let idx = cut.lastIndexOf(sep);
             if (idx > charCap * 0.5) {
-                cut = cut.substring(0, idx + sep.length).rstrip();
+                cut = cut.substring(0, idx + sep.length).trim();
                 break;
             }
         }

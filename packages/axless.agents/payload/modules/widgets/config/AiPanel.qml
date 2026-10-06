@@ -32,6 +32,11 @@ Item {
     readonly property string nothingclawDirPath:
         Qt.resolvedUrl("../../../mcp/nothingclaw/")
             .toString().replace("file://", "")
+    // The stdio<->FIFO bridge ships inside the mod package, so resolve it
+    // relative to this file rather than to a hardcoded checkout path.
+    readonly property string _mcpBridgePath:
+        Qt.resolvedUrl("../../../scripts/mcp_stdio_bridge.py")
+            .toString().replace("file://", "")
     property var agentJsonExpanded: ({})
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -276,11 +281,10 @@ Item {
                 border.width: 1
 
                 Behavior on color {
-                    enabled: Anim.animationsEnabled
+                    enabled: Config.animDuration > 0
                     ColorAnimation {
-                        duration: Anim.standardSmall
-                        easing.type: Anim.easing("standard").type
-                        easing.bezierCurve: Anim.easing("standard").bezierCurve
+duration: Config.animDuration
+    easing.type: Easing.OutQuart
                     }
                 }
 
@@ -297,11 +301,10 @@ Item {
                         : Colors.overSurfaceVariant
 
                     Behavior on x {
-                        enabled: Anim.animationsEnabled
+                        enabled: Config.animDuration > 0
                         NumberAnimation {
-                            duration: Anim.standardSmall
-                            easing.type: Anim.easing("standard").type
-                            easing.bezierCurve: Anim.easing("standard").bezierCurve
+duration: Config.animDuration
+        easing.type: Easing.OutQuart
                         }
                     }
                 }
@@ -760,11 +763,10 @@ Item {
                                         enableShadow: parent.isSelected
 
                                         Behavior on variant {
-                                            enabled: Anim.animationsEnabled
+                                            enabled: Config.animDuration > 0
                                             ColorAnimation {
-                                                duration: Anim.standardSmall
-                                                easing.type: Anim.easing("standard").type
-                                                easing.bezierCurve: Anim.easing("standard").bezierCurve
+duration: Config.animDuration
+                            easing.type: Easing.OutQuart
                                             }
                                         }
                                     }
@@ -1053,7 +1055,7 @@ Item {
                             radius: Styling.radius(4)
                             border.width: allowlistInput.activeFocus ? 2 : 0
                             Behavior on border.width {
-                                AnimatedBehavior { type: "standard"; size: "small" }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                             }
                             border.color: Styling.srItem("primary")
                             anchors.fill: parent
@@ -1600,7 +1602,7 @@ Item {
                                     type: "mcp-stdio",
                                     enabled: true,
                                     command: "python3",
-                                    args: [Quickshell.env("HOME") + "/.local/src/nothingless/scripts/mcp_stdio_bridge.py"]
+                                    args: [root._mcpBridgePath]
                                 });
                             }
                             background: StyledRect {
@@ -1626,7 +1628,7 @@ Item {
                                     type: "command",
                                     enabled: true,
                                     command: "python3",
-                                    args: [Quickshell.env("HOME") + "/.local/src/nothingless/scripts/mcp_stdio_bridge.py"]
+                                    args: [root._mcpBridgePath]
                                 });
                             }
                             background: StyledRect {
@@ -1686,7 +1688,7 @@ Item {
                             variant: "internalbg"
                             radius: Styling.radius(4)
                             border.width: newAgentName.activeFocus ? 2 : 0
-                            Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                            Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                             border.color: Styling.srItem("primary")
                             anchors.fill: parent
                             anchors.leftMargin: -parent.padding
@@ -1708,7 +1710,7 @@ Item {
                             variant: "internalbg"
                             radius: Styling.radius(4)
                             border.width: newAgentType.activeFocus ? 2 : 0
-                            Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                            Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                             border.color: Styling.srItem("primary")
                             anchors.fill: parent
                             anchors.leftMargin: -parent.padding
@@ -1735,7 +1737,7 @@ Item {
                                 variant: "internalbg"
                                 radius: Styling.radius(4)
                                 border.width: newAgentEndpoint.activeFocus ? 2 : 0
-                                Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                                Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                                 border.color: Styling.srItem("primary")
                                 anchors.fill: parent
                                 anchors.leftMargin: -parent.padding
@@ -1756,7 +1758,7 @@ Item {
                                 variant: "internalbg"
                                 radius: Styling.radius(4)
                                 border.width: newAgentHeaders.activeFocus ? 2 : 0
-                                Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                                Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                                 border.color: Styling.srItem("primary")
                                 anchors.fill: parent
                                 anchors.leftMargin: -parent.padding
@@ -1985,7 +1987,7 @@ Item {
                                 variant: "internalbg"
                                 radius: Styling.radius(4)
                                 border.width: newAgentCommand.activeFocus ? 2 : 0
-                                Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                                Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                                 border.color: Styling.srItem("primary")
                                 anchors.fill: parent
                                 anchors.leftMargin: -parent.padding
@@ -2011,7 +2013,7 @@ Item {
                             radius: Styling.radius(4)
                             border.width: argsArea.activeFocus ? 2 : 1
                             border.color: argsArea.activeFocus ? Styling.srItem("primary") : Colors.outline
-                            Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                            Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
 
                             ScrollView {
                                 anchors.fill: parent
@@ -2102,7 +2104,7 @@ Item {
                                 variant: "internalbg"
                                 radius: Styling.radius(4)
                                 border.width: shellPasteField.activeFocus ? 2 : 0
-                                Behavior on border.width { AnimatedBehavior { type: "standard"; size: "small" } }
+                                Behavior on border.width { NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                                 border.color: Styling.srItem("primary")
                                 anchors.fill: parent
                                 anchors.leftMargin: -parent.padding

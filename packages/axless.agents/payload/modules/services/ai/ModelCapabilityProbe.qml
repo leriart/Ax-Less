@@ -219,19 +219,19 @@ QtObject {
     }
 
     function _ollamaApiRoot(endpoint) {
-        let url = (endpoint || "").trim().rstrip("/");
+        let url = (endpoint || "").trim().replace(/\/+$/, "");
         // Strip OpenAI-compat suffix if the strategy is using /v1.
         // Order matters: handle compound /v1/<action> suffixes before
         // bare /v1 because both share the `/v1` suffix.
         for (let s of ["/v1/chat/completions", "/v1/responses",
                 "/v1/messages", "/v1/models"]) {
             if (url.endsWith(s)) {
-                url = url.slice(0, -s.length).rstrip("/");
+                url = url.slice(0, -s.length).replace(/\/+$/, "");
                 break;
             }
         }
         if (url.endsWith("/v1"))
-            url = url.slice(0, -3).rstrip("/");
+            url = url.slice(0, -3).replace(/\/+$/, "");
         if (url === "" || url.endsWith("/api")) {
             return url;
         }
@@ -359,7 +359,7 @@ QtObject {
     }
 
     function _openAIBase(endpoint) {
-        let url = (endpoint || "").trim().rstrip("/");
+        let url = (endpoint || "").trim().replace(/\/+$/, "");
         // Check compound suffixes first (/v1/messages, /v1/responses)
         // so a URL ending in /v1/messages strips both /v1 and /messages
         // and lands at the base. Order matters — longest match wins.
@@ -367,7 +367,7 @@ QtObject {
                 "/v1/responses", "/chat/completions",
                 "/completions", "/models"]) {
             if (url.endsWith(s)) {
-                url = url.slice(0, -s.length).rstrip("/");
+                url = url.slice(0, -s.length).replace(/\/+$/, "");
                 break;
             }
         }
