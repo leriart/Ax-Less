@@ -287,6 +287,66 @@
     {
       "type": "patch",
       "source": "patches/per-monitor-positions.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/go.mod",
+      "target": "video/go.mod"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/decode.go",
+      "target": "video/decode.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/synth.go",
+      "target": "video/synth.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/build.sh",
+      "target": "video/build.sh"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/README.md",
+      "target": "video/README.md"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/bin/axvideo",
+      "target": "video/bin/axvideo"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/cmd/axvideo/main.go",
+      "target": "video/cmd/axvideo/main.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/cmd/probe-mv/main.go",
+      "target": "video/cmd/probe-mv/main.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/interpol.frag",
+      "target": "shaders/interpol.frag"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/interpol.frag.qsb",
+      "target": "shaders/interpol.frag.qsb"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/interpol.vert",
+      "target": "shaders/interpol.vert"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/interpol.vert.qsb",
+      "target": "shaders/interpol.vert.qsb"
     }
   ]
 }
