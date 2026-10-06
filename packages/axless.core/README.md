@@ -356,6 +356,27 @@ monitor 30 px from its neighbour with a 40 px threshold and it snapped flush,
 which is the same "it won't let me place them" complaint wearing a different
 hat. Gaps of 30 px and 50 px are now preserved; only sub-24 px closes.
 
+### Horizontal limit that blocked every placement with breathing room
+
+`xBounds` returned `min = leftmost neighbour's x - ownW` and
+`max = rightmost neighbour's right edge`. That is exactly the zero-gap
+arrangement, so *any* placement with room to breathe was rejected:
+
+```
+neighbour unscaled box ends at 1536 (eDP-1, 1.25 scale)
+max allowed = 1536
+x = 1700  (a 164 px gap)  -> BLOQUEADO  ← should be fine
+x = -1700 (left of it)    -> BLOQUEADO
+```
+
+With HDMI-A-1 and eDP-1 both at 1.25 and sharing x=0, every interesting target
+fell inside the forbidden band, which made the monitors feel welded. The bound
+now allows **a full monitor width of margin on each side**, so a screen can
+sit a whole screen's gap to the left or right of everything else, and only a
+genuinely absurd fling (more than a screen beyond the edge) is clamped.
+Verified: `[-3072, 3072]` for a 1536-wide neighbour, accepting both 1700 and
+-1700 while still rejecting -4000 and 9000.
+
 ### Bugs found and fixed while making it functional
 
 **Reading an output's on/off state.** niri still lists an output that is off,

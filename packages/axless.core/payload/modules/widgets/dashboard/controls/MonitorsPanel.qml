@@ -776,14 +776,21 @@ Item {
         /*
             Horizontal limits for a drag.
 
-            A monitor may sit entirely to the left of everything or entirely
-            to the right of everything, but it cannot be flung out into empty
-            space beyond the arrangement: a single flick would throw it
-            hundreds of pixels off with nothing to scroll back to.
+            Bounded so a monitor cannot be flung out into empty space with no
+            way to scroll back - but generously. The bound is one full screen
+            width beyond the arrangement on each side, so a monitor may sit a
+            whole monitor's gap to the left or to the right of everything
+            else.
 
-            Vertical placement is deliberately unbounded. Desktops are wide
-            and short, lining one monitor up under another is a normal thing
-            to want, and the canvas scrolls to follow.
+            It used to be tight: min = leftmost neighbour's x - ownW and
+            max = rightmost neighbour's right edge. That is exactly the
+            arrangement with zero gap, so *every* placement with breathing
+            room was rejected - x=1700 next to a neighbour ending at 1536
+            could not be dropped, and neither could anything to the left of
+            the leftmost screen. That is what made the monitors feel stuck.
+
+            Vertical placement stays unbounded: lining one monitor up under
+            another is a normal thing to want.
         */
         function xBounds(idx, ownW) {
             let lo = Infinity;
@@ -795,11 +802,12 @@ Item {
                 lo = Math.min(lo, list[k].x);
                 hi = Math.max(hi, list[k].x + av.logicalWidth(list[k]));
             }
+            const margin = Math.max(ownW, 400);
             if (!isFinite(lo) || !isFinite(hi)) {
                 // A single output has no neighbours to be relative to.
                 return { min: -ownW * 4, max: ownW * 4 };
             }
-            return { min: lo - ownW, max: hi };
+            return { min: lo - ownW - margin, max: hi + margin };
         }
 
         function realToCanvasX(rx) { return (rx - av.viewBounds.minX) * av.viewScale + 10; }
@@ -992,6 +1000,17 @@ Item {
                             hoverEnabled: true
                             enabled: monItem.modelData.enabled
 
+                            // Cursor position in canvas coordinates, captured
+                            // once in onPressed. Subtracting it from the live
+                            // cursor position gives the drag displacement.
+                            //
+                            // "Live cursor position" has to be expressed as
+                            // mouse.x + monItem.x: mouse.x is relative to the
+                            // box, and the box is what moves. Using only the
+                            // in-box delta looks simpler and is wrong - the
+                            // box chases the cursor, so that delta is mostly
+                            // zero and the monitor only crawls a third of
+                            // the distance.
                             property real pcx: 0
                             property real pcy: 0
                             property real srx: 0
