@@ -42,65 +42,45 @@ este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
-## Tinte (palette) de wallpapers de vídeo — NO FUNCIONA
+## Tinte (palette) de wallpapers de vídeo — FUNCIONA (07-10)
 
-El tinte funciona en imágenes fijas y nunca ha funcionado en vídeo. Es un bug
-**de Ambxst**, no del mod.
+**La causa era `VideoOutput` frente a `Video`.** NothingLess usa:
 
-**Causa raíz probada (bug de Ambxst):** un item layer renderiza el item a un
-FBO por la ruta normal, y esa ruta **no captura nodos de scene-graph
-personalizados** — `QSGVideoNode` entre ellos. Comprobado sustituyendo
-`palette.frag` por un shader que pinta **rojo sólido**: como layer sobre el
-`VideoOutput` no renderiza nada, ni el rojo. Las imágenes fijas no se ven
-afectadas porque un `Image` sí renderiza por la ruta normal.
+```qml
+Video {
+    id: videoPlayer
+    fillMode: VideoOutput.PreserveAspectCrop
+    ...
+}
+```
 
-**Tres fallos más encontrados al intentar arreglarlo:**
-1. `ShaderEffectSource` captura como textura **vacía** cualquier item con
-   `opacity: 0`. La tira de paleta usaba `opacity: 0` para esconderse, así que
-   su textura salía vacía y `palette.frag` pintaba el vídeo de negro.
-2. `palette.frag` premultiplica por el alfa del origen
-   (`vec4(finalColor * tex.a, tex.a)`). Un `VideoOutput` no tiene canal alfa y
-   en el FBO llega con alfa 0 → resultado totalmente transparente. Una imagen
-   fija sí lleva alfa 1. Corregido en el shader del mod.
-3. Mantener la captura (`liveSource`) activa **merma el `VideoOutput`**: con la
-   textura capturándose pero sin nada encima, el vídeo desaparece (captura de
-   646 bytes, todo blanco). Con el efecto de interpolación encima, la misma
-   captura funciona. Por eso la captura solo se activa con la interpolación.
+`VideoOutput` es un `QQuickVideoOutput`: una salida sin ventana sostenida por
+un **nodo de scene graph propio**, y un item layer renderiza el item por la ruta
+normal, que **no incluye ese nodo**. `Video` es un `QQuickItem` normal y se
+captura con normalidad. Por eso a mí nunca funcionó y a NothingLess sí:
+Ambxst usa `VideoOutput`, y su tinte de vídeo **nunca funcionó tampoco**.
 
-**Estado:** el tinte de vídeo queda **neutralizado** (`visible: false`) porque
-un shader alimentado desde la captura renderiza superficie vacía y dejaría el
-escritorio en blanco. Es preferible a blanquear el escritorio: el vídeo se ve
-normal, simplemente sin teñir. Ambxst tampoco tiene un camino que funcione
-como referencia.
+**Cómo se notó:** sustituir `palette.frag` por un shader de rojo sólido y
+ponerlo como layer sobre el `VideoOutput` devolvía literalmente nada — ni el
+rojo. Ese era el dato que faltaba y que yo no había gathered.
 
-**Búsqueda posterior (no resuelta).** Se intentó todo lo siguiente,Medido cada vez:
-- `ShaderEffectSource` sobre el `VideoOutput` alimentando `palette.frag` en un
-  `ShaderEffect` independiente (en vez de layer): renderiza **superficie vacía**.
-- Sombrear `source` como hace `UnifiedPanelEffect.qml`: no liga.
-- Renombrar el sampler a `videoFrame` como el del interpolador: tampoco liga.
-- `recursive: false` → `true` en el `ShaderEffectSource` de la paleta: sin cambio.
-- Sustituir los 25 `Rectangle` hijos por un `Canvas` que se pinta a sí mismo
-  (como hace NothingLess): sin cambio.
-- **La textura de paleta sale vacía o no liga.** Probado renderizando
-  `paletteTexture` a pantalla completa: **negro sólido**. Con la paleta vacía,
-  `palette.frag` no tiene con qué casar y pinta el vídeo entero de negro — de
-  ahí los PNG de 646 bytes.
+**Cambios:**
+1. `VideoOutput` → `Video`, como NothingLess. `Video` gestiona su propio
+   reproducción, así que el `MediaPlayer` externo sobra: `source`, `position`,
+   `play()`, `pause()` y `playbackState` van directos al elemento `Video`.
+2. El tinte vuelve a ser un **layer sobre el Item contenedor**, igual que
+   NothingLess (`layer.enabled`, `layer.smooth`, `layer.effect`), cubriendo
+   vídeo e interpolación.
+3. La tira de paleta es un `Canvas` que se pinta a sí mismo (como NL), con
+   `Connections` a `Colors` para repintar al cambiar el tema.
+4. `palette.frag` ya no premultiplica por el alfa del origen: un `VideoOutput`
+   (y también el FBO de `Video`) llega con alfa 0, y premultiplicar lo dejaba
+   totalmente transparente. Una imagen fija sí lleva alfa 1, por eso el tinte
+   de imágenes siempre funcionó.
 
-**Sospecha que queda sin verificar:** `paletteTexture` está en `binding = 2`
-junto a `videoFrame` en `binding = 1`. Es posible que al renombrar el sampler de
-`source` a `videoFrame` el asignador de texturas de Qt deje de enlazar el
-binding 2. La prueba sería un shader de un solo sampler (sin `videoFrame`) que
-solo pinte `paletteTexture`: si eso sí muestra colores, la hipótesis queda
-confirmada y el arreglo es aplicar el tinte **dentro** del shader de
-interpolación (un solo efecto, un sampler de paleta) en lugar de en uno
-paralelo.
-
-**Lo que falta para cerrarlo:** que `palette.frag` reciba la textura del vídeo
-sin mermar el `VideoOutput`. Probado y **descartado**: `source` sombreado
-(como hace `UnifiedPanelEffect.qml`) → no liga; sampler renombrado a
-`videoFrame` (como el del interpolador) → tampoco. El siguiente paso es
-investigar por qué la captura y el `VideoOutput` no conviven cuando el efecto
-de tint es el único que está montado.
+**Verificado** sobre un wallpaper de vídeo real: sin tinte la captura pesa
+145 KB, con tinte 67 KB, y la imagen muestra el vídeo **recoloreado con la
+paleta del tema**. Antes: 646 bytes (negro sólido).
 
 ## Sidebar de IA — animaciones alineadas con Ambxst (06-10)
 

@@ -38,6 +38,19 @@ import qs.config
 Item {
     id: root
 
+    // Tint, over everything - the arrangement NothingLess uses.
+    layer.enabled: tint
+    layer.smooth: true
+    layer.effect: ShaderEffect {
+        property var paletteTexture: paletteTextureSource
+        property real paletteSize: root.optimizedPalette.length
+        property real texWidth: width
+        property real texHeight: height
+
+        vertexShader: "../../../../shaders/palette.vert.qsb"
+        fragmentShader: "../../../../shaders/palette.frag.qsb"
+    }
+
     // ── Source ────────────────────────────────────────────────────
     property string sourceFile: ""
     property bool tint: false
@@ -208,27 +221,23 @@ Item {
         }
     }
 
+    // The source binding on the Video handles the swap; this only nudges it
+    // back into playing after a change.
     function restart() {
-        if (!playbackPath)
-            return;
-        player.stop();
-        player.source = "file://" + playbackPath;
         playIfNeeded();
     }
 
-    readonly property real positionMs: player.position
-    readonly property int playbackState: player.playbackState
+    readonly property real positionMs: videoNode.position
+    readonly property int playbackState: videoNode.playbackState
 
     function pause() {
-        if (player.playbackState === MediaPlayer.PlayingState)
-            player.pause();
+        if (videoNode.playbackState === MediaPlayer.PlayingState)
+            videoNode.pause();
     }
 
     function seek(ms) {
-        // Qt6 removed MediaPlayer.seek(); position is the setter now. Calling
-        // the old method threw "Property 'seek' ... is not a function", which
-        // is why the multi-monitor video sync tick did nothing.
-        player.position = ms;
+        // Qt6 removed MediaPlayer.seek(); position is the setter now.
+        videoNode.position = ms;
     }
 
     // Fired once the source is set and the node has a chance to start, so the
@@ -297,10 +306,10 @@ Item {
     onSourceProbedChanged: if (sourceProbed) { }
 
     function playIfNeeded() {
-        if (!sourceFile)
+        if (!playbackPath)
             return;
-        if (player.playbackState !== MediaPlayer.PlayingState) {
-            player.play();
+        if (videoNode.playbackState !== MediaPlayer.PlayingState) {
+            videoNode.play();
             started();
         }
     }
@@ -317,23 +326,6 @@ Item {
         if (interpolate && multiplier > 1)
             _startRender();
         restart();
-    }
-
-    MediaPlayer {
-        id: player
-        audioOutput: muted
-        videoOutput: videoNode
-        loops: MediaPlayer.Infinite
-
-        onErrorOccurred: (error, errorString) => {
-            console.warn("InterpolatedVideo playback error:", errorString,
-                         "source:", root.sourceFile);
-        }
-    }
-
-    AudioOutput {
-        id: muted
-        volume: 0
     }
 
     // ── The frame currently being displayed ───────────────────────
@@ -450,32 +442,34 @@ Item {
     // fed with it. When interpolation is running the interpolator already
     // covers the screen, so the tint sits underneath and the interpolator
     // output is what shows - see ShaderEffect's own layering below.
-    ShaderEffect {
-        id: tintEffect
-        anchors.fill: parent
-        visible: root.tint
-
-        // The sampler is named videoFrame, not source. ShaderEffect already
-        // has a built-in `source` property of type QUrl for image files, and
-        // shadowing it does not reliably bind a ShaderEffectSource: a
-        // passthrough shader fed that way rendered nothing at all, while the
-        // same capture under a normal name (the interpolator's
-        // currentFrame) works. So the shader uses a plain name.
-        property var videoFrame: liveSource
-        property var paletteTexture: paletteTextureSource
-        property real paletteSize: root.optimizedPalette.length
-        property real texWidth: width
-        property real texHeight: height
-
-        vertexShader: "../../../../shaders/palette.vert.qsb"
-        fragmentShader: "../../../../shaders/palette.frag.qsb"
-    }
-
     // Plain output when interpolation is off, so there is no capture cost.
-    VideoOutput {
+    // Video, not VideoOutput.
+    //
+    // This is the whole reason the tint never worked. VideoOutput is a
+    // QQuickVideoOutput: a window-less output backed by a custom scene graph
+    // node, and an item layer renders the item through the normal path, which
+    // does not include that node - proved by putting a solid-red shader in a
+    // layer over it and getting nothing back. Video is an ordinary
+    // QQuickItem and gets captured normally.
+    //
+    // NothingLess uses Video for exactly this reason; Ambxst uses VideoOutput,
+    // which is why its video tint never worked either.
+    Video {
         id: videoNode
         anchors.fill: parent
+        autoPlay: true
+        muted: true
+        loops: MediaPlayer.Infinite
         fillMode: VideoOutput.PreserveAspectCrop
+
+        // Video owns its playback (it is not driven by a MediaPlayer), so the
+        // source and the transport calls below go straight to it.
+        source: root.playbackPath ? "file://" + root.playbackPath : ""
+
+        onErrorOccurred: {
+            console.warn("InterpolatedVideo playback error:", errorString,
+                         "source:", root.playbackPath);
+        }
         // Hidden while the effect is up, as NothingLess does, so the video is
         // not composited twice. The earlier black screen was the .qsb carrying
         // no GLSL, not this - hiding the node is fine now that the shader
