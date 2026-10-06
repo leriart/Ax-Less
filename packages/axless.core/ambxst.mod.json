@@ -36,6 +36,7 @@
     "Reads output lists from the compositor and applies runtime-only changes to them via each compositor's own IPC (niri msg, hyprctl keyword, Mango IPC)",
     "Runs hyprctl keyword and reload to apply compositor settings at runtime",
     "Runs niri msg to read and change output configuration at runtime",
+    "Polls niri msg / hyprctl / mangoctl to remember monitor positions, re-applies them at startup, and stores the memory in ~/.local/share/ambxst/monitor-layout.json",
     "Replaces the compositor settings panel with one that shows only what the running compositor supports"
   ],
   "operations": [

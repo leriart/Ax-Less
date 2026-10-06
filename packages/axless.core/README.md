@@ -260,8 +260,9 @@ drag-to-move with edge snapping (15 px while dragging, 25 px on release) plus
 overlap resolution. What differs is the write: a drop goes straight to the
 compositor's output API instead of being staged for a config-file writer.
 
-Runtime only. Nothing here writes a compositor config file, so values reset
-when the compositor restarts.
+Runtime only. Nothing here writes a compositor config file. Values still reset
+when the compositor restarts, but `PerMonitorConfig` remembers the last layout
+and re-applies it at shell startup (see "Per-monitor shell positions" below).
 
 ### Snapping and placement
 
@@ -537,3 +538,15 @@ patched to count the extra tab instead of assuming three.
 
 `PerMonitorConfig.qml` plus a patch make shell elements remember their position
 per monitor, keyed by output name.
+
+The same singleton also remembers the **compositor's monitor layout**.
+Positions written through the MonitorsPanel (or anything else) are runtime-only
+— every compositor resets them on restart. While the shell runs, the singleton
+polls the compositor's own IPC on a 20 s timer and keeps the last seen
+arrangement in `~/.local/share/ambxst/monitor-layout.json`. On startup, and
+when a previously-seen output reappears (a re-plugged cable), it re-applies the
+remembered x/y to any output whose live position differs. Only position is
+restored; mode, scale and transform are never touched, and an output that is
+present and merely moved keeps its new position — the next poll adopts it as
+the new memory. The write is skipped when nothing changed, so the poll does not
+hammer the disk.
