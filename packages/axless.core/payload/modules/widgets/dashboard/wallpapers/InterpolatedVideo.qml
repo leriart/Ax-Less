@@ -315,13 +315,19 @@ Item {
         id: videoNode
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectCrop
-        // Deliberately never hidden. Hiding it while interpolation is on
-        // leaves both ShaderEffectSources with an invisible sourceItem, which
-        // renders no texture at all, so interpol.frag samples nothing and the
-        // wallpaper goes black. The effect sits on top via z and covers it,
-        // so leaving the node visible costs one extra composite and buys a
-        // wallpaper that keeps decoding frames.
+        // Hidden while the effect is up, as NothingLess does, so the video is
+        // not composited twice. The earlier black screen was the .qsb carrying
+        // no GLSL, not this - hiding the node is fine now that the shader
+        // actually compiles.
+        //
+        // NOTE: a reported zoom when interpolation is on is still open. A
+        // side-by-side render of one instance with interpolation off and one
+        // with it on cannot settle it - they are independent MediaPlayers at
+        // different timestamps, so the two captures show different frames. The
+        // next check has to compare the *same* frame with and without the
+        // effect (seek both to one timestamp, or capture one instance twice).
         z: 0
+        visible: !effect.visible
     }
 
     // ── Palette (tint) ────────────────────────────────────────────
