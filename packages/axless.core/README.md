@@ -6,7 +6,8 @@ dependencies: one install gets everything.
 | Feature | Status |
 |---|---|
 | Agent platform (MCP / HTTP bridge / command agents) | done |
-| Advanced compositor panel | done |
+| Single compositor menu, per-compositor options | done |
+| Monitors, per compositor, runtime only | done |
 | Per-monitor shell positions | planned |
 | Notch metrics | planned |
 | Bar island mode | planned |
@@ -193,3 +194,101 @@ into its own `PanelWindow`, but Ambxst 1.3.x embeds it in
 `AssistantSidebar.qml` keeps Ambxst's `active` / `wantsFocus` / `hitbox`
 contract, so it plugs into the existing embedding with no patch to
 `UnifiedShellPanel.qml`.
+
+## Single compositor menu
+
+NothingLess ships a 12-subsection compositor panel: general, colors, shadows,
+blur, opacity, snap, input, cursor, monitors, gestures, layouts, advanced. This
+package replaces Ambxst's `CompositorPanel.qml` so that menu is section 8 — the
+original one, integrated — instead of adding parallel sections.
+
+Options are filtered by the running compositor, per subsection:
+
+| Backend | Compositors | Sections |
+|---|---|---|
+| Ambxst TOML (`axctl.toml` → axctl) | all | general, colors, shadows, blur |
+| `hyprctl keyword` | Hyprland | opacity, snap, input, cursor, gestures, layouts, advanced (73 settings) |
+| compositor output IPC | all | monitors |
+| Hyprland only | Hyprland | the 73 NothingLess settings |
+
+On this machine (niri) that means five of the twelve subsections are offered:
+the four Ambxst already wrote for every compositor, plus monitors. Verified:
+
+```
+PROBE compositor = "niri"
+PROBE   general    via-keyword=false via-toml=true  => VISIBLE
+PROBE   colors     via-keyword=false via-toml=true  => VISIBLE
+PROBE   shadows    via-keyword=false via-toml=true  => VISIBLE
+PROBE   blur       via-keyword=false via-toml=true  => VISIBLE
+PROBE   opacity    via-keyword=false via-toml=false => oculta
+...
+PROBE   monitors   => VISIBLE
+```
+
+The seven NothingLess subsections are hidden rather than shown dead. On Hyprland
+they appear and write through `hyprctl keyword`, which accepts essentially every
+Hyprland keyword — that path is written from the documented CLI but could not be
+exercised here, since Hyprland is not installed on this machine.
+
+The 73 new keys are declared in both `config/defaults/compositor.js` and the
+`compositorLoader` JsonAdapter, and registered in
+`GlobalStates._compositorProps` so Apply and Discard cover them.
+
+### Why niri has no compositor keywords
+
+`niri msg` exposes no config or reload verb; its configuration is static KDL.
+The only runtime-configurable thing is output configuration, via
+`niri msg output <name> <action>`. Hyprland, by contrast, has
+`hyprctl keyword <section>:<key> <value>` and `hyprctl reload config-only`.
+
+## Monitors
+
+`MonitorsPanel.qml`, hosted as the compositor panel's `monitors` subsection.
+
+Per compositor:
+
+- **niri** — `niri msg --json outputs` to read, `niri msg output <name> ...` to
+  write: `off`, `on`, `mode`, `custom-mode`, `modeline`, `scale`, `transform`,
+  `position`, `vrr`.
+- **Hyprland** — `hyprctl monitors -j` to read, `hyprctl keyword monitor
+  <name>,<key>,<value>` to write.
+- **Mango** — sway-style IPC via `MANGO_INSTANCE_SIGNATURE`. Not verifiable
+  here; Mango is not installed, and the panel reports that rather than
+  guessing.
+
+Layout and appearance follow NothingLess's `MonitorArrangementView`: a
+logical-pixel canvas with a 500 px grid, an origin marker, per-output boxes
+scaled to their real logical size, a numbered badge, three readout lines, and
+drag-to-move with edge snapping (15 px while dragging, 25 px on release) plus
+overlap resolution. What differs is the write: a drop goes straight to the
+compositor's output API instead of being staged for a config-file writer.
+
+Runtime only. Nothing here writes a compositor config file, so values reset
+when the compositor restarts.
+
+Verified against the live niri daemon with two real outputs:
+
+```
+PROBE compositor = "niri" outputs = 2
+PROBE viewBounds = {"minX":-100,"minY":-100,"maxX":3556,"maxY":1180,"spanW":3656,"spanH":1280}
+PROBE   HDMI-A-1   logico=1920x1080 canvas=174,20 rotated=false
+PROBE   eDP-1      logico=1229x768  canvas=20,20  rotated=false
+```
+
+`eDP-1` at 1229×768 is 1536×960 divided by its 1.25 scale, and its canvas
+position 20,20 is the logical origin. Scale and transform writes were exercised
+against the live compositor and restored.
+
+### An Ambxst bug this panel routes around
+
+`AxctlService.qml:143` does `id: parseInt(mon.id) || 0`. niri's monitor id is a
+string name (`"eDP-1"`), so `parseInt` is `NaN` and **every monitor comes back
+with id 0**. Anything comparing monitor ids by equality is unreliable on niri.
+This panel does not read `AxctlService.monitors`; it queries the compositor's
+own IPC.
+
+`AxctlService.compositorName` is also not trusted verbatim: Ambxst's probe
+assigns `stdout.trim()` without checking whether the call failed, so with axctl
+down it captures the client's error text as the compositor name. Both this panel
+and `CompositorKeywords` whitelist the three real names and fall back to probing
+the clients directly.

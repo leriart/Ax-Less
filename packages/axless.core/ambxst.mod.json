@@ -31,11 +31,24 @@
     "Reads provider API keys from the Ambxst keystore",
     "Runs axctl to read compositor capabilities and layouts, and to set window opacity live",
     "Re-applies window opacity on every Ambxst start",
-    "Adds a new Settings section (section id 11) with a matching panel entry",
     "Adds compositor and translation configuration keys",
-    "Spawns ffmpeg to build downscaled video wallpaper caches"
+    "Spawns ffmpeg to build downscaled video wallpaper caches",
+    "Reads output lists from the compositor and applies runtime-only changes to them via each compositor's own IPC (niri msg, hyprctl keyword, Mango IPC)",
+    "Runs hyprctl keyword and reload to apply compositor settings at runtime",
+    "Runs niri msg to read and change output configuration at runtime",
+    "Replaces the compositor settings panel with one that shows only what the running compositor supports"
   ],
   "operations": [
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/CompositorKeywords.qml",
+      "target": "modules/services/CompositorKeywords.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/controls/MonitorsPanel.qml",
+      "target": "modules/widgets/dashboard/controls/MonitorsPanel.qml"
+    },
     {
       "type": "overlay",
       "source": "payload/modules/services/AgentStore.qml",
@@ -115,11 +128,6 @@
       "type": "overlay",
       "source": "payload/mcp/nothingclaw/README.md",
       "target": "mcp/nothingclaw/README.md"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/controls/CompositorAdvancedPanel.qml",
-      "target": "modules/widgets/dashboard/controls/CompositorAdvancedPanel.qml"
     },
     {
       "type": "overlay",
@@ -213,12 +221,19 @@
       "expectedSha256": "67e678486c4257bdbd3081a4045781a1e3c2816e827888d9a61308f5c6c7d87e"
     },
     {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/controls/CompositorPanel.qml",
+      "target": "modules/widgets/dashboard/controls/CompositorPanel.qml",
+      "replace": true,
+      "expectedSha256": "04279b7983702bbbb07e993ba700dbd503437dcb038ffa2104b679d612f5b8c2"
+    },
+    {
       "type": "patch",
       "source": "patches/agent-platform.patch"
     },
     {
       "type": "patch",
-      "source": "patches/advanced-compositor.patch"
+      "source": "patches/settings-i18n.patch"
     }
   ]
 }

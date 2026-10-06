@@ -13,7 +13,7 @@ multi-compositor parity (`hyprland | niri | mango`).
 
 | Package | Status | Summary |
 |---|---|---|
-| [`axless.core`](packages/axless.core) | in progress | Everything in one mod: agent platform, advanced compositor panel, and the remaining NothingLess features. |
+| [`axless.core`](packages/axless.core) | in progress | Everything in one mod: agent platform, a single compositor menu that shows only what the running compositor supports, per-compositor monitors, and the remaining NothingLess features. |
 
 ## Planned
 

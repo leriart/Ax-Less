@@ -1,8 +1,98 @@
 diff --git a/config/Config.qml b/config/Config.qml
-index b7b39906..d49ff259 100644
+index b7b39906..e3068287 100644
 --- a/config/Config.qml
 +++ b/config/Config.qml
-@@ -1187,12 +1187,50 @@ Singleton {
+@@ -759,6 +759,89 @@ Singleton {
+             property real blurPopupsIgnorealpha: 0.2
+             property bool blurInputMethods: false
+             property real blurInputMethodsIgnorealpha: 0.2
++            // axless.core: NothingLess settings, applied at runtime through
++            // hyprctl keyword. Only surfaced when the running compositor has
++            // a keyword interface - see CompositorKeywords.qml.
++            // opacity
++            property real activeOpacity: 1.0
++            property real inactiveOpacity: 1.0
++            property real fullscreenOpacity: 1.0
++            // snap
++            property bool snapEnabled: true
++            property bool snapRespectGaps: false
++            property int snapWindowGap: 10
++            property int snapMonitorGap: 10
++            property bool snapBorderOverlap: false
++            // input
++            property string kbLayout: "us"
++            property string kbVariant: ""
++            property string kbOptions: ""
++            property bool numlockByDefault: false
++            property int repeatRate: 25
++            property int repeatDelay: 600
++            property real mouseSensitivity: 0.0
++            property string mouseAccelProfile: ""
++            property int followMouse: 1
++            property bool mouseNaturalScroll: false
++            property real mouseScrollFactor: 1.0
++            property bool mouseLeftHanded: false
++            property bool mouseRefocus: false
++            property int floatSwitchOverrideFocus: 0
++            property bool touchpadDisableWhileTyping: true
++            property bool touchpadNaturalScroll: true
++            property bool touchpadTapToClick: true
++            property bool touchpadClickfingerBehavior: false
++            property string touchpadTapButtonMap: ""
++            property bool touchpadMiddleButtonEmulation: false
++            property string touchpadDragLock: "false"
++            property real touchpadScrollFactor: 1.0
++            // cursor
++            property bool noHardwareCursors: false
++            property bool enableHyprcursor: true
++            property bool noWarps: false
++            property bool persistentWarps: false
++            property bool warpOnChangeWorkspace: false
++            property real cursorZoomFactor: 1.0
++            property int cursorInactiveTimeout: 0
++            property bool cursorHideOnKeyPress: false
++            property bool cursorHideOnTouch: false
++            property bool cursorHideOnTablet: false
++            // gestures
++            property bool workspaceSwipeCreateNew: true
++            property bool workspaceSwipeForever: false
++            property real workspaceSwipeCancelRatio: 0.5
++            property real workspaceSwipeMinSpeedToForce: 30.0
++            property bool workspaceSwipeDirectionLock: true
++            property int workspaceSwipeDistance: 300
++            property bool workspaceSwipeInvert: true
++            property int gestureCloseTimeout: 1000
++            // layouts
++            property bool dwindlePreserveSplit: true
++            property bool dwindlePseudotile: false
++            property bool dwindleSmartSplit: true
++            property real dwindleDefaultSplitRatio: 1.0
++            property real dwindleSplitWidthMultiplier: 1.0
++            property real dwindleSpecialScaleFactor: 0.8
++            property string masterOrientation: "left"
++            property real masterMfact: 0.55
++            property string masterNewStatus: "slave"
++            property real scrollingColumnWidth: 0.3
++            property string scrollingDirection: "right"
++            property bool scrollingFullscreenOnOneColumn: true
++            property bool scrollingFollowFocus: true
++            // advanced
++            property bool disableHyprlandLogo: true
++            property bool disableSplashRendering: false
++            property bool disableAutoreload: false
++            property bool focusOnActivate: false
++            property bool animateManualResizes: false
++            property bool animateMouseWindowdragging: true
++            property bool noUpdateNews: true
++            property bool xwaylandEnabled: true
++            property bool xwaylandForceZeroScaling: false
++            property bool xwaylandUseNearestNeighbor: true
++            property int vrr: 0
++            property bool vfr: true
+         }
+     }
+ 
+@@ -1187,12 +1270,50 @@ Singleton {
  
          adapter: JsonAdapter {
              property string systemPrompt: "You are a helpful assistant running on a Linux system. You have access to some tools to control the system."
@@ -167,17 +257,201 @@ index dd750c91..137fde97 100644
 +    // slow local model can finish its first token.
 +    "requestTimeoutSeconds": 240
  }
+diff --git a/config/defaults/compositor.js b/config/defaults/compositor.js
+index 89b3dd39..c3e12b77 100644
+--- a/config/defaults/compositor.js
++++ b/config/defaults/compositor.js
+@@ -41,5 +41,89 @@ var data = {
+     "blurPopups": false,
+     "blurPopupsIgnorealpha": 0.2,
+     "blurInputMethods": false,
+-    "blurInputMethodsIgnorealpha": 0.2
++    "blurInputMethodsIgnorealpha": 0.2,
++    // ── NothingLess settings (axless.core) ──
++    // These drive hyprctl keyword at runtime, so they are only offered
++    // when the running compositor has a keyword interface. See
++    // modules/services/CompositorKeywords.qml.
++    // opacity
++    "activeOpacity": 1.0,
++    "inactiveOpacity": 1.0,
++    "fullscreenOpacity": 1.0,
++    // snap
++    "snapEnabled": true,
++    "snapRespectGaps": false,
++    "snapWindowGap": 10,
++    "snapMonitorGap": 10,
++    "snapBorderOverlap": false,
++    // input
++    "kbLayout": "us",
++    "kbVariant": "",
++    "kbOptions": "",
++    "numlockByDefault": false,
++    "repeatRate": 25,
++    "repeatDelay": 600,
++    "mouseSensitivity": 0.0,
++    "mouseAccelProfile": "",
++    "followMouse": 1,
++    "mouseNaturalScroll": false,
++    "mouseScrollFactor": 1.0,
++    "mouseLeftHanded": false,
++    "mouseRefocus": false,
++    "floatSwitchOverrideFocus": 0,
++    "touchpadDisableWhileTyping": true,
++    "touchpadNaturalScroll": true,
++    "touchpadTapToClick": true,
++    "touchpadClickfingerBehavior": false,
++    "touchpadTapButtonMap": "",
++    "touchpadMiddleButtonEmulation": false,
++    "touchpadDragLock": "false",
++    "touchpadScrollFactor": 1.0,
++    // cursor
++    "noHardwareCursors": false,
++    "enableHyprcursor": true,
++    "noWarps": false,
++    "persistentWarps": false,
++    "warpOnChangeWorkspace": false,
++    "cursorZoomFactor": 1.0,
++    "cursorInactiveTimeout": 0,
++    "cursorHideOnKeyPress": false,
++    "cursorHideOnTouch": false,
++    "cursorHideOnTablet": false,
++    // gestures
++    "workspaceSwipeCreateNew": true,
++    "workspaceSwipeForever": false,
++    "workspaceSwipeCancelRatio": 0.5,
++    "workspaceSwipeMinSpeedToForce": 30.0,
++    "workspaceSwipeDirectionLock": true,
++    "workspaceSwipeDistance": 300,
++    "workspaceSwipeInvert": true,
++    "gestureCloseTimeout": 1000,
++    // layouts
++    "dwindlePreserveSplit": true,
++    "dwindlePseudotile": false,
++    "dwindleSmartSplit": true,
++    "dwindleDefaultSplitRatio": 1.0,
++    "dwindleSplitWidthMultiplier": 1.0,
++    "dwindleSpecialScaleFactor": 0.8,
++    "masterOrientation": "left",
++    "masterMfact": 0.55,
++    "masterNewStatus": "slave",
++    "scrollingColumnWidth": 0.3,
++    "scrollingDirection": "right",
++    "scrollingFullscreenOnOneColumn": true,
++    "scrollingFollowFocus": true,
++    // advanced
++    "disableHyprlandLogo": true,
++    "disableSplashRendering": false,
++    "disableAutoreload": false,
++    "focusOnActivate": false,
++    "animateManualResizes": false,
++    "animateMouseWindowdragging": true,
++    "noUpdateNews": true,
++    "xwaylandEnabled": true,
++    "xwaylandForceZeroScaling": false,
++    "xwaylandUseNearestNeighbor": true,
++    "vrr": 0,
++    "vfr": true,
+ }
+diff --git a/modules/globals/GlobalStates.qml b/modules/globals/GlobalStates.qml
+index eb6e9ccd..04bebea4 100644
+--- a/modules/globals/GlobalStates.qml
++++ b/modules/globals/GlobalStates.qml
+@@ -542,7 +542,83 @@ Singleton {
+         "blurVibrancyDarkness", "blurSpecial", "blurPopups", "blurPopupsIgnorealpha",
+         "blurInputMethods", "blurInputMethodsIgnorealpha",
+         "blurExplicitIgnoreAlpha", "blurIgnoreAlphaValue",
+-        "shadowOffset", "shadowColorInactive"
++        "shadowOffset", "shadowColorInactive",
++
++        // axless.core: the NothingLess compositor keys, so Apply and Discard
++        // in the compositor panel actually cover them.
++"activeOpacity",
++        "inactiveOpacity",
++        "fullscreenOpacity",
++        "snapEnabled",
++        "snapRespectGaps",
++        "snapWindowGap",
++        "snapMonitorGap",
++        "snapBorderOverlap",
++        "kbLayout",
++        "kbVariant",
++        "kbOptions",
++        "numlockByDefault",
++        "repeatRate",
++        "repeatDelay",
++        "mouseSensitivity",
++        "mouseAccelProfile",
++        "followMouse",
++        "mouseNaturalScroll",
++        "mouseScrollFactor",
++        "mouseLeftHanded",
++        "mouseRefocus",
++        "floatSwitchOverrideFocus",
++        "touchpadDisableWhileTyping",
++        "touchpadNaturalScroll",
++        "touchpadTapToClick",
++        "touchpadClickfingerBehavior",
++        "touchpadTapButtonMap",
++        "touchpadMiddleButtonEmulation",
++        "touchpadDragLock",
++        "touchpadScrollFactor",
++        "noHardwareCursors",
++        "enableHyprcursor",
++        "noWarps",
++        "persistentWarps",
++        "warpOnChangeWorkspace",
++        "cursorZoomFactor",
++        "cursorInactiveTimeout",
++        "cursorHideOnKeyPress",
++        "cursorHideOnTouch",
++        "cursorHideOnTablet",
++        "workspaceSwipeCreateNew",
++        "workspaceSwipeForever",
++        "workspaceSwipeCancelRatio",
++        "workspaceSwipeMinSpeedToForce",
++        "workspaceSwipeDirectionLock",
++        "workspaceSwipeDistance",
++        "workspaceSwipeInvert",
++        "gestureCloseTimeout",
++        "dwindlePreserveSplit",
++        "dwindlePseudotile",
++        "dwindleSmartSplit",
++        "dwindleDefaultSplitRatio",
++        "dwindleSplitWidthMultiplier",
++        "dwindleSpecialScaleFactor",
++        "masterOrientation",
++        "masterMfact",
++        "masterNewStatus",
++        "scrollingColumnWidth",
++        "scrollingDirection",
++        "scrollingFullscreenOnOneColumn",
++        "scrollingFollowFocus",
++        "disableHyprlandLogo",
++        "disableSplashRendering",
++        "disableAutoreload",
++        "focusOnActivate",
++        "animateManualResizes",
++        "animateMouseWindowdragging",
++        "noUpdateNews",
++        "xwaylandEnabled",
++        "xwaylandForceZeroScaling",
++        "xwaylandUseNearestNeighbor",
++        "vrr",
++        "vfr"
+     ]
+ 
+     // Create a deep copy of the current compositor config
 diff --git a/modules/theme/Icons.qml b/modules/theme/Icons.qml
-index 3333506c..edcec820 100644
+index 3333506c..8f8988f4 100644
 --- a/modules/theme/Icons.qml
 +++ b/modules/theme/Icons.qml
-@@ -266,4 +266,15 @@ QtObject {
+@@ -266,4 +266,17 @@ QtObject {
      readonly property string thermometer: temperature
      readonly property string windowsLogo: terminalWindow
      readonly property string frameCorners: crop
-+    // axless.core: names used by the agent sidebar and its panels that
-+    // this icon set does not define. Mapped onto the closest equivalent so
-+    // a glyph change in the sidebar cannot leave a hole in the icon.
++    // axless.core: names used by the agent sidebar and the monitors panel
++    // that this icon set does not define. Mapped onto the closest
++    // equivalent so a glyph change cannot leave a hole in the UI.
 +    readonly property string check: accept
 +    readonly property string checkCircle: accept
 +    readonly property string x: cancel
@@ -186,4 +460,6 @@ index 3333506c..edcec820 100644
 +    readonly property string warningCircle: alert
 +    readonly property string textAa: markdown
 +    readonly property string chatCenteredDots: assistant
++    // Same codepoint the NothingLess icon set defines for `monitor`.
++    readonly property string monitor: "\uf3fa"
  }
