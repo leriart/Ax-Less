@@ -370,6 +370,11 @@
       "type": "overlay",
       "source": "payload/video/bin/axprobe",
       "target": "video/bin/axprobe"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/video/bin/interpolate.sh",
+      "target": "video/bin/interpolate.sh"
     }
   ]
 }

@@ -89,9 +89,44 @@ bin/axvideo -in video.mp4 -out frames.rgb -ratio 2
 `-ratio 4` quadruples the frame rate, `-frames N` stops early, `-grid N` sets
 the motion cell size.
 
+## interpolate.sh — pre-rendered wallpaper
+
+```bash
+bin/interpolate.sh input.mp4 output.mp4 [multiplier]
+```
+
+axvideo emits `multiplier` frames per source frame as raw RGB24; this pipes
+that into ffmpeg and re-encodes at the multiplied rate, writing to a temp file
+with the output extension (ffmpeg picks its muxer from it and rejects
+`.partial.<pid>` outright) and renaming on success, so a crash never leaves a
+half-written wallpaper for the shell to play.
+
+Geometry and frame rate are read from the file with axprobe rather than
+guessed - the rawvideo pipe needs both, and a wrong stride desynchronises
+every frame after the first.
+
+Caches by output path: re-running with an existing file is a no-op unless
+FORCE=1, and the caller picks the path, so a changed wallpaper naturally
+lands on a different name. A 3 s 640x360 clip doubles to 176 frames at 60 fps
+in ~1.3 s; the second run is 3 ms.
+
+Measured on the encoded h264, not on the raw frames, comparing frame-to-frame
+deltas the way a 60 Hz display sees them:
+
+    original duplicated   20/39 zero steps, CV 1.10
+    interpolated           0/39 zero steps, CV 0.38
+
+### Why pre-render rather than streaming
+
+QML has nowhere to put raw frames: there is no ImageProvider in Quickshell,
+and ShaderEffectSource.textureSize is not readable, so a live socket feed has
+no way to become a texture. A wallpaper loops, so a rendered copy plays
+perfectly well - and unlike the GPU shader this path uses the decoder's real
+motion vectors instead of estimating them per block.
+
 ## Still to do
 
-The engine produces frames; nothing consumes them yet. The remaining piece is
-the live path: a socket service that streams synthesised frames to the shell
-at display refresh, plus the QML side to upload each frame as a texture and
-sample it in sync with vsync. See ToDo.md → F4.
+The engine renders and interpolate.sh caches, but the shell does not call them
+yet: when a video wallpaper with interpolation enabled is selected, the path
+needs to render (or reuse a cached) interpolated copy and point the wallpaper
+at it. See ToDo.md -> F4.
