@@ -95,7 +95,10 @@ Item {
     }
 
     function seek(ms) {
-        player.seek(ms);
+        // Qt6 removed MediaPlayer.seek(); position is the setter now. Calling
+        // the old method threw "Property 'seek' ... is not a function", which
+        // is why the multi-monitor video sync tick did nothing.
+        player.position = ms;
     }
 
     // Fired once the source is set and the node has a chance to start, so the
@@ -298,6 +301,10 @@ Item {
         property var previousFrame: previousFrame
 
         property real blendFactor: root.blendFactor
+        // The effect's own size. An attempt to feed the captured texture's
+        // size instead regressed this to undefined (ShaderEffectSource does
+        // not expose textureSize as a readable property here), which is worse
+        // than the effect size, so it was reverted.
         property vector2d iResolution: Qt.vector2d(width, height)
         property int blockSize: root.blockSize
         property int searchRadius: root.searchRadius
