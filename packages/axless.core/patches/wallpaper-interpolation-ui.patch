@@ -1,11 +1,10 @@
 diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
 --- a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
 +++ b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
-@@ -764,6 +764,151 @@
-                                     }
-                                 }
-                             }
-+
+@@ -769,6 +769,152 @@
+                 }
+             }
+ 
 +            // axless.core: interpolation toggle + frame multiplier, right
 +            // after the tint control. Same pattern as NothingLess: a tile that
 +            // checks itself and reveals an x2..x5 selector only while on.
@@ -150,6 +149,8 @@ diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/wi
 +                    }
 +                }
 +            }
-                         }
-                     }
-                 }
++
++
+             // Spacer
+             // Item { Layout.fillWidth: true }
+ 

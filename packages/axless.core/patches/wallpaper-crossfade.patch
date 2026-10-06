@@ -1,0 +1,221 @@
+diff --git a/modules/widgets/dashboard/wallpapers/Wallpaper.qml b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+--- a/modules/widgets/dashboard/wallpapers/Wallpaper.qml
++++ b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+@@ -39,6 +39,127 @@
+     property string effectiveWallpaper: perScreenWallpapers[currentScreenName] || currentWallpaper
+     property string currentScreenName: wallpaper.screen ? wallpaper.screen.name : ""
+     property alias tintEnabled: wallpaperAdapter.tintEnabled
++
++    // axless.core: the filter-bar toggle and the x2..x5 selector bind to these.
++    property alias interpolationEnabled: wallpaperAdapter.interpolationEnabled
++    property alias interpolationMultiplier: wallpaperAdapter.interpolationMultiplier
++
++    // ── axless.core: crossfade, ported from NothingLess ───────────
++    //
++    // Each layer carries its OWN source string. The incoming wallpaper is
++    // loaded into whichever layer is idle; only after that layer reports
++    // contentReady does the active flag move. NothingLess does exactly this
++    // with two Loaders; here we use two thin wrapper Items whose opacity and
++    // scale are animated, and each wrapper feeds an existing
++    // wallpaperLoader-style Loader so video/gif/image all flow through the
++    // same components the shell already ships.
++    property int    _activeLayer: 0       // 0 = layerA, 1 = layerB
++    property bool   _swapping: false
++    property string _lastSource: ""
++
++    function _beginSwap() {
++        if (_swapping || !effectiveWallpaper)
++            return;
++        var nextLayer = (_activeLayer === 0) ? wallLayerB : wallLayerA;
++        var currLayer = (_activeLayer === 0) ? wallLayerA : wallLayerB;
++
++        _swapping = true;
++        // The idle layer renders the new wallpaper while the current one
++        // keeps showing the old one at full opacity, so nothing changes on
++        // screen yet.
++        nextLayer.wallSource = effectiveWallpaper;
++
++        stabilizeTimer.currLayer = currLayer;
++        stabilizeTimer.nextLayer = nextLayer;
++        stabilizeTimer.restart();
++
++        // Safety net: never wait forever on a format that stays silent.
++        readyTimeout.restart();
++    }
++
++    onEffectiveWallpaperChanged: {
++        if (!effectiveWallpaper || effectiveWallpaper === _lastSource)
++            return;
++        if (wallLayerA.wallSource === "" && wallLayerB.wallSource === "") {
++            // First wallpaper on a fresh host: show it directly, no swap.
++            wallLayerA.wallSource = effectiveWallpaper;
++            _lastSource = effectiveWallpaper;
++            return;
++        }
++        _lastSource = effectiveWallpaper;
++        _beginSwap();
++    }
++
++    function _onLayerContentReady() {
++        if (!_swapping)
++            return;
++        readyTimeout.stop();
++        stabilizeTimer.restart();
++    }
++
++    function _finishSwap() {
++        // Release the layer that just faded out (the previously live one).
++        var old = (_activeLayer === 0) ? wallLayerA : wallLayerB;
++        old.wallSource = "";
++        _activeLayer = (_activeLayer === 0) ? 1 : 0;
++        _swapping = false;
++    }
++
++    Timer {
++        id: readyTimeout
++        interval: 3000
++        onTriggered: {
++            if (wallpaper._swapping)
++                stabilizeTimer.restart();
++        }
++    }
++
++    // Short settle so the incoming layer has painted before the crossfade
++    // starts; otherwise a video fades in black.
++    Timer {
++        id: stabilizeTimer
++        interval: 120
++        property var currLayer: null
++        property var nextLayer: null
++        onTriggered: {
++            if (!wallpaper._swapping)
++                return;
++            wallCrossfade.currLayer = stabilizeTimer.currLayer;
++            wallCrossfade.nextLayer = stabilizeTimer.nextLayer;
++            wallCrossfade.restart();
++        }
++    }
++
++    // Old out / new in with a gentle zoom from 0.97, NothingLess timing.
++    SequentialAnimation {
++        id: wallCrossfade
++        property var currLayer: null
++        property var nextLayer: null
++        NumberAnimation {
++            target: wallCrossfade.currLayer
++            property: "opacity"
++            to: 0.0
++            duration: Config.animDuration * 4 / 3
++            easing.type: Easing.InOutCubic
++        }
++        ParallelAnimation {
++            NumberAnimation {
++                target: wallCrossfade.nextLayer
++                property: "opacity"
++                to: 1.0
++                duration: Config.animDuration * 4 / 3
++                easing.type: Easing.OutCubic
++            }
++            NumberAnimation {
++                target: wallCrossfade.nextLayer
++                property: "scale"
++                to: 1.0
++                duration: Config.animDuration * 4 / 3
++                easing.type: Easing.OutBack
++            }
++        }
++        onStopped: wallpaper._finishSwap()
++    }
+     property int thumbnailsVersion: 0
+ 
+     property var activeVideo: null
+@@ -545,6 +666,9 @@
+             property string matugenScheme: "scheme-tonal-spot"
+             property string activeColorPreset: ""
+             property bool tintEnabled: false
++            // axless.core
++            property bool interpolationEnabled: false
++            property int interpolationMultiplier: 2
+             property var perScreenWallpapers: ({})
+ 
+             onActiveColorPresetChanged: {
+@@ -1050,20 +1174,65 @@
+             }
+         }
+ 
+-        WallpaperImage {
+-            id: wallImage
++        // ── axless.core: two alternating layers, NothingLess style ───────
++        Item {
++            id: wallLayerHost
+             anchors.fill: parent
+-            source: wallpaper.effectiveWallpaper
++
++            Item {
++                id: wallLayerA
++                anchors.fill: parent
++                readonly property bool live: wallpaper._activeLayer === 0
++                opacity: live ? 1.0 : 0.0
++                scale: live ? 1.0 : 0.97
++                property string wallSource: ""
++                onWallSourceChanged: {
++                    if (wallSource !== "")
++                        wallpaper._onLayerContentReady();
++                }
++
++                // The shell's own renderer, one per layer.
++                WallpaperImage {
++                    id: wallImageA
++                    anchors.fill: parent
++                    // Suppress its internal transition: the crossfade is ours.
++                    property bool suppressTransition: true
++                    source: wallLayerA.wallSource
++                }
++            }
++
++            Item {
++                id: wallLayerB
++                anchors.fill: parent
++                readonly property bool live: wallpaper._activeLayer === 1
++                opacity: live ? 1.0 : 0.0
++                scale: live ? 1.0 : 0.97
++                property string wallSource: ""
++                onWallSourceChanged: {
++                    if (wallSource !== "")
++                        wallpaper._onLayerContentReady();
++                }
++
++                WallpaperImage {
++                    id: wallImageB
++                    anchors.fill: parent
++                    property bool suppressTransition: true
++                    source: wallLayerB.wallSource
++                }
++            }
+         }
+     }
+ 
+     component WallpaperImage: Item {
+         property string source
+         property string previousSource
++        // axless.core: the two-layer crossfade animates opacity itself, so the
++        // inner scale/opacity transition must be skippable.
++        property bool suppressTransition: false
+ 
+         onSourceChanged: {
+             if (previousSource !== "" && source !== previousSource) {
+-                if (Config.animDuration > 0) {
++                if (Config.animDuration > 0 && !suppressTransition) {
+                     transitionAnimation.restart();
+                 }
+             }
+@@ -1227,6 +1396,9 @@
+                 sourceFile: parent.sourceFile
+                 screenName: wallpaper.currentScreenName
+                 tint: wallpaper.tintEnabled
++                // axless.core
++                interpolate: wallpaper.interpolationEnabled
++                multiplier: wallpaper.interpolationMultiplier
+                 onRequestVideoSync: wallpaper.requestVideoSync()
+ 
+                 Component.onCompleted: wallpaper.activeVideo = videoWallpaperChild

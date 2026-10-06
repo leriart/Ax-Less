@@ -4,8 +4,8 @@
   "id": "axless.core",
   "name": "Ax-Less Core",
   "version": "1.0.0",
-  "description": "The NothingLess feature set as one Ambxst mod: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine), an advanced compositor panel, per-monitor shell positions, notch metrics, bar island mode, a video wallpaper engine, a task board and a boot splash. Everything is adapted to Ambxst's native services and its own animation model.",
-  "license": "GPL-3.0",
+  "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support), an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions between wallpapers, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
+  "license": "AGPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
   "homepage": "https://github.com/leriart/Ax-Less",
@@ -399,6 +399,10 @@
     {
       "type": "patch",
       "source": "patches/video-interpolation.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-crossfade.patch"
     }
   ]
 }
