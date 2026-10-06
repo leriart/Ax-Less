@@ -278,6 +278,14 @@
     {
       "type": "patch",
       "source": "patches/dashboard-todo.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/boot-splash.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/splash-config.patch"
     }
   ]
 }

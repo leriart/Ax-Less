@@ -1,0 +1,15 @@
+diff --git a/config/Config.qml b/config/Config.qml
+index b7b3990..d158091 100644
+--- a/config/Config.qml
++++ b/config/Config.qml
+@@ -143,6 +143,10 @@ Singleton {
+             property bool tintIcons: false
+             property bool enableCorners: true
+             property int animDuration: 300
++            // axless.core: boot splash. showSplash false removes the overlay
++            // entirely; splashDuration is milliseconds (clamped to >= 600).
++            property bool showSplash: true
++            property int splashDuration: 1800
+             property real shadowOpacity: 0.5
+             property string shadowColor: "shadow"
+             property int shadowXOffset: 0
