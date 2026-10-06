@@ -3,12 +3,6 @@
 Ambxst mods that bring the NothingLess feature set to
 [Ambxst](https://github.com/Axenide/Ambxst) 1.3.10.
 
-NothingLess is a full shell fork that diverged from Ambxst around v1.1.0. Most
-of what it added is **already in Ambxst 1.3.10 natively**, in the Go backend
-(`backend/pkg/svc/*`) rather than in QML and shell scripts. Those parts are not
-ported — copying them backwards would undo work Ambxst has since done, including
-multi-compositor parity (`hyprland | niri | mango`).
-
 ## Packages
 
 | Package | Status | Summary |
