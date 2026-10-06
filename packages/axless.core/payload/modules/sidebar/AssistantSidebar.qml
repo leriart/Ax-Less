@@ -172,20 +172,37 @@ Item {
         width: GlobalStates.assistantWidth + root.sidebarMargin
         height: parent.height
 
-        x: {
-            if (GlobalStates.assistantPosition === "left")
-                return root.active ? 0 : -(width);
-            return root.active ? parent.width - width : parent.width;
+        // Positioned exactly like Ambxst's own sidebar: anchor to the panel
+        // edge and animate the margin between 0 (shown) and -width (hidden).
+        //
+        // The previous version drove the `x` property instead, computed from
+        // parent.width. Inside UnifiedShellPanel the parent is the full-screen
+        // overlay, so x ran from parent.width down to parent.width - width and
+        // the slide was measured against the whole screen width instead of the
+        // panel's own - which read as the sidebar sweeping across the display.
+        // Anchoring keeps the travel at exactly one panel width, whatever the
+        // screen size.
+        anchors.right: GlobalStates.assistantPosition !== "left" ? parent.right : undefined
+        anchors.left: GlobalStates.assistantPosition === "left" ? parent.left : undefined
+
+        anchors.rightMargin: GlobalStates.assistantPosition !== "left" ? (root.active ? 0 : -width) : 0
+        anchors.leftMargin: GlobalStates.assistantPosition === "left" ? (root.active ? 0 : -width) : 0
+
+        visible: root.active || slideAnimR.running || slideAnimL.running
+
+        Behavior on anchors.rightMargin {
+            NumberAnimation {
+                id: slideAnimR
+                duration: Config.animDuration
+                easing.type: Easing.OutCubic
+            }
         }
 
-        visible: root.active || slideAnimation.running
-
-        Behavior on x {
-            enabled: Config.animDuration > 0
+        Behavior on anchors.leftMargin {
             NumberAnimation {
-                id: slideAnimation
+                id: slideAnimL
                 duration: Config.animDuration
-                easing.type: Easing.OutQuart
+                easing.type: Easing.OutCubic
             }
         }
 
@@ -229,7 +246,7 @@ Item {
                                 radius: Styling.radius(4)
                                 opacity: parent.hovered ? 1 : 0
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
                             Accessible.role: Accessible.Button
@@ -255,7 +272,7 @@ Item {
                                 radius: Styling.radius(4)
                                 opacity: parent.hovered ? 1 : 0
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
                             Accessible.role: Accessible.Button
@@ -287,7 +304,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
 
@@ -361,7 +378,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
 
@@ -496,7 +513,7 @@ Item {
                                 opacity: agentSelectorClick.containsMouse ? 1 : 0
 
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
 
@@ -587,7 +604,7 @@ Item {
                                 opacity: parent.hovered ? 1 : 0
 
                                 Behavior on opacity {
-                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                 }
                             }
 
@@ -709,7 +726,7 @@ Item {
                             z: 10
 
                             Behavior on opacity {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
 
                             ColumnLayout {
@@ -763,7 +780,7 @@ Item {
                                         property real confirmOpacity: confirmingDelete ? 1 : 0
 
                                         Behavior on confirmOpacity {
-                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                         }
 
                                         // ── Row body (default state) ──
@@ -808,7 +825,7 @@ Item {
                                                         opacity: 1.0
                                                             - chatRow.confirmOpacity
                                                         Behavior on opacity {
-                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.InQuad }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                         }
                                                     }
 
@@ -827,7 +844,7 @@ Item {
                                                         opacity: 1.0
                                                             - chatRow.confirmOpacity
                                                         Behavior on opacity {
-                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.InQuad }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                         }
                                                     }
                                                 }
@@ -850,7 +867,7 @@ Item {
                                                         horizontalAlignment: Text.AlignHCenter
                                                         verticalAlignment: Text.AlignVCenter
                                                         Behavior on color {
-                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                            NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                         }
                                                     }
 
@@ -892,7 +909,7 @@ Item {
                                             opacity: chatRow.confirmOpacity * 0.22
 
                                             Behavior on opacity {
-                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                             }
                                         }
 
@@ -1149,13 +1166,13 @@ Item {
                             z: 4
 
                             Behavior on opacity {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
                             Behavior on height {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
                             Behavior on anchors.bottomMargin {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
 
                             StyledRect {
@@ -1199,10 +1216,10 @@ Item {
                             z: 5
 
                             Behavior on opacity {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
                             Behavior on height {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
 
                             // Map (isLoading, streamingStatus, pendingToolCall)
@@ -1313,8 +1330,8 @@ Item {
                                             SequentialAnimation on opacity {
                                                 loops: Animation.Infinite
                                                 running: parent.visible && Config.animDuration > 0
-                                                NumberAnimation { to: 1.0; duration: Config.animDuration; easing.type: Easing.OutQuart }
-                                                NumberAnimation { to: 0.4; duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                NumberAnimation { to: 1.0; duration: Config.animDuration; easing.type: Easing.OutCubic }
+                                                NumberAnimation { to: 0.4; duration: Config.animDuration; easing.type: Easing.OutCubic }
                                             }
                                         }
 
@@ -1343,12 +1360,12 @@ Item {
                                                 NumberAnimation {
                                                     from: 1.0; to: 1.18
 duration: Config.animDuration
-                                easing.type: Easing.OutQuart
+                                easing.type: Easing.OutCubic
                                                 }
                                                 NumberAnimation {
                                                     from: 1.18; to: 1.0
 duration: Config.animDuration
-                                easing.type: Easing.OutQuart
+                                easing.type: Easing.OutCubic
                                                 }
                                             }
                                         }
@@ -1510,7 +1527,7 @@ duration: Config.animDuration
                                     target: chatView
                                     property: "contentY"
 duration: Config.animDuration
-                easing.type: Easing.OutQuart
+                easing.type: Easing.OutCubic
                                     // If the user grabs the scrollbar / wheel mid-
                                     // animation, kill it so the gesture feels direct.
                                     onStarted: chatView._userScrolledUp = false
@@ -2069,7 +2086,7 @@ duration: Config.animDuration
                                                             opacity: 0.85
                                                             Layout.topMargin: 4
                                                             Behavior on opacity {
-                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                             }
                                                         }
                                                     }
@@ -2235,7 +2252,7 @@ duration: Config.animDuration
                                                             Layout.topMargin: 4
 
                                                             Behavior on opacity {
-                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                             }
 
                                                             Button {
@@ -2259,7 +2276,7 @@ duration: Config.animDuration
                                                                     border.width: 1
                                                                     border.color: Colors.outline
                                                                     Behavior on opacity {
-                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                                     }
                                                                 }
 
@@ -2297,7 +2314,7 @@ duration: Config.animDuration
                                                                     opacity: parent.hovered ? 0.95 : 0.55
                                                                     radius: Styling.radius(4)
                                                                     Behavior on opacity {
-                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                                     }
                                                                 }
 
@@ -2335,7 +2352,7 @@ duration: Config.animDuration
                                                                     opacity: parent.hovered ? 1 : 0.85
                                                                     radius: Styling.radius(4)
                                                                     Behavior on opacity {
-                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                        NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                                     }
                                                                 }
 
@@ -2371,7 +2388,7 @@ duration: Config.animDuration
                                                             Layout.topMargin: 4
                                                             spacing: 6
                                                             Behavior on opacity {
-                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                             }
                                                             Text {
                                                                 text: Icons.checkCircle
@@ -2402,7 +2419,7 @@ duration: Config.animDuration
                                                             Layout.topMargin: 4
                                                             spacing: 6
                                                             Behavior on opacity {
-                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                             }
                                                             Text {
                                                                 text: Icons.xCircle
@@ -2614,7 +2631,7 @@ duration: Config.animDuration
                                 enabled: Config.animDuration > 0
                                 NumberAnimation {
 duration: Config.animDuration
-                easing.type: Easing.OutQuart
+                easing.type: Easing.OutCubic
                                 }
                             }
 
@@ -2736,7 +2753,7 @@ duration: Config.animDuration
                             width: Math.min(600, parent.width - 40)
 
                             Behavior on anchors.bottomMargin {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
 
                             StyledRect {
@@ -3110,10 +3127,10 @@ duration: Config.animDuration
                                                 opacity: sendOrStopButton.aiBusy ? 0 : 1
                                                 scale: sendOrStopButton.aiBusy ? 0.6 : 1.0
                                                 Behavior on opacity {
-                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                 }
                                                 Behavior on scale {
-                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                 }
                                             }
                                             Text {
@@ -3125,10 +3142,10 @@ duration: Config.animDuration
                                                 opacity: sendOrStopButton.aiBusy ? 1 : 0
                                                 scale: sendOrStopButton.aiBusy ? 1.0 : 0.6
                                                 Behavior on opacity {
-                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                 }
                                                 Behavior on scale {
-                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                                 }
                                             }
                                         }
@@ -3139,7 +3156,7 @@ duration: Config.animDuration
                                                 ? (parent.hovered ? Colors.surfaceBright : Qt.darker(Colors.surfaceBright, 1.4))
                                                 : (parent.hovered ? Colors.surfaceBright : "transparent")
                                             Behavior on color {
-                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                                             }
                                         }
 
@@ -3184,7 +3201,7 @@ duration: Config.animDuration
                             visible: mainChatArea.isWelcome
 
                             Behavior on opacity {
-                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
+                                NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutCubic }
                             }
 
                             opacity: visible ? 1 : 0

@@ -42,6 +42,35 @@ este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
+## Sidebar de IA — animaciones alineadas con Ambxst (06-10)
+
+El port de la sidebar traía el sistema de animación de NothingLess
+(`Anim.qml` con tokens Material 3 + `AnimatedBehavior.qml`), que fue
+sustituido por `NumberAnimation { duration: Config.animDuration; easing: OutQuart }`
+plano en ~40 sitios. Decisión final del usuario: **usar las animaciones
+originales de Ambxst**, sin portar el sistema de tokens.
+
+Dos cambios en `payload/modules/sidebar/AssistantSidebar.qml`:
+
+1. **Posicionamiento/apertura**: la sidebar animaba la propiedad `x`
+   calculada desde `parent.width`. Dentro de `UnifiedShellPanel` el padre
+   es el overlay a pantalla completa, así que `x` iba de `parent.width` a
+   `parent.width - width` y el recorrido se medía contra el ancho de toda
+   la pantalla (de ahí que "cruciera la pantalla de izquierda a derecha").
+   Sustituido por el bloque **idéntico al de Ambxst**: anclar a
+   `parent.left`/`parent.right` y animar `leftMargin`/`rightMargin` entre
+   `0` y `-width`, con `Easing.OutCubic` y `Config.animDuration`.
+   Verificado por comparación línea a línea contra el original de Ambxst
+   (22/22 líneas iguales).
+2. **Curvas**: Ambxst usa **solo** `Easing.OutCubic` en toda su sidebar; la
+   del mod tenía 35 `OutQuart` + 2 `InQuad` heredados de NothingLess.
+   Los 37 alineados a `OutCubic` → ahora 39/39 `OutCubic`.
+
+Nota: los 6 componentes que NothingLess extrajo (`SidebarHeader.qml`,
+`SidebarInputBar.qml`, `SidebarMessageBubble.qml`, `SidebarModeBar.qml`,
+`SidebarChatHistory.qml`, `QuickAddAgentPopup.qml`) están referenciados por
+**0 archivos** — código muerto ya en NothingLess, no se portan.
+
 ## Implementación pendiente (features de NothingLess)
 
 | # | Feature | Archivos fuente (NothingLess) | Notas |
