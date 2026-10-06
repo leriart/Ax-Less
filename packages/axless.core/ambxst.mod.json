@@ -121,6 +121,16 @@
     },
     {
       "type": "overlay",
+      "source": "payload/mcp/nothingclaw/agent_loop.py",
+      "target": "mcp/nothingclaw/agent_loop.py"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/fs_tools.py",
+      "target": "mcp/nothingclaw/fs_tools.py"
+    },
+    {
+      "type": "overlay",
       "source": "payload/mcp/nothingclaw/requirements.txt",
       "target": "mcp/nothingclaw/requirements.txt"
     },

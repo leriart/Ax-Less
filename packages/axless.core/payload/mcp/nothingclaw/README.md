@@ -9,6 +9,74 @@ click **`+ NothingClaw`**, then hit **Connect**. The shell spawns the
 bridge on demand, exposes its tools to the AI, and tears the process
 down on disconnect.
 
+## The agent loop
+
+Until v2 this bridge was purely *passive*: it published tools and let a model
+on the other end decide what to call. It now also drives its own tools.
+
+Most agents in this space (Aider, smolagents, Anthropic's building-effective-
+agents) share one shape, and `agent_loop.py` follows it:
+
+    goal -> model -> (tool_calls | final answer) -> execute -> observe -> repeat
+
+```
+POST /agent
+{ "goal": "...", "model": "llama3.2:latest", "max_steps": 12, "max_seconds": 240 }
+```
+
+The reply carries the final `answer` plus the full `transcript`, so you can
+see every thought, tool call and observation. `stopped_reason` distinguishes
+`done` from `max_steps`, `timeout` or `model_error`.
+
+```
+GET /agent/models   ->  { "models": ["llama3.2:latest", "gemma4:e2b"] }
+```
+
+The backend is Ollama's `/api/chat` - the same host `server.py` already
+queries for capability detection - so nothing new has to be installed.
+
+### Three things that make it work on small models
+
+**Text-encoded tool calls are recovered.** Small local models frequently
+ignore the native `tools` field and write the call as JSON text instead:
+
+```
+{"name": "run_shell_command", "parameters": {"command": "ls -name "*.md""}}
+```
+
+That example is not even valid JSON - the inner quotes are unescaped. Without
+recovery the loop reads it as the final answer and stops after one step having
+done nothing. `_extract_tool_calls` handles bare JSON, ```json fences,
+```tool_call blocks, `{"function": {...}}` wrappers, and finally salvages
+`"key": "value"` pairs out of malformed JSON. A recovered call is logged as
+`recovered_call` in the transcript.
+
+**Observations are clipped.** Every tool result is truncated to 8000
+characters before it re-enters the history. A stray `list_installed_apps`
+cannot eat the context window on turn four.
+
+**The budget is hard.** `max_steps` and `max_seconds` are both enforced. An
+agent that never stops is worse than one that admits it did not finish.
+
+### Filesystem tools
+
+The bridge was desktop-only: it could switch your window but not touch the
+machine behind it. `fs_tools.py` adds `list_dir`, `read_file`, `write_file`
+and `search_files`.
+
+Everything is confined to `NOTHINGCLAW_FS_ROOT` (default: your home
+directory). Containment is checked *after* `realpath`, so `../..` and symlink
+escapes are both rejected, and `run_shell_command`'s `cwd` obeys the same rule.
+Binary files are detected and refused rather than dumped into the context.
+
+### Running shell commands
+
+`execute_command` goes through `axctl system execute`, which dispatches through
+the compositor IPC layer the way a keybind would. Correct for compositor
+actions, wrong for ordinary shell work - a `find` over a large tree hits
+axctl's 5 s timeout. `run_shell_command` runs the command directly with a
+configurable timeout (max 300 s) and returns stdout and stderr.
+
 ## What it does
 
 The bridge runs an HTTP server on `http://127.0.0.1:8000` (default;
@@ -244,6 +312,9 @@ Environment variables honored by `server.py`:
 | `NOTHINGCLAW_HOST` | `127.0.0.1` | Bind address |
 | `NOTHINGCLAW_PORT` | `8000` | Bind port |
 | `NOTHINGCLAW_AXCTL` | `/usr/local/bin/axctl` | Path to the axctl binary |
+| `NOTHINGCLAW_OLLAMA` | `http://127.0.0.1:11434` | Ollama host used by the agent loop |
+| `NOTHINGCLAW_MODEL` | `llama3.2:latest` | Default model for `POST /agent` |
+| `NOTHINGCLAW_FS_ROOT` | `~` | Root the filesystem tools are confined to |
 | `NOTHINGCLAW_SEARXNG_URL` | _(empty)_ | Optional SearXNG instance (e.g. `http://localhost:8888`). When set, `web_search` queries this JSON endpoint instead of falling back to DuckDuckGo HTML. |
 
 The `.desktop` parser uses `LANG` (or `LC_ALL`) to pick the locale
@@ -257,6 +328,8 @@ nothingclaw/
 ├── README.md            ← this file
 ├── requirements.txt     ← stub, kept for tooling compatibility
 ├── context_budget.py    ← token estimation + tier-aware sizing helpers
+├── agent_loop.py        ← the autonomous agent loop (POST /agent)
+├── fs_tools.py          ← sandboxed filesystem tools
 └── server.py            ← stdlib HTTP bridge + axctl + app catalog + knowledge tools
 ```
 

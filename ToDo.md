@@ -71,6 +71,59 @@ Nota: los 6 componentes que NothingLess extrajo (`SidebarHeader.qml`,
 `SidebarChatHistory.qml`, `QuickAddAgentPopup.qml`) están referenciados por
 **0 archivos** — código muerto ya en NothingLess, no se portan.
 
+## NothingClaw — bucle de agente + tools de máquina (06-10)
+
+NothingClaw era un **bridge pasivo**: publicaba ~29 tools y dejaba que el
+modelo del otro lado decidiera. Ahora además conduce sus propias tools.
+Se 유지*** NO se eliminó (se llegó a borrarlo y se restauró).
+
+**`agent_loop.py`** (nuevo, 1 kb) — bucle `goal -> model -> tool_calls ->
+execute -> observe -> repeat`, la forma que comparten Aider, smolagents y
+Anthropic's building-effective-agents. Backend Ollama `/api/chat`, el mismo
+host que `server.py` ya consultaba para detectar capabilities, así que no
+aporta ninguna dependencia nueva.
+
+- `POST /agent` → `{goal, model, max_steps, max_seconds, tools}`; devuelve
+  `answer`, `transcript` completo y `stopped_reason` (`done` / `max_steps` /
+  `timeout` / `model_error`).
+- `GET /agent/models` → modelos locales disponibles.
+
+**Tres cosas que lo hacen funcionar con modelos pequeños:**
+
+1. **Recuperación de tool calls escritas como texto.** `llama3.2` ignora el
+   campo `tools` nativo y escribe la llamada como texto JSON — y además con
+   comillas internas sin escapar, o sea JSON inválido:
+   `{"name": "run_shell_command", "parameters": {"command": "ls -name "*.md""}}`.
+   Sin recuperación el loop lo leía como respuesta final y paraba en un paso
+   sin hacer nada. `_extract_tool_calls` cubre JSON desnudo, fences ```json,
+   bloques ```tool_call, wrappers `{"function": {...}}` y, como último recurso,
+   salva pares `"key": "value"` de JSON malformado. Queda registrado en el
+   transcript como `recovered_call`.
+2. **Observaciones recortadas** a 8000 chars antes de volver al historial, para
+   que un `list_installed_apps` no se coma el contexto en el turno cuatro.
+3. **Presupuesto estricto** de `max_steps` y `max_seconds`.
+
+**`fs_tools.py`** (nuevo) — `list_dir`, `read_file`, `write_file`,
+`search_files`. El bridge era solo-escritorio: podía cambiarte la ventana pero
+no tocar la máquina. Todo confinado a `NOTHINGCLAW_FS_ROOT` (por defecto `~`),
+con la contención comprobada **después** de `realpath`, así que se rechazan
+tanto `../..` como escapes por symlink. Binarios se detectan y se rechazan.
+
+**Bug de diseño arreglado:** `execute_command` mandaba shell arbitrario por
+`axctl system execute` (capa IPC del compositor, timeout 5 s) — un `find`
+reventaba por timeout. Se añadió **`run_shell_command`**: subprocess directo,
+timeout configurable (máx 300 s), devuelve stdout y stderr. `execute_command`
+queda para acciones del compositor. El README ya referenciaba un
+`run_shell_command` que nunca existió.
+
+**Verificado de verdad contra Ollama con `llama3.2`:**
+- `list_windows` → enumeró las 4 ventanas reales del escritorio (2 pasos, 67 s).
+- Tarea de encadenado → recuperó la tool del texto, ejecutó, y **escribió el
+  archivo correcto** con los 4 markdown reales de Ax-Less (2 pasos, 35 s).
+- Sandbox: `../../etc/shadow`, `/etc/passwd` y `cwd: ../../etc` → rechazados.
+- 8 casos de parsing de tool calls (JSON roto, fences, wrapper OpenAI,
+  argumentos como string, varios en uno, prosa, JSON-no-call).
+
 ## Implementación pendiente (features de NothingLess)
 
 | # | Feature | Archivos fuente (NothingLess) | Notas |

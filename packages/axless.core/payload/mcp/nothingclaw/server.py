@@ -35,6 +35,15 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Sibling modules, same package. They deliberately do not import this file:
+# agent_loop receives invoke_tool as a parameter and fs_tools is standalone,
+# so there is no import cycle.
+try:
+    from . import agent_loop, fs_tools  # type: ignore
+except ImportError:  # executed as a script, not a package
+    import agent_loop
+    import fs_tools
+
 
 # ---------------------------------------------------------------------------
 # Tool registry
@@ -112,6 +121,7 @@ _TOOL_TIERS = {
         "move_window_to_workspace",
         "open_url",
         "execute_command",
+        "run_shell_command",
         "context_info",
     ],
     "small": [
@@ -135,6 +145,13 @@ _TOOL_TIERS = {
         "close_window",
         "switch_workspace",
         "move_window_to_monitor",
+        # Filesystem. These need more than one turn to be useful (list a
+        # directory, then read what you found), so they sit above tiny
+        # and small rather than in the essentials set.
+        "list_dir",
+        "read_file",
+        "write_file",
+        "search_files",
     ],
     # "large" serves the full set — see TOOLS below.
 }
@@ -222,7 +239,7 @@ _DOMAIN_TOOLS = {
             "launch_program", "check_program_installed"],
     "url": ["open_url", "execute_command"],
     "system": ["execute_command", "check_program_installed",
-               "launch_program", "install_package"],
+               "launch_program", "install_package", "run_shell_command"],
     "layout": ["set_layout", "toggle_window_floating",
                "set_window_fullscreen", "resize_window"],
     "batch": ["move_windows", "close_app"],
@@ -729,13 +746,27 @@ TOOLS = [
     # ── System / general ────────────────────────────────────────────
     {
         "name": "execute_command",
-        "description": "Run an arbitrary shell command via the compositor's "
-                       "IPC layer (so it is dispatched in the same way as a "
-                       "keybind would). Use for arbitrary actions not "
-                       "covered by other tools (e.g. opening a URL, running "
-                       "a one-shot script).",
+        "description": "Run a command through the compositor's IPC layer (so "
+                       "it is dispatched the same way a keybind would). Use "
+                       "for compositor actions. For ordinary shell work "
+                       "prefer run_shell_command, which has a longer timeout "
+                       "and returns stdout.",
         "parameters": _obj({
-            "command": _str("Shell command to execute.")
+            "command": _str("Command to execute.")
+        }, ["command"])
+    },
+    {
+        "name": "run_shell_command",
+        "description": "Run a shell command directly and return its stdout "
+                       "and stderr. Use this for real machine work: finding "
+                       "files, inspecting processes, querying disk, running "
+                       "a build step. Has a longer timeout than "
+                       "execute_command and does not go through the "
+                       "compositor. cwd is confined to the home directory.",
+        "parameters": _obj({
+            "command": _str("Shell command to run."),
+            "cwd": _str("Working directory, relative to home. Default home."),
+            "timeout": _int("Seconds before giving up. Default 30, max 300."),
         }, ["command"])
     },
     {
@@ -970,6 +1001,10 @@ TOOLS = [
     }
 ]
 
+# Filesystem tools (fs_tools.py). Appended rather than inlined so the desktop
+# surface above stays byte-identical to what shipped before.
+TOOLS.extend(fs_tools.FS_TOOLS)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1013,6 +1048,44 @@ def _fire_and_forget(argv):
         return True
     except (FileNotFoundError, OSError):
         return False
+
+
+def _run_shell(command, timeout=30, cwd=None):
+    """Run a shell command directly and return a (content, error) pair.
+
+    `execute_command` goes through `axctl system execute`, which dispatches
+    through the compositor IPC layer the same way a keybind would. That is
+    the right path for compositor actions but the wrong one for ordinary
+    shell work: a `find` over a large tree hits axctl's 5 s timeout and
+    comes back as a timeout error instead of a result.
+
+    This runs the command with subprocess directly, with a longer budget,
+    and returns stdout + stderr so the model sees real output.
+    """
+    if not command:
+        return {"content": "", "error": "empty command"}
+    try:
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True,
+            timeout=max(1, min(300, int(timeout))),
+            cwd=cwd or os.path.expanduser("~"),
+        )
+    except subprocess.TimeoutExpired:
+        return {"content": "",
+                "error": "command timed out after %ss" % timeout}
+    except Exception as exc:  # noqa: BLE001 - reported to the caller as text
+        return {"content": "", "error": "%s: %s" % (type(exc).__name__, exc)}
+
+    parts = []
+    if result.stdout:
+        parts.append(result.stdout.rstrip())
+    if result.stderr:
+        parts.append("[stderr]\n" + result.stderr.rstrip())
+    body = "\n".join(parts) if parts else "(no output)"
+    if result.returncode != 0:
+        return {"content": body,
+                "error": "exit code %d" % result.returncode}
+    return {"content": body, "error": None}
 
 
 def _run_axctl(argv, timeout=5):
@@ -2391,6 +2464,16 @@ def invoke_tool(name, arguments, ctx=None):
     if ctx is None:
         ctx = _resolve_request_context("small", "")
 
+    # ── Filesystem ───────────────────────────────────────────────────
+    # Handlers take (args, ctx) and already return the {"content", "error"}
+    # shape, so they need no unwrapping.
+    handler = fs_tools.FS_HANDLERS.get(name)
+    if handler is not None:
+        try:
+            return handler(args, ctx)
+        except Exception as exc:  # noqa: BLE001 - never let a tool kill the server
+            return {"content": "", "error": "%s: %s" % (type(exc).__name__, exc)}
+
     # ── Introspection ────────────────────────────────────────────────
     if name == "list_windows":
         result = _run_axctl(["window", "list"])
@@ -2778,6 +2861,19 @@ def invoke_tool(name, arguments, ctx=None):
         if not command:
             return {"content": "", "error": "execute_command needs command"}
         return _run_axctl(["system", "execute", command])
+
+    if name == "run_shell_command":
+        command = _str_arg(args, "command")
+        if not command:
+            return {"content": "", "error": "run_shell_command needs command"}
+        cwd = _str_arg(args, "cwd")
+        if cwd:
+            try:
+                cwd = fs_tools._resolve(cwd, must_exist=True)
+            except fs_tools.SandboxError as exc:
+                return {"content": "", "error": str(exc)}
+        return _run_shell(command, timeout=_int_arg(args, "timeout", 30),
+                          cwd=cwd)
 
     # ── Program helpers ─────────────────────────────────────────────
     if name == "check_program_installed":
@@ -3183,6 +3279,50 @@ def invoke_tool(name, arguments, ctx=None):
 
 
 class NothingClawHandler(BaseHTTPRequestHandler):
+
+    def _handle_agent(self):
+        """POST /agent {goal, model?, host?, max_steps?, max_seconds?, tools?}
+
+        Runs NothingClaw's own agent loop instead of exposing the tools for
+        an external model to drive. Returns the final answer plus the full
+        transcript so the caller can show what actually happened.
+        """
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            body = json.loads(raw.decode("utf-8") or "{}")
+        except Exception as exc:
+            self._send_json(400, {"content": "",
+                                  "error": "Invalid JSON: " + str(exc)})
+            return
+
+        goal = body.get("goal", "")
+        try:
+            result = agent_loop.run_agent(
+                goal=goal,
+                invoke_tool=invoke_tool,
+                tools=TOOLS,
+                context=_resolve_request_context("medium", body.get("model", "")),
+                model=body.get("model") or agent_loop.DEFAULT_MODEL,
+                host=body.get("host") or agent_loop.DEFAULT_HOST,
+                max_steps=int(body.get("max_steps") or 12),
+                max_seconds=int(body.get("max_seconds") or 240),
+                allowed_tools=body.get("tools"),
+                log=lambda lvl, msg: sys.stderr.write(
+                    "[nothingclaw:agent] " + msg + "\n"),
+            )
+        except agent_loop.AgentError as exc:
+            self._send_json(400, {"content": "", "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"content": "",
+                                  "error": "%s: %s" % (type(exc).__name__, exc)})
+            return
+
+        # Non-blocking run: the caller can poll with ?wait=false, but the
+        # default is synchronous because every local agent finishes fast
+        # enough to be worth returning inline.
+        self._send_json(200, result)
     server_version = "NothingClaw/1.0"
 
     # Log every request to stderr so the shell's process supervisor
@@ -3200,7 +3340,15 @@ class NothingClawHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path.split("?", 1)[0] != "/tools":
+        route = self.path.split("?", 1)[0]
+
+        # Local model catalogue for the autonomous agent. Cheap and useful:
+        # the settings panel can show what the agent loop can actually drive.
+        if route == "/agent/models":
+            self._send_json(200, agent_loop.list_models())
+            return
+
+        if route != "/tools":
             self._send_json(404, {"error": "Not found", "content": ""})
             return
         query = {}
@@ -3257,7 +3405,14 @@ class NothingClawHandler(BaseHTTPRequestHandler):
         self._send_json(200, payload)
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/tools":
+        route = self.path.split("?", 1)[0]
+
+        # POST /agent - run the autonomous loop to completion.
+        if route == "/agent":
+            self._handle_agent()
+            return
+
+        if route != "/tools":
             self._send_json(404, {"error": "Not found", "content": ""})
             return
         length = int(self.headers.get("Content-Length", "0") or "0")
