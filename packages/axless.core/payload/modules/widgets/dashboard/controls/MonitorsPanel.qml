@@ -466,7 +466,14 @@ Item {
             argv = ["niri", "msg", "output", id, "transform", String(value)];
             break;
         case "position":
-            argv = ["niri", "msg", "output", id, "position", "set", String(value.x), String(value.y)];
+            // The "--" is required. niri's argument parser reads a leading
+            // "-" as an option, so moving a monitor left of the origin fails
+            // with "unexpected argument '-1' found" and nothing happens at
+            // all. niri says so itself: "to pass '-1' as a value, use
+            // '-- -1'". It is harmless for positive coordinates, and it is
+            // the only way to place a monitor to the left of the desktop.
+            argv = ["niri", "msg", "output", id, "position", "set", "--",
+                String(value.x), String(value.y)];
             break;
         case "positionAuto":
             argv = ["niri", "msg", "output", id, "position", "auto"];

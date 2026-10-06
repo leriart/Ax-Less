@@ -318,6 +318,38 @@ PROBE ancho logico usado para imantar contra eDP-1 = 1536
      -> coincide con su borde real (0+1536=1536)
 ```
 
+### Negative positions rejected outright
+
+Moving a monitor left of, or above, the desktop origin failed with:
+
+```
+error: unexpected argument '-1' found
+  tip: to pass '-1' as a value, use '-- -1'
+Usage: niri msg output position set <X> <Y>
+```
+
+niri's argument parser reads a leading `-` as an option name, so any negative
+coordinate was rejected and the monitor never moved. That is what made dragging
+between monitors impossible: as soon as the dragged box went left of the origin
+the write failed and the box snapped back. niri documents the fix in its own
+error message, and it is harmless for positive coordinates:
+
+```
+argv = ["niri", "msg", "output", id, "position", "set", "--", x, y]
+```
+
+Verified against the live daemon, restoring afterwards:
+
+```
+PROBE moviendo a la IZQUIERDA del origen: x=-1600 y=0   -> -1600,0   err=""
+PROBE moviendo ARRIBA (y negativo):    x=-1600 y=-700  -> -1600,-700 err=""
+PROBE restaurando a 1540,0                              -> 1540,0    err=""
+```
+
+The Hyprland path needs no equivalent: `hyprctl keyword monitor
+<name>,position,<x>,<y>` passes the coordinates inside a single comma-separated
+token, so a leading `-` is never parsed as an option.
+
 Snap thresholds were also tightened to 16 px while dragging and 24 px on
 release. A wider release threshold swallowed small deliberate gaps - drop a
 monitor 30 px from its neighbour with a 40 px threshold and it snapped flush,
