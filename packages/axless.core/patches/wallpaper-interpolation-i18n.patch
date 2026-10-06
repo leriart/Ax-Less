@@ -1,0 +1,24 @@
+diff --git a/translations/en.json b/translations/en.json
+index 2e741e2..e0ec9a5 100644
+--- a/translations/en.json
++++ b/translations/en.json
+@@ -956,6 +956,7 @@
+   "wallpapers.select_scheme": "Select Scheme",
+   "wallpapers.set": "Set",
+   "wallpapers.tint": "Tint",
++  "wallpapers.interpolation": "Interpolation",
+   "weather.celsius": "Celsius",
+   "weather.day.fri": "Fri",
+   "weather.day.mon": "Mon",
+diff --git a/translations/es.json b/translations/es.json
+index 31d4e2c..594f337 100644
+--- a/translations/es.json
++++ b/translations/es.json
+@@ -956,6 +956,7 @@
+   "wallpapers.select_scheme": "Seleccionar esquema",
+   "wallpapers.set": "Establecer",
+   "wallpapers.tint": "Tinte",
++  "wallpapers.interpolation": "Interpolación",
+   "weather.celsius": "Celsius",
+   "weather.day.fri": "Vie",
+   "weather.day.mon": "Lun",

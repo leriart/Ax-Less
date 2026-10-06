@@ -84,11 +84,30 @@ Item {
         playIfNeeded();
     }
 
+    readonly property real positionMs: player.position
+    readonly property int playbackState: player.playbackState
+
+    function pause() {
+        if (player.playbackState === MediaPlayer.PlayingState)
+            player.pause();
+    }
+
+    function seek(ms) {
+        player.seek(ms);
+    }
+
+    // Fired once the source is set and the node has a chance to start, so the
+    // parent can apply its pause-on-fullscreen policy without racing the
+    // first play().
+    signal started
+
     function playIfNeeded() {
         if (!sourceFile)
             return;
-        if (player.playbackState !== MediaPlayer.PlayingState)
+        if (player.playbackState !== MediaPlayer.PlayingState) {
             player.play();
+            started();
+        }
     }
 
     onSourceFileChanged: restart()

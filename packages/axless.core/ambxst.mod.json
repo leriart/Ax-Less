@@ -352,6 +352,14 @@
       "type": "overlay",
       "source": "payload/modules/widgets/dashboard/wallpapers/InterpolatedVideo.qml",
       "target": "modules/widgets/dashboard/wallpapers/InterpolatedVideo.qml"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-interpolation.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-interpolation-i18n.patch"
     }
   ]
 }

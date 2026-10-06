@@ -172,7 +172,7 @@ que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
 | ~~F1~~ | ~~**Isla dinámica de la barra**~~ ❌ **cancelada** | `IslandContent.qml`, `BarContent.qml` (`barMode`), `defaults/bar.js` | **Cancelada por el usuario (06-10).** No portar. Ver README → "Plan a futuro". |
 | ~~F2~~ | ~~**Métricas en el notch/isla**~~ ❌ **descartada** | `MetricsGroup*.qml`, `DefaultView.qml`, `NotchMetrics.qml` | **Quitada por el usuario (06-10).** Recuperable del commit `0ab484d`. Ver README → "Plan a futuro". |
 | ~~F3~~ | ~~**Posiciones por monitor**~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | Hecho: singleton + `patches/per-monitor-positions.patch` cablea bar/dock/notch. |
-| F4 | **Wallpaper de vídeo + interpol + palette** | shaders `interpol.*` | **Interpolación HECHA**: shader de NL compilado + `InterpolatedVideo.qml` con el multiplicador. Falta: sustituirlo en `VideoWallpaper.qml`, `palette` y `GpuDetector`. |
+| F4 | **Wallpaper de vídeo + interpol + palette** | `palette.*`, `GpuDetector.qml` | **Interpolación HECHA y conectada**: `VideoWallpaper.qml` ya usa `InterpolatedVideo`. Falta solo: `palette` (tinte) y `GpuDetector`. |
 | ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
 | F6 | **Hax spotlight** | `modules/widgets/spotlight/*` (5227 líneas), `Calculator.qml`, `PluginManager.qml` | Proceso standalone (`qs -n -p spotlight_entry.qml`), apenas toca el árbol. Necesita subcomando `ambxst spotlight`. |
 | F7 | **Splash con el logo** | `shell.qml` (bloque splash) + `assets/ambxst/*.svg` | **Descartado por el usuario (06-10): no quiere splash.** Se implementó y se revirtió; los parches se pueden recuperar del commit `11cf152`. |
@@ -233,6 +233,15 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
   Medido con un clip de 30 fps: **60.0 fps de salida** con multiplicador 2.
   Los `.qsb` van en `shaders/`; desde el componente se resuelven con
   `../../../../shaders/`.
+  **Conectado**: `VideoWallpaper.qml` delega en `InterpolatedVideo`,
+  `Wallpaper.qml` expone `interpolationEnabled` / `interpolationMultiplier`,
+  y el toggle + selector x2..x5 está en la barra de filtros justo junto al
+  botón de tinte (mismo patrón que NL: la_tile que se marca y revela el
+  selector solo cuando está activo). Traducciones en/es añadidas.
+  **Nota sobre el selector**: NL usa un `ComboBox`, pero dentro de un tab
+  con scroll sus popups pelean con el gesto de scroll del propio tab, así que
+  aquí cicla x2→x3→x4→x5→x2 al hacer clic, que no necesita popup.
+  `palette` (tinte) y `GpuDetector` siguen pendientes.
 - [x] **Posiciones por monitor (F3)**: `services/PerMonitorConfig.qml` lee
   `~/.config/ambxst/config/monitors.json` y expone
   `resolve(screen, domain, key, default)`.

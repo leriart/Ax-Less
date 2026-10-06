@@ -1,0 +1,365 @@
+diff --git a/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml b/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
+index 30c36e6..bbcb29f 100644
+--- a/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
++++ b/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
+@@ -11,9 +11,17 @@ Item {
+     property string sourceFile
+     property string screenName: ""
+     property bool tint: false
++
++    // axless.core: frame interpolation. The multiplier is the declared output
++    // rate (a 30 fps clip at 2 is presented as 60 fps); it does not change the
++    // capture rate, because the shader always fills the gap between two
++    // consecutive source frames and the display refresh does the rest.
++    property bool interpolate: false
++    property int multiplier: 2
++    readonly property real fpsOutput: video.interpolate ? video.fpsOutput : 0
+     signal requestVideoSync
+ 
+-    readonly property real positionMs: player.position
++    readonly property real positionMs: video.positionMs
+     readonly property var screenMonitor: AxctlService.monitorFor(screenName)
+     readonly property bool screenHasFullscreen: {
+         if (!screenMonitor)
+@@ -36,8 +44,7 @@ Item {
+     function restartPlayback() {
+         if (!sourceFile)
+             return;
+-        player.stop();
+-        player.source = "file://" + sourceFile;
++        video.restart();
+         syncDebounce.restart();
+         updatePlayback();
+     }
+@@ -46,12 +53,10 @@ Item {
+         if (!sourceFile)
+             return;
+         if (shouldPausePlayback) {
+-            if (player.playbackState === MediaPlayer.PlayingState)
+-                player.pause();
++            video.pause();
+             return;
+         }
+-        if (player.playbackState !== MediaPlayer.PlayingState)
+-            player.play();
++        video.playIfNeeded();
+     }
+ 
+     Timer {
+@@ -60,65 +65,25 @@ Item {
+         onTriggered: videoWallpaper.requestVideoSync()
+     }
+ 
+-    MediaPlayer {
+-        id: player
+-        audioOutput: mutedAudio
+-        videoOutput: videoOut
+-        loops: MediaPlayer.Infinite
+-
+-        onErrorOccurred: (error, errorString) => {
+-            console.warn("VideoWallpaper playback error:", error, errorString, "source:", videoWallpaper.sourceFile);
+-        }
+-    }
+-
+-    AudioOutput {
+-        id: mutedAudio
+-        muted: true
+-        volume: 0
+-    }
+-
+-    Item {
+-        id: paletteSourceItem
+-        visible: true
+-        width: videoWallpaper.optimizedPalette.length
+-        height: 1
+-        opacity: 0
+-
+-        Row {
+-            anchors.fill: parent
+-            Repeater {
+-                model: videoWallpaper.optimizedPalette
+-                Rectangle {
+-                    width: 1
+-                    height: 1
+-                    color: Colors[modelData]
+-                }
+-            }
+-        }
+-    }
+-
+-    ShaderEffectSource {
+-        id: paletteTextureSource
+-        sourceItem: paletteSourceItem
+-        hideSource: true
+-        visible: false
+-        smooth: false
+-        recursive: false
+-    }
+-
+-    VideoOutput {
+-        id: videoOut
++    // axless.core: InterpolatedVideo owns the MediaPlayer and VideoOutput.
++    // With interpolate off it is a plain VideoOutput with no extra capture
++    // cost; with it on, two ShaderEffectSources hold the current and previous
++    // frames and interpol.frag blends between them on the GPU.
++    InterpolatedVideo {
++        id: video
+         anchors.fill: parent
+-        fillMode: VideoOutput.PreserveAspectCrop
+-        layer.enabled: videoWallpaper.tint
+-        layer.effect: ShaderEffect {
+-            property var paletteTexture: paletteTextureSource
+-            property real paletteSize: videoWallpaper.optimizedPalette.length
+-            property real texWidth: videoOut.width
+-            property real texHeight: videoOut.height
+-
+-            vertexShader: "palette.vert.qsb"
+-            fragmentShader: "palette.frag.qsb"
++        sourceFile: videoWallpaper.sourceFile
++        interpolate: videoWallpaper.interpolate && videoWallpaper.multiplier > 1
++        multiplier: videoWallpaper.multiplier
++        // The decoder does not advertise a frame rate, so the capture cadence
++        // is assumed rather than measured. 30 is the safe assumption: it is
++        // what wallpaper clips ship at, and effectiveInputFps caps it against
++        // targetInputFps anyway.
++        originalFps: 30
++        targetInputFps: 60
++
++        onStarted: {
++            videoWallpaper.updatePlayback();
+         }
+     }
+ 
+@@ -127,9 +92,9 @@ Item {
+         function onVideoSyncTickChanged() {
+             if (videoWallpaper.shouldPausePlayback)
+                 return;
+-            player.seek(0);
+-            if (player.playbackState !== MediaPlayer.PlayingState)
+-                player.play();
++            // Keep every monitor on the same point of the clip.
++            video.seek(0);
++            video.playIfNeeded();
+         }
+     }
+ }
+diff --git a/modules/widgets/dashboard/wallpapers/Wallpaper.qml b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+index 63137c2..83586ef 100644
+--- a/modules/widgets/dashboard/wallpapers/Wallpaper.qml
++++ b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+@@ -39,6 +39,9 @@ PanelWindow {
+     property string effectiveWallpaper: perScreenWallpapers[currentScreenName] || currentWallpaper
+     property string currentScreenName: wallpaper.screen ? wallpaper.screen.name : ""
+     property alias tintEnabled: wallpaperAdapter.tintEnabled
++    // axless.core: frame interpolation for video wallpapers.
++    property alias interpolationEnabled: wallpaperAdapter.interpolationEnabled
++    property alias interpolationMultiplier: wallpaperAdapter.interpolationMultiplier
+     property int thumbnailsVersion: 0
+ 
+     property var activeVideo: null
+@@ -545,6 +548,9 @@ PanelWindow {
+             property string matugenScheme: "scheme-tonal-spot"
+             property string activeColorPreset: ""
+             property bool tintEnabled: false
++            // axless.core
++            property bool interpolationEnabled: false
++            property int interpolationMultiplier: 2
+             property var perScreenWallpapers: ({})
+ 
+             onActiveColorPresetChanged: {
+@@ -1227,6 +1233,9 @@ PanelWindow {
+                 sourceFile: parent.sourceFile
+                 screenName: wallpaper.currentScreenName
+                 tint: wallpaper.tintEnabled
++                // axless.core: hand the interpolation settings down.
++                interpolate: wallpaper.interpolationEnabled
++                multiplier: wallpaper.interpolationMultiplier
+                 onRequestVideoSync: wallpaper.requestVideoSync()
+ 
+                 Component.onCompleted: wallpaper.activeVideo = videoWallpaperChild
+diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
+index 195fd45..618b4af 100644
+--- a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
++++ b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
+@@ -764,6 +764,181 @@ FocusScope {
+                                     }
+                                 }
+                             }
++
++            // axless.core: interpolation toggle + frame multiplier, sitting
++            // immediately after the tint control. Modelled on NothingLess: a
++            // checkable tile that reveals an x2..x5 selector only while it is
++            // on, because a disabled multiplier is noise.
++            Item {
++                id: interpolationContainer
++                Layout.preferredWidth: interpolationToggle.width
++                                      + (interpolationMultiplier.visible ? interpolationMultiplier.width + 6 : 0)
++                Layout.preferredHeight: 48
++
++                property bool checked: GlobalStates.wallpaperManager
++                                       ? GlobalStates.wallpaperManager.interpolationEnabled
++                                       : false
++
++                StyledRect {
++                    id: interpolationToggle
++                    anchors.left: parent.left
++                    anchors.top: parent.top
++                    anchors.bottom: parent.bottom
++                    width: 100
++                    radius: Styling.radius(4)
++                    variant: interpolationContainer.checked ? "primary" : "pane"
++
++                    Behavior on variant {
++                        enabled: Config.animDuration > 0
++                        NumberAnimation {
++                            duration: Config.animDuration / 2
++                            easing.type: Easing.OutQuart
++                        }
++                    }
++
++                    RowLayout {
++                        anchors.fill: parent
++                        anchors.margins: 4
++                        spacing: 4
++
++                        Rectangle {
++                            Layout.fillWidth: true
++                            Layout.fillHeight: true
++                            color: Colors.background
++                            radius: Styling.radius(0)
++
++                            Text {
++                                anchors.fill: parent
++                                text: I18n.t("wallpapers.interpolation")
++                                color: Colors.overSurface
++                                font.family: Config.theme.font
++                                font.pixelSize: Config.theme.fontSize
++                                font.weight: Font.Medium
++                                verticalAlignment: Text.AlignVCenter
++                                leftPadding: 8
++                                elide: Text.ElideRight
++                            }
++                        }
++
++                        Item {
++                            Layout.preferredWidth: 40
++                            Layout.preferredHeight: 40
++
++                            property bool checked: interpolationContainer.checked
++
++                            Rectangle {
++                                anchors.fill: parent
++                                radius: Styling.radius(0)
++                                color: Colors.background
++                                visible: !parent.checked
++                            }
++
++                            StyledRect {
++                                variant: "primary"
++                                anchors.fill: parent
++                                radius: Styling.radius(0)
++                                visible: parent.checked
++                                opacity: parent.checked ? 1.0 : 0.0
++
++                                Behavior on opacity {
++                                    enabled: Config.animDuration > 0
++                                    NumberAnimation {
++                                        duration: Config.animDuration / 2
++                                        easing.type: Easing.OutQuart
++                                    }
++                                }
++
++                                Text {
++                                    anchors.centerIn: parent
++                                    text: Icons.accept
++                                    color: Styling.srItem("primary")
++                                    font.family: Icons.font
++                                    font.pixelSize: 20
++                                    scale: parent.checked ? 1.0 : 0.0
++
++                                    Behavior on scale {
++                                        enabled: Config.animDuration > 0
++                                        NumberAnimation {
++                                            duration: Config.animDuration / 2
++                                            easing.type: Easing.OutBack
++                                            easing.overshoot: 1.5
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++
++                    MouseArea {
++                        anchors.fill: parent
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: {
++                            if (GlobalStates.wallpaperManager)
++                                GlobalStates.wallpaperManager.interpolationEnabled = !interpolationContainer.checked;
++                        }
++                    }
++                }
++
++                // x2 .. x5, shown only while interpolation is on.
++                Rectangle {
++                    id: interpolationMultiplier
++                    anchors.left: interpolationToggle.right
++                    anchors.leftMargin: 6
++                    anchors.top: parent.top
++                    anchors.bottom: parent.bottom
++                    width: 62
++                    radius: Styling.radius(4)
++                    color: Colors.background
++                    visible: interpolationContainer.checked
++
++                    Behavior on opacity {
++                        enabled: Config.animDuration > 0
++                        NumberAnimation {
++                            duration: Config.animDuration / 2
++                            easing.type: Easing.OutQuart
++                        }
++                    }
++
++                    Text {
++                        id: multiplierLabel
++                        anchors.fill: parent
++                        anchors.leftMargin: 8
++                        anchors.rightMargin: 20
++                        verticalAlignment: Text.AlignVCenter
++                        color: Colors.overSurface
++                        font.family: Config.theme.font
++                        font.pixelSize: Config.theme.fontSize
++                        font.weight: Font.Medium
++                        text: "x" + (GlobalStates.wallpaperManager
++                                     ? GlobalStates.wallpaperManager.interpolationMultiplier
++                                     : 2)
++                    }
++
++                    Text {
++                        anchors.right: parent.right
++                        anchors.rightMargin: 6
++                        anchors.verticalCenter: parent.verticalCenter
++                        text: Icons.chevronDown
++                        font.family: Icons.font
++                        font.pixelSize: 14
++                        color: Colors.overSurfaceVariant
++                    }
++
++                    // Cycle x2 -> x3 -> x4 -> x5 -> x2. A ComboBox would need
++                    // a popup inside a scrolling tab, which fights the tab's
++                    // own gesture handling; cycling needs no popup at all.
++                    MouseArea {
++                        anchors.fill: parent
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: {
++                            if (!GlobalStates.wallpaperManager)
++                                return;
++                            var next = (GlobalStates.wallpaperManager.interpolationMultiplier % 5) + 1;
++                            GlobalStates.wallpaperManager.interpolationMultiplier = next;
++                        }
++                    }
++                }
++            }
+                         }
+                     }
+                 }
