@@ -37,6 +37,14 @@ Item {
     readonly property string _mcpBridgePath:
         Qt.resolvedUrl("../../../scripts/mcp_stdio_bridge.py")
             .toString().replace("file://", "")
+    // Adapter that republishes `opencode serve` (which speaks its own API)
+    // as bridge tools the shell understands.
+    readonly property string opencodeBridgePath:
+        Qt.resolvedUrl("../../../mcp/opencode/server.py")
+            .toString().replace("file://", "")
+    readonly property string opencodeBridgeDirPath:
+        Qt.resolvedUrl("../../../mcp/opencode/")
+            .toString().replace("file://", "")
     property var agentJsonExpanded: ({})
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -1629,6 +1637,184 @@ duration: Config.animDuration
                                     enabled: true,
                                     command: "python3",
                                     args: [root._mcpBridgePath]
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        // OpenCode — adapter over `opencode serve`.
+                        // opencode does not speak the bridge protocol
+                        // (GET /tools + POST /tools), so this spawns the
+                        // bundled adapter, which republishes its API as
+                        // bridge tools. Start `opencode serve` first
+                        // (default http://127.0.0.1:4096).
+                        Button {
+                            text: "+ OpenCode"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_opencode_" + Date.now(),
+                                    name: "OpenCode",
+                                    type: "http-bridge",
+                                    enabled: true,
+                                    endpoint: "http://127.0.0.1:8791",
+                                    headers: {},
+                                    toolsPath: "/tools",
+                                    invokePath: "/tools",
+                                    process: {
+                                        command: "python3",
+                                        args: [root.opencodeBridgePath],
+                                        cwd: root.opencodeBridgeDirPath
+                                    }
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        // Reference MCP servers. These are the official
+                        // stdio servers, run without installing anything
+                        // because npx/uvx fetch them on demand. The file
+                        // arguments are the sandboxed roots the shell runs
+                        // them under.
+                        Button {
+                            text: "+ Filesystem MCP"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_mcp_fs_" + Date.now(),
+                                    name: "Filesystem MCP",
+                                    type: "mcp-stdio",
+                                    enabled: true,
+                                    command: "npx",
+                                    args: ["-y", "@modelcontextprotocol/server-filesystem", root._expandPath("~")]
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Fetch MCP"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_mcp_fetch_" + Date.now(),
+                                    name: "Fetch MCP",
+                                    type: "mcp-stdio",
+                                    enabled: true,
+                                    command: "uvx",
+                                    args: ["mcp-server-fetch"]
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ Memory MCP"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_mcp_mem_" + Date.now(),
+                                    name: "Memory MCP",
+                                    type: "mcp-stdio",
+                                    enabled: true,
+                                    command: "npx",
+                                    args: ["-y", "@modelcontextprotocol/server-memory"]
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        // Git needs a real repository and the home
+                        // directory is not one, so this preset is created
+                        // disabled with an obvious placeholder path. Point
+                        // --repository at a checkout, then tick it on.
+                        Button {
+                            text: "+ Git MCP"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_mcp_git_" + Date.now(),
+                                    name: "Git MCP",
+                                    type: "mcp-stdio",
+                                    enabled: false,
+                                    command: "uvx",
+                                    args: ["mcp-server-git", "--repository", "/ruta/a/tu/repo"]
+                                });
+                            }
+                            background: StyledRect {
+                                variant: parent.hovered ? "primaryfocus" : "primary"
+                                radius: Styling.radius(4)
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: Colors.overPrimary
+                                font.family: Config.theme.font
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Button {
+                            text: "+ SQLite MCP"
+                            onClicked: {
+                                Ai.agentManager.addConnection({
+                                    id: "agent_mcp_sqlite_" + Date.now(),
+                                    name: "SQLite MCP",
+                                    type: "mcp-stdio",
+                                    enabled: true,
+                                    command: "uvx",
+                                    args: ["mcp-server-sqlite", "--db-path", root._expandPath("~/.local/share/ambxst/agents.db")]
                                 });
                             }
                             background: StyledRect {

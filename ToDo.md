@@ -124,6 +124,47 @@ queda para acciones del compositor. El README ya referenciaba un
 - 8 casos de parsing de tool calls (JSON roto, fences, wrapper OpenAI,
   argumentos como string, varios en uno, prosa, JSON-no-call).
 
+## OpenCode + conexiones MCP de referencia (06-10)
+
+Cerrado el otro frente de "más conexiones de agentes".
+
+**`mcp/opencode/server.py`** (nuevo) — adaptador. `opencode serve` expone
+una API de agente completa (`/session`, `/file`, `/find`, `/mcp`,
+`/experimental/tool`) pero **no habla el protocolo** que espera
+`HttpAgentClient` (`GET /tools` + `POST /tools` con `{name, arguments}`).
+El adaptador republica 10 tools sobre esa API:
+`opencode_{health,list_files,read_file,find_in_files,find_files,find_symbols,run_shell,list_agents,list_mcp_servers,list_sessions}`.
+- `run_shell` crea y cachea una sesión porque OpenCode la exige.
+- Auth básica pasada tal cual (`OPENCODE_SERVER_PASSWORD` /
+  `OPENCODE_SERVER_USERNAME`).
+- **Fuera de alcance a propósito**:iciar turnos de agente. Ambxst ya tiene su
+  propio bucle de conversación y anidarlos pelearía por el modelo. Es "que el
+  shell vea el proyecto por los ojos de opencode", no "lanzar un segundo agente".
+
+**⚠ Sin verificar contra un servidor real.** En esta máquina solo está
+**OpenCode Desktop** (Electron, 1.18.34) y no el CLI, así que no había
+`opencode serve` contra el que probar. Se probó contra un **mock transcrito de
+la spec publicada** (https://opencode.ai/docs/server/): las 10 tools
+responden, tool desconocida → error claro, upstream caído → "Is `opencode
+serve` running?". Lo que queda sin cubrir es que el servidor real se haya
+apartado de su propia documentación.
+
+**6 presets nuevos** en Settings → AI → Agent Connections:
+
+| Preset | Tipo | Qué es |
+|---|---|---|
+| OpenCode | http-bridge | el adaptador de arriba, puerto 8791 |
+| Filesystem MCP | mcp-stdio | `npx @modelcontextprotocol/server-filesystem` |
+| Fetch MCP | mcp-stdio | `uvx mcp-server-fetch` |
+| Memory MCP | mcp-stdio | `npx @modelcontextprotocol/server-memory` |
+| Git MCP | mcp-stdio | `uvx mcp-server-git` — **nace desactivado** |
+| SQLite MCP | mcp-stdio | `uvx mcp-server-sqlite` |
+
+Los servidores MCP oficiales corren sin instalar nada porque `npx`/`uvx` los
+bajan bajo demanda (ya presentes en la máquina). **Git** se crea desactivado a
+propósito: `mcp-server-git` exige `--repository` y `$HOME` no es un repo, así
+que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
+
 ## Implementación pendiente (features de NothingLess)
 
 | # | Feature | Archivos fuente (NothingLess) | Notas |

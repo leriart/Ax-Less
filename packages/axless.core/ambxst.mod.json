@@ -141,6 +141,11 @@
     },
     {
       "type": "overlay",
+      "source": "payload/mcp/opencode/server.py",
+      "target": "mcp/opencode/server.py"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/Ai.qml",
       "target": "modules/services/Ai.qml",
       "replace": true,
