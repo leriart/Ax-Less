@@ -72,19 +72,6 @@ Shell elements remember their position per monitor (`PerMonitorConfig.qml`).
 
 Every key the mod uses resolves in English, Spanish and Russian.
 
-## Planned
-
-Inside `axless.core`, not yet implemented. Ordered by value per unit of risk.
-
-| Feature | Files | Notes |
-|---|---|---|
-| Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs a free Settings section id. |
-| Hax spotlight | `SpotlightView.qml` (5227 lines), `PluginManager.qml`, `Calculator.qml` | Runs as a standalone `qs` process, so it barely touches the base tree. Needs a new `ambxst spotlight` subcommand. |
-| Bar TaskTray | `TaskTray.qml`, `BarSliderBase.qml` | The task tray on its own. |
-| Cava audio visualizer | `CavaService.qml`, `CavaVisualizer.qml` | |
-| Focus Mode + DND | `FocusModeService.qml` | DND does not exist in Ambxst at all. |
-| Battery charge limit | `ChargeLimitService.qml`, `set-charge-limit.sh` | The one battery feature Ambxst genuinely lacks. |
-
 ## Install
 
 ```bash

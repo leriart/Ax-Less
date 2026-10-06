@@ -12,7 +12,6 @@ dependencies: one install gets everything.
 | Task board (dashboard tab + calendar) | done |
 | Per-monitor shell positions | done |
 | Translations (en / es / ru) | done |
-| Hax spotlight | planned |
 
 Everything is adapted to Ambxst's own services, colours and animation model.
 Nothing here reimplements what Ambxst 1.3.10 already does natively in its Go
