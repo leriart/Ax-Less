@@ -75,7 +75,7 @@ Nota: los 6 componentes que NothingLess extrajo (`SidebarHeader.qml`,
 
 NothingClaw era un **bridge pasivo**: publicaba ~29 tools y dejaba que el
 modelo del otro lado decidiera. Ahora además conduce sus propias tools.
-Se 유지*** NO se eliminó (se llegó a borrarlo y se restauró).
+**No se eliminó**: se empezó a borrarlo y se restauró tal cual.
 
 **`agent_loop.py`** (nuevo, 1 kb) — bucle `goal -> model -> tool_calls ->
 execute -> observe -> repeat`, la forma que comparten Aider, smolagents y
