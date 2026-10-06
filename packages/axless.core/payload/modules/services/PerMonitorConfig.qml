@@ -40,21 +40,29 @@ Singleton {
         id: loader
         path: root.configPath
         watchChanges: true
-        onLoaded: {
-            root._parse(loader.text());
-        }
+        // blockLoading makes text() available as soon as the FileView is
+        // constructed. Without it the read is async and the first parse
+        // races the load - which is what NothingLess's onLoaded +
+        // Component.onCompleted pair was doing.
+        blockLoading: true
         onFileChanged: {
-            loader.reload();
+            root._parse(loader.text());
         }
     }
 
-    Component.onCompleted: {
-        // Delay init so FileView has a chance to load
-        Qt.callLater(() => {
+    // Deterministic initial parse. A zero-interval Timer is used instead of
+    // Component.onCompleted because the latter was observed not firing on
+    // this singleton under Ambxst: _ready stayed false and every resolve()
+    // silently returned the global default, which looks exactly like "my
+    // per-monitor file is being ignored".
+    Timer {
+        interval: 0
+        running: true
+        onTriggered: {
             if (!root._ready) {
                 root._parse(loader.text());
             }
-        });
+        }
     }
 
     function _parse(text) {

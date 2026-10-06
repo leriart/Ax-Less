@@ -171,7 +171,7 @@ que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
 |---|---|---|---|
 | F1 | **Island de barra** | `modules/bar/IslandContent.qml`, `BarContent.qml` (`barMode`, `Loader` island), `config/defaults/bar.js` | Sin resolver el NC-1 no tocar `BarContent` (conflicto con parche). |
 | F2 | **Métricas en el notch** | `modules/widgets/defaultview/MetricsGroup.qml`, `MetricsGroupWrapper.qml`, `DefaultView.qml` (`metricsActive`), `Notch.qml`, `NotchContent.qml` | Usar `SystemResources` de Ambxst para los datos, NO `system_monitor.py`. |
-| F3 | **Posiciones por monitor** | `modules/services/PerMonitorConfig.qml` | Depende de NC-1 porque la UI de colocación por pantalla comparte el canvas. |
+| ~~F3~~ | ~~**Posiciones por monitor**~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | Hecho: singleton + `patches/per-monitor-positions.patch` cablea bar/dock/notch. |
 | F4 | **Motor de wallpaper de vídeo + interpol + palette** | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real: Ambxst **no tiene** fuente de FPS, solo `refreshRate` por monitor desde `axctl` (sin usar). Los `.qsb` se generan con `qsb` (incluido en el sistema), hay que compilarlos. No tocar `Wallpaper.qml` si F2 lo toca. |
 | ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
 | F6 | **Hax spotlight** | `modules/widgets/spotlight/*` (5227 líneas), `Calculator.qml`, `PluginManager.qml` | Proceso standalone (`qs -n -p spotlight_entry.qml`), apenas toca el árbol. Necesita subcomando `ambxst spotlight`. |
@@ -217,12 +217,27 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
     selector de rango Cancel/Clear/Apply 36.0 px, popup de fecha 396 px y de
     rango 414 px — ambos dentro de los 430 px del tab, sin recorte.
 - [x] Traducciones completas (grep del payload, no batch suelto).
+- [x] **Posiciones por monitor (F3)**: `services/PerMonitorConfig.qml` lee
+  `~/.config/ambxst/config/monitors.json` y expone
+  `resolve(screen, domain, key, default)`.
+  `patches/per-monitor-positions.patch` lo cablea en `BarContent`,
+  `DockContent` y `NotchContent` (el dock lee los tres porque su posición final
+  se deriva de dónde estén barra y notch **en ese** monitor, no globalmente).
+  **Arreglo importante**: el patrón de NothingLess (`Component.onCompleted` +
+  `onLoaded`) carga el singleton de forma no determinista; se sustituyó por
+  `FileView { blockLoading: true }` + un `Timer` de intervalo 0, que garantiza
+  la carga. Sin eso la config se ignora en silencio y todo resolve() devuelve
+  el valor global. Verificado con un `monitors.json` real: HDMI-A-1 → barra
+  abajo, eDP-1 → barra a la izquierda, y los dominios sin override vuelven al
+  global.
+  Nota: si `monitors.json` no existe, QML avisa por consola igual que hace la
+  config propia de Ambxst.
 ### Pendiente de portar (features)
 | # | Feature | Archivos (NothingLess) | Excluido por backend Go? |
 |---|---|---|---|
 | F1 | Island de barra | `modules/bar/IslandContent.qml`, `BarContent.qml`, `config/defaults/bar.js` | no |
 | F2 | Métricas en notch | `Modules/widgets/defaultview/MetricsGroup*.qml`, `DefaultView.qml`, `Notch*.qml` | parcial → usar `SystemResources` (Go) para los datos |
-| F3 | Posiciones por monitor | `modules/services/PerMonitorConfig.qml` | no |
+| ~~F3~~ | ~~Posiciones por monitor~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | no |
 | F4 | Wallpaper de vídeo + interpol + palette | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real NO existe en Ambxst (solo `refreshRate` por monitor) |
 | ~~F5~~ | ~~Tablero de tareas~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
 | F6 | Hax spotlight | `modules/widgets/spotlight/*` (5.2 k-linas), `Calculator.qml`, `PluginManager.qml` | no (proceso standalone) |
