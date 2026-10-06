@@ -41,6 +41,11 @@
   "operations": [
     {
       "type": "overlay",
+      "source": "payload/modules/services/PerMonitorConfig.qml",
+      "target": "modules/services/PerMonitorConfig.qml"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/CompositorKeywords.qml",
       "target": "modules/services/CompositorKeywords.qml"
     },
@@ -281,11 +286,7 @@
     },
     {
       "type": "patch",
-      "source": "patches/boot-splash.patch"
-    },
-    {
-      "type": "patch",
-      "source": "patches/splash-config.patch"
+      "source": "patches/per-monitor-positions.patch"
     }
   ]
 }

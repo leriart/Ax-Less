@@ -1,0 +1,71 @@
+diff --git a/modules/bar/BarContent.qml b/modules/bar/BarContent.qml
+index 554a38f..a0befb6 100644
+--- a/modules/bar/BarContent.qml
++++ b/modules/bar/BarContent.qml
+@@ -24,7 +24,14 @@ Item {
+ 
+     required property ShellScreen screen
+ 
+-    property string barPosition: (Config.bar && Config.bar.position !== undefined && ["top", "bottom", "left", "right"].includes(Config.bar.position) ? Config.bar.position : "top")
++    // axless.core: a per-monitor override in
++    // ~/.config/ambxst/config/monitors.json wins over the global setting, so
++    // a bar can be at the top on one monitor and on the left on another.
++    readonly property string _globalBarPosition: (Config.bar && Config.bar.position !== undefined && ["top", "bottom", "left", "right"].includes(Config.bar.position) ? Config.bar.position : "top")
++    readonly property string barPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "bar", "position", "")
++        return ["top", "bottom", "left", "right"].includes(override) ? override : root._globalBarPosition
++    }
+     property string orientation: barPosition === "left" || barPosition === "right" ? "vertical" : "horizontal"
+ 
+     // Auto-hide properties
+diff --git a/modules/dock/DockContent.qml b/modules/dock/DockContent.qml
+index 474b8a6..ba8b659 100644
+--- a/modules/dock/DockContent.qml
++++ b/modules/dock/DockContent.qml
+@@ -29,9 +29,21 @@ Item {
+     readonly property bool isDefault: theme === "default"
+ 
+     // Position configuration with fallback logic to avoid bar collision
+-    readonly property string userPosition: Config.dock?.position ?? "bottom"
+-    readonly property string barPosition: Config.bar?.position ?? "top"
+-    readonly property string notchPosition: Config.notchPosition ?? "top"
++    // axless.core: per-monitor overrides, see monitors.json. The dock reads
++    // all three because its final position is derived from where the bar and
++    // notch sit on *this* monitor, not globally.
++    readonly property string userPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "dock", "position", "")
++        return override || (Config.dock?.position ?? "bottom")
++    }
++    readonly property string barPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "bar", "position", "")
++        return override || (Config.bar?.position ?? "top")
++    }
++    readonly property string notchPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "notch", "position", "")
++        return override || (Config.notchPosition ?? "top")
++    }
+ 
+     // Effective position
+     readonly property string position: {
+diff --git a/modules/notch/NotchContent.qml b/modules/notch/NotchContent.qml
+index 8ef85f1..f909f33 100644
+--- a/modules/notch/NotchContent.qml
++++ b/modules/notch/NotchContent.qml
+@@ -33,8 +33,15 @@ Item {
+     readonly property bool hasWindows: toplevels.length > 0
+ 
+     // Get the bar position for this screen
+-    readonly property string barPosition: (Config.bar && Config.bar.position !== undefined) ? Config.bar.position : "top"
+-    readonly property string notchPosition: Config.notchPosition !== undefined ? Config.notchPosition : "top"
++    // axless.core: per-monitor overrides, see monitors.json.
++    readonly property string barPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "bar", "position", "")
++        return override || ((Config.bar && Config.bar.position !== undefined) ? Config.bar.position : "top")
++    }
++    readonly property string notchPosition: {
++        const override = PerMonitorConfig.resolve(screen.name, "notch", "position", "")
++        return override || (Config.notchPosition !== undefined ? Config.notchPosition : "top")
++    }
+ 
+     // Get the bar panel for this screen to check its state
+     readonly property var barPanelRef: Visibilities.barPanels[screen.name]

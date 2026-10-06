@@ -175,7 +175,7 @@ que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
 | F4 | **Motor de wallpaper de vídeo + interpol + palette** | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real: Ambxst **no tiene** fuente de FPS, solo `refreshRate` por monitor desde `axctl` (sin usar). Los `.qsb` se generan con `qsb` (incluido en el sistema), hay que compilarlos. No tocar `Wallpaper.qml` si F2 lo toca. |
 | ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
 | F6 | **Hax spotlight** | `modules/widgets/spotlight/*` (5227 líneas), `Calculator.qml`, `PluginManager.qml` | Proceso standalone (`qs -n -p spotlight_entry.qml`), apenas toca el árbol. Necesita subcomando `ambxst spotlight`. |
-| ~~F7~~ | ~~**Splash con el logo**~~ ✅ **portado** | `shell.qml` (bloque splash) + `assets/ambxst/*.svg` | Hecho: `patches/boot-splash.patch` + `patches/splash-config.patch`. |
+| F7 | **Splash con el logo** | `shell.qml` (bloque splash) + `assets/ambxst/*.svg` | **Descartado por el usuario (06-10): no quiere splash.** Se implementó y se revirtió; los parches se pueden recuperar del commit `11cf152`. |
 
 ## Parchado / mantenimiento
 
@@ -217,15 +217,6 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
     selector de rango Cancel/Clear/Apply 36.0 px, popup de fecha 396 px y de
     rango 414 px — ambos dentro de los 430 px del tab, sin recorte.
 - [x] Traducciones completas (grep del payload, no batch suelto).
-- [x] **Splash con el logo (F7)**: overlay negro a pantalla completa por monitor
-  con `assets/ambxst/ambxst-logo.svg`, escala+fade de entrada, fade de salida que
-  arranca 400 ms antes de destruir la ventana, y `bootSplash.active = false` al
-  final para no costar nada después. Animado con `Config.animDuration` +
-  `Easing.OutCubic` (igual que el resto del shell, no con tokens propios).
-  Settings: `Config.theme.showSplash` / `Config.theme.splashDuration` (clamp
-  >=600 ms). No se usó el `NOTHING_splash.webp` de NothingLess: Ambxst trae SVG
-  estático, así que la entrada es un scale-in en vez de un AnimatedImage.
-
 ### Pendiente de portar (features)
 | # | Feature | Archivos (NothingLess) | Excluido por backend Go? |
 |---|---|---|---|
@@ -235,7 +226,7 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
 | F4 | Wallpaper de vídeo + interpol + palette | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real NO existe en Ambxst (solo `refreshRate` por monitor) |
 | ~~F5~~ | ~~Tablero de tareas~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
 | F6 | Hax spotlight | `modules/widgets/spotlight/*` (5.2 k-linas), `Calculator.qml`, `PluginManager.qml` | no (proceso standalone) |
-| ~~F7~~ | ~~Splash con logo~~ ✅ **portado** | bloque splash de `shell.qml` + `assets/ambxst/*.svg` | no |
+| ~~F7~~ | ~~Splash con logo~~ ❌ **descartado** | bloque splash de `shell.qml` | el usuario decidió no llevarlo |
 
 ### Explicitamente excluido (Ambxst ya lo hace mejor en Go; NO portar)
 - **Clipboard** (`svc/clipboard` + sqlite cifrado + fts5 + wlr-data-control) — NothingLess usa bash+python.
