@@ -113,7 +113,14 @@ void main() {
                     float cost = dot(abs(c - p), vec3(0.299, 0.587, 0.114));
                     if (cost < bestCost) {
                         bestCost = cost;
-                        motion = offset * 4.0;
+                        // `offset` is already a UV delta: coarseTexel is
+                        // 4/res, i.e. one coarse tap equals four full-res
+                        // pixels expressed in UV. Multiplying by 4 again
+                        // quadruples the displacement, the warp then pulls
+                        // pixels from far outside the block and the picture
+                        // reads as a zoom. Keep it in UV; the fine pass
+                        // converts to texels and back itself.
+                        motion = offset;
                     }
                 }
             }

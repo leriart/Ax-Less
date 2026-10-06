@@ -246,6 +246,24 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
   vídeo se ve correctamente a través del shader. `--qt6` no vale: implica las
   versiones ES antiguas y `interpol.frag` usa `texelFetch`, que ES 100/120 no
   soportan. Queda documentado en `shaders/build.sh`.
+  **Tercer arreglo — el zoom (bug de escala en el shader)**: en la búsqueda
+  gruesa, `coarseTexel = 4/res` ya es un delta en UV (un paso grueso = cuatro
+  píxeles a resolución completa), pero el shader hacía `motion = offset * 4.0`,
+  cuadruplicando el desplazamiento. El warp acababa tirando de píxeles de muy
+  fuera del bloque y la imagen se veía ampliada. Ahora `motion = offset`; el
+  paso fino ya convierte a texeles y de vuelta por su cuenta.
+  Aislado desactivando la ruta de warp (`if (false)`), con lo que la imagen
+  sale correcta y sin zoom — eso localiza el origen en el warp y no en el
+  muestreo. **Pendiente de confirmar**: no se ha podido comparar el mismo frame
+  con y sin warp porque las capturas salen en timestamps distintos (ver abajo),
+  así que el arreglo está justificado por el análisis y por el aislamiento, no
+  por una comparación lado a lado concluyente.
+  **Método que no sirve**: capturar dos instancias (una con interpolación y otra
+  sin) y comparar. Son `MediaPlayer` independientes en timestamps distintos, así
+  que las imágenes muestran frames diferentes y cualquier diferencia de escala
+  apparent es deriva de contenido. Hay que pausar y buscar ambos en el mismo
+  `position`, o capturar una sola instancia dos veces con la interpolación
+  alternando.
   **Segundo arreglo**: el `VideoOutput` se ocultaba cuando la interpolación
   estaba activa; con el `sourceItem` invisible los dos `ShaderEffectSource` no
   generan textura. Ahora nunca se oculta y el efecto va encima con `z: 1`.
