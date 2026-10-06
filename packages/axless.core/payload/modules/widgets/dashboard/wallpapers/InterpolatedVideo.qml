@@ -453,13 +453,7 @@ Item {
     ShaderEffect {
         id: tintEffect
         anchors.fill: parent
-        // NOT WORKING - see ToDo.md. Left mounted but never shown, because a
-        // shader fed from the frame capture renders an empty surface here,
-        // which white-outs the wallpaper instead of leaving it untinted.
-        // Ambxst's own video tint (a layer on the VideoOutput) was broken the
-        // same way and differently, so there is no working baseline to fall
-        // back to.
-        visible: false
+        visible: root.tint
 
         // The sampler is named videoFrame, not source. ShaderEffect already
         // has a built-in `source` property of type QUrl for image files, and
@@ -506,31 +500,32 @@ Item {
     // palette.frag as paletteTexture. Built as a Row of 1x1 rectangles rather
     // than drawn into a Canvas: it is static, so there is nothing to repaint
     // when the theme changes and the Row re-evaluates on its own.
-    Item {
+    // The palette strip: one Canvas painting a 1-pixel-tall row of the shell
+    // colours. A Canvas rather than an Item full of child Rectangles because
+    // it is a single paintable item - what ShaderEffectSource captures is the
+    // item's own painting, and with the child-Rectangle version the texture
+    // came out empty (proved by rendering paletteTexture full screen: solid
+    // black), which made palette.frag paint the wallpaper black.
+    Canvas {
         id: paletteSourceItem
-        // Must be visible: ShaderEffectSource captures the item's rendering,
-        // and an item with opacity 0 renders nothing, so the palette texture
-        // would come out empty and palette.frag would paint the wallpaper
-        // black. Ambxst's static-image path spells this out too. It stays
-        // invisible because ShaderEffectSource uses hideSource, not opacity.
-        visible: true
-        width: InterpolatedVideo.optimizedPalette.length
+        width: root.optimizedPalette.length
         height: 1
-        // Parked far off-screen so it is never actually visible on the
-        // desktop while still being rendered into the texture.
-        x: -width - 10
-        y: -height - 10
+        visible: true
 
-        Row {
-            anchors.fill: parent
-            Repeater {
-                model: InterpolatedVideo.optimizedPalette
-                Rectangle {
-                    width: 1
-                    height: 1
-                    color: Colors[modelData]
-                }
+        onPaint: {
+            const ctx = getContext("2d");
+            ctx.reset();
+            const keys = root.optimizedPalette;
+            for (let i = 0; i < keys.length; i++) {
+                ctx.fillStyle = Colors[keys[i]];
+                ctx.fillRect(i, 0, 1, 1);
             }
+        }
+
+        // Repaint when the theme changes so the strip tracks the palette.
+        Connections {
+            target: Colors
+            function onFileChanged() { Qt.callLater(paletteSourceItem.requestPaint); }
         }
     }
 
@@ -540,7 +535,13 @@ Item {
         hideSource: true
         visible: false
         smooth: false
-        recursive: false
+        // Must be true. The palette strip is an Item holding 25 child
+        // Rectangles, not a single paintable item, and with recursive: false
+        // the children are excluded from the capture - the texture came out
+        // empty (proved by rendering paletteTexture full-screen: solid black),
+        // and palette.frag then painted the whole wallpaper black because it
+        // had no colours to match against.
+        recursive: true
     }
 
     // The tint is a layer effect on the VideoOutput, which is where Ambxst

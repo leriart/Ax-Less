@@ -73,6 +73,28 @@ escritorio en blanco. Es preferible a blanquear el escritorio: el vídeo se ve
 normal, simplemente sin teñir. Ambxst tampoco tiene un camino que funcione
 como referencia.
 
+**Búsqueda posterior (no resuelta).** Se intentó todo lo siguiente,Medido cada vez:
+- `ShaderEffectSource` sobre el `VideoOutput` alimentando `palette.frag` en un
+  `ShaderEffect` independiente (en vez de layer): renderiza **superficie vacía**.
+- Sombrear `source` como hace `UnifiedPanelEffect.qml`: no liga.
+- Renombrar el sampler a `videoFrame` como el del interpolador: tampoco liga.
+- `recursive: false` → `true` en el `ShaderEffectSource` de la paleta: sin cambio.
+- Sustituir los 25 `Rectangle` hijos por un `Canvas` que se pinta a sí mismo
+  (como hace NothingLess): sin cambio.
+- **La textura de paleta sale vacía o no liga.** Probado renderizando
+  `paletteTexture` a pantalla completa: **negro sólido**. Con la paleta vacía,
+  `palette.frag` no tiene con qué casar y pinta el vídeo entero de negro — de
+  ahí los PNG de 646 bytes.
+
+**Sospecha que queda sin verificar:** `paletteTexture` está en `binding = 2`
+junto a `videoFrame` en `binding = 1`. Es posible que al renombrar el sampler de
+`source` a `videoFrame` el asignador de texturas de Qt deje de enlazar el
+binding 2. La prueba sería un shader de un solo sampler (sin `videoFrame`) que
+solo pinte `paletteTexture`: si eso sí muestra colores, la hipótesis queda
+confirmada y el arreglo es aplicar el tinte **dentro** del shader de
+interpolación (un solo efecto, un sampler de paleta) en lugar de en uno
+paralelo.
+
 **Lo que falta para cerrarlo:** que `palette.frag` reciba la textura del vídeo
 sin mermar el `VideoOutput`. Probado y **descartado**: `source` sombreado
 (como hace `UnifiedPanelEffect.qml`) → no liga; sampler renombrado a
