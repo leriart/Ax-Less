@@ -62,6 +62,23 @@ base, porque un overlay normal no puede sobrescribir. El parche
 `VideoWallpaper.qml` deja de usarse (NL gestiona el vídeo dentro de
 `Wallpaper.qml`).
 
+**Regresiones introducidas por la copia y su estado (07-10):**
+1. **Multiplicador de interpolación — CORREGIDO.** El parche anterior
+   contenía también la UI de `WallpapersTab.qml`; al retirarlo se perdió el
+   toggle y el selector x2..x5. Restaurado en
+   `patches/wallpaper-interpolation-ui.patch`, verificado en la generación.
+2. **Tinte — corregidas dos causas, sin verificar de extremo a extremo.**
+   El `paletteCanvas2` de NL está en `visible: false`, y un
+   `ShaderEffectSource` sobre un item invisible captura textura vacía, así que
+   `palette.frag` pinta de negro. Puesto a `visible: true` (queda invisible por
+   `hideSource`). Además NL depende de `scripts/extract_palette.py`, que no
+   existe en Ambxst y por eso la paleta cae siempre al fallback del tema;
+   copiado al payload. **Pendiente:** `customPaletteSize` sigue a 0, o sea que
+   la extracción no está produciendo paleta todavía.
+3. **Crossfade con algunos wallpapers — SIN INVESTIGAR.** Probablemente
+  Related con el `contentReady` que NL espera de cada capa; si un formato no
+   lo emite, el crossfade no arranca. Sin看一下.
+
 **Verificado:** `Wallpaper.qml` byte-idéntico a NothingLess, generación sin un
 solo ERROR, y sin `ReferenceError` ni `TypeError` de servicios.
 

@@ -1126,7 +1126,13 @@ PanelWindow {
                 id: paletteCanvas2
                 width: wallpaper.effectivePaletteSize
                 height: 1
-                visible: false
+                // axless.core: must be visible. ShaderEffectSource captures the
+                // item's own rendering, and an item with visible: false (or
+                // opacity: 0) renders nothing, so the palette texture comes out
+                // empty and palette.frag then paints the wallpaper solid
+                // black. It stays invisible because the ShaderEffectSource uses
+                // hideSource, not because of this flag.
+                visible: true
 
                 onPaint: {
                     var ctx = getContext("2d");

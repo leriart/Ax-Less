@@ -432,6 +432,22 @@
       "target": "modules/widgets/dashboard/wallpapers/Wallpaper.qml",
       "replace": true,
       "expectedSha256": "3db6aa3618a1e848622f98418a4ce3afc3266a3e0226d50211ee5a92fd0cf971"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-interpolation-ui.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/wallpapers/palette.frag",
+      "target": "modules/widgets/dashboard/wallpapers/palette.frag",
+      "replace": true,
+      "expectedSha256": "f98c80d1b80122729e3adc5469c08f190db8bb07749af1e3887573fe03119277"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/scripts/extract_palette.py",
+      "target": "scripts/extract_palette.py"
     }
   ]
 }
