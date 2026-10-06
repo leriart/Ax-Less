@@ -647,14 +647,16 @@ Item {
             if (!m)
                 return 1920;
             const rot = isRotated(m.transform);
-            return (rot ? (m.height || 1080) : (m.width || 1920)) / (m.scale || 1.0);
+            const px = rot ? (m.height || 1080) : (m.width || 1920);
+            return px / (av.pixelsAreLogical ? 1 : (m.scale || 1.0));
         }
 
         function logicalHeight(m) {
             if (!m)
                 return 1080;
             const rot = isRotated(m.transform);
-            return (rot ? (m.width || 1920) : (m.height || 1080)) / (m.scale || 1.0);
+            const px = rot ? (m.width || 1920) : (m.height || 1080);
+            return px / (av.pixelsAreLogical ? 1 : (m.scale || 1.0));
         }
 
         // niri reports the transform as a name ("Normal", "90", "flipped-90"),
@@ -674,6 +676,23 @@ Item {
 
         property var viewBounds: ({ minX: -100, minY: -100, maxX: 100, maxY: 100, spanW: 200, spanH: 200 })
         property real viewScale: 0.1
+
+        /*
+            Whether logical.width/height are already in the space the
+            compositor positions outputs in.
+
+            niri: yes. It reports logical.width in pixels and positions in
+            that same space, so a 1536 px panel at scale 1.25 puts the next
+            output at x=1536. Dividing by scale here would draw that panel
+            1229 px wide and, worse, aim the snap targets at the wrong
+            edges - dropping a monitor "next to" it would land inside it
+            and the overlap resolution would shove it away again.
+
+            Hyprland and Mango: no. Their clients report pixel dimensions
+            plus a separate scale and position in already-divided logical
+            units, so the division is required.
+        */
+        required property bool pixelsAreLogical
 
 
         // Height follows width; width also drives the scale. Both are done in
@@ -695,8 +714,13 @@ Item {
             capped. 24 px is a little under two steps of the 10 px grid,
             which is enough to feel magnetic without taking the placement over.
         */
-        readonly property int snapDragLogical: 24
-        readonly property int snapReleaseLogical: 40
+        // Kept deliberately tight. A wide release threshold swallows small
+        // deliberate gaps - drop a monitor 30 px away from its neighbour and
+        // a 40 px threshold snaps it flush, which reads as "it won't let me
+        // place them". 16 px while dragging is enough to feel magnetic, and
+        // 24 px on release locks a near-edge drop without overruling it.
+        readonly property int snapDragLogical: 16
+        readonly property int snapReleaseLogical: 24
 
         function snapDistance(canvasPx, capLogical) {
             return Math.max(2, Math.min(canvasPx / av.viewScale, capLogical));
@@ -1549,6 +1573,7 @@ Item {
                 Layout.rightMargin: 8
                 visible: root.outputs.length > 0
                 monitors: root.outputs
+                pixelsAreLogical: root.pixelsAreLogical
                 selectedIndex: root.selectedIndex
                 identifying: root.identifyTarget
                 onMonitorSelected: idx => root.selectedIndex = idx

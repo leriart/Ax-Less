@@ -285,6 +285,45 @@ or entirely right of everything, but cannot be flung into empty space beyond
 the arrangement. Vertical placement is deliberately unbounded, because
 lining one monitor up under another is a normal thing to want.
 
+### Scaled monitors snapping to the wrong edge
+
+`ArrangementView.logicalWidth` divided by the scale unconditionally, which is
+Hyprland's convention: `hyprctl` reports pixel dimensions plus a separate scale
+and positions outputs in already-divided logical units. niri does not - it
+reports `logical.width` in pixels and positions in that same space.
+
+At 1.25 scale this made every measurement wrong in a way that only appears once
+the scale is not 1.0:
+
+```
+eDP-1              real 1536x960    drawn as 1536/1.25 = 1229 px wide
+snap target        0 + 1229 = 1229
+eDP-1 really spans  0..1536          -> 307 px of overlap
+```
+
+So dropping a monitor "next to" its neighbour landed it inside that neighbour,
+and the overlap resolution then shoved it somewhere else entirely, which reads
+as *the monitors spring apart and refuse to be placed*. The canvas size and the
+snap targets now both come from `pixelsAreLogical`, true for niri and false for
+the sway-style clients, so the drawn box and the snap edges match what the
+compositor actually reports.
+
+Verified against the live daemon, both outputs at 1.25:
+
+```
+PROBE compositor=niri pixelsAreLogical=true av.pixelsAreLogical=true
+PROBE   HDMI-A-1  scale=1.25 logged=1536x864  (niri real: 1536x864)  x=1536
+PROBE   eDP-1     scale=1.25 logged=1536x960  (niri real: 1536x960)  x=0
+PROBE ancho logico usado para imantar contra eDP-1 = 1536
+     -> coincide con su borde real (0+1536=1536)
+```
+
+Snap thresholds were also tightened to 16 px while dragging and 24 px on
+release. A wider release threshold swallowed small deliberate gaps - drop a
+monitor 30 px from its neighbour with a 40 px threshold and it snapped flush,
+which is the same "it won't let me place them" complaint wearing a different
+hat. Gaps of 30 px and 50 px are now preserved; only sub-24 px closes.
+
 ### Bugs found and fixed while making it functional
 
 **Reading an output's on/off state.** niri still lists an output that is off,
