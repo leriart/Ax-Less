@@ -170,7 +170,7 @@ que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
 | # | Feature | Archivos fuente (NothingLess) | Notas |
 |---|---|---|---|
 | F1 | **Island de barra** | `modules/bar/IslandContent.qml`, `BarContent.qml` (`barMode`, `Loader` island), `config/defaults/bar.js` | Sin resolver el NC-1 no tocar `BarContent` (conflicto con parche). |
-| F2 | **Métricas en el notch** | `modules/widgets/defaultview/MetricsGroup.qml`, `MetricsGroupWrapper.qml`, `DefaultView.qml` (`metricsActive`), `Notch.qml`, `NotchContent.qml` | Usar `SystemResources` de Ambxst para los datos, NO `system_monitor.py`. |
+| ~~F2~~ | ~~**Métricas en el notch**~~ ✅ **portado** | `MetricsGroup.qml`, `MetricsGroupWrapper.qml`, `DefaultView.qml`, `NotchMetrics.qml` | Hecho: `patches/notch-metrics.patch` + overlay de `defaults/notch.js`. |
 | ~~F3~~ | ~~**Posiciones por monitor**~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | Hecho: singleton + `patches/per-monitor-positions.patch` cablea bar/dock/notch. |
 | F4 | **Motor de wallpaper de vídeo + interpol + palette** | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real: Ambxst **no tiene** fuente de FPS, solo `refreshRate` por monitor desde `axctl` (sin usar). Los `.qsb` se generan con `qsb` (incluido en el sistema), hay que compilarlos. No tocar `Wallpaper.qml` si F2 lo toca. |
 | ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
@@ -217,6 +217,28 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
     selector de rango Cancel/Clear/Apply 36.0 px, popup de fecha 396 px y de
     rango 414 px — ambos dentro de los 430 px del tab, sin recorte.
 - [x] Traducciones completas (grep del payload, no batch suelto).
+- [x] **Métricas en el notch (F2)**: `NotchMetrics.qml` (nuevo) + `MetricsGroup.qml`
+  y `MetricsGroupWrapper.qml`. Se activa con `Config.notch.showMetrics`
+  (`~/.config/ambxst/config/notch.json`). Muestra CPU/GPU/RAM/DSK desde el
+  `SystemResources` de Ambxst.
+  **Alcance deliberado**: NL también pintaba potencia y FPS, pero el backend Go
+  de Ambxst (`backend/pkg/svc/systemmonitor`) solo emite
+  `cpu{usage,temp}`, `ram`, `disk{usage}`, `gpu{usages,temps}` — no hay vatios
+  ni frame rate. Se omiten en vez de inventarlos.
+  **Dos bugs reales encontrados al integrarlo:**
+  1. `SystemResources.monitoringActive` solo se activaba con el tab de métricas
+     del dashboard abierto, así que el notch leía una suscripción muerta
+     (siempre ceros). Ampliado a `|| Config.notch.showMetrics`.
+  2. `ConfigValidator.validate()` reconstruye la config iterando
+     `for (var key in defaults)`: **descarta toda clave que no esté en
+     `defaults/notch.js`**. Añadir la propiedad solo a `Config.qml` no servía —
+     el shell borraba `showMetrics` de `notch.json` en el siguiente guardado y
+     el ajuste se reseteaba solo. Por eso el overlay de `defaults/notch.js`
+     necesita `replace: true` + `expectedSha256`.
+  Verificado: con el flag activo `metricsActive`/`monitoringActive` pasan a
+  true, `notch.json` conserva la clave tras reiniciar el shell, el ancho del
+  notch crece (386 px) y llegan muestras reales (CPU 9.2% / 67 °C, RAM 78.8 %,
+  disco 12.1 %).
 - [x] **Posiciones por monitor (F3)**: `services/PerMonitorConfig.qml` lee
   `~/.config/ambxst/config/monitors.json` y expone
   `resolve(screen, domain, key, default)`.
@@ -236,7 +258,7 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
 | # | Feature | Archivos (NothingLess) | Excluido por backend Go? |
 |---|---|---|---|
 | F1 | Island de barra | `modules/bar/IslandContent.qml`, `BarContent.qml`, `config/defaults/bar.js` | no |
-| F2 | Métricas en notch | `Modules/widgets/defaultview/MetricsGroup*.qml`, `DefaultView.qml`, `Notch*.qml` | parcial → usar `SystemResources` (Go) para los datos |
+| ~~F2~~ | ~~Métricas en notch~~ ✅ **portado** | `MetricsGroup*.qml`, `DefaultView.qml`, `NotchMetrics.qml` | datos de `SystemResources` (Go) |
 | ~~F3~~ | ~~Posiciones por monitor~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | no |
 | F4 | Wallpaper de vídeo + interpol + palette | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real NO existe en Ambxst (solo `refreshRate` por monitor) |
 | ~~F5~~ | ~~Tablero de tareas~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
