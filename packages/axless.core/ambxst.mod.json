@@ -287,32 +287,6 @@
     {
       "type": "patch",
       "source": "patches/per-monitor-positions.patch"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/defaultview/MetricsGroup.qml",
-      "target": "modules/widgets/defaultview/MetricsGroup.qml"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/defaultview/MetricsGroupWrapper.qml",
-      "target": "modules/widgets/defaultview/MetricsGroupWrapper.qml"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/defaultview/NotchMetrics.qml",
-      "target": "modules/widgets/defaultview/NotchMetrics.qml"
-    },
-    {
-      "type": "patch",
-      "source": "patches/notch-metrics.patch"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/config/defaults/notch.js",
-      "target": "config/defaults/notch.js",
-      "replace": true,
-      "expectedSha256": "e28411e826849ca8e8c7238679458cf7ece2548e36b62ef5a4d9e138b67229ce"
     }
   ]
 }
