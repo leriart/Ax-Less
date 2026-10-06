@@ -21,16 +21,56 @@ Inside `axless.core`, not yet implemented. Ordered by value per unit of risk.
 
 | Feature | Files | Notes |
 |---|---|---|
-| Todo board | `TodoTab.qml`, `TodoBoard.qml` | Cleanest port in the set: three append-only insertions in `Dashboard.qml`. |
 | Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs Settings `section: 11` (10 is Mods). |
 | Multi-monitor editor | `MonitorsPanel.qml` + 4 sub-panels, `monitors_writer.py` | Large. Wants a Go `monitor` service wrapping `axctl` rather than the Python path. |
 | Hax spotlight | `SpotlightView.qml` (5227 lines), `PluginManager.qml`, `Calculator.qml` | Runs as a standalone `qs` process, so it barely touches the base tree. Needs a new `ambxst spotlight` subcommand. |
-| Bar TaskTray + island mode | `TaskTray.qml`, `IslandContent.qml`, `BarSliderBase.qml` | |
-| Notch/desktop metrics + Cava | `MetricsGroup.qml`, `CavaService.qml`, `CavaVisualizer.qml` | Use Ambxst's `SystemResources` for the data, not NothingLess's Python monitors. |
+| Bar TaskTray | `TaskTray.qml`, `BarSliderBase.qml` | The task tray on its own; the island part was cancelled, see below. |
+| Cava audio visualizer | `CavaService.qml`, `CavaVisualizer.qml` | Distinct from the cancelled metrics work. |
 | Focus Mode + DND | `FocusModeService.qml` | DND does not exist in Ambxst at all. |
 | Battery charge limit | `ChargeLimitService.qml`, `set-charge-limit.sh` | The one battery feature Ambxst genuinely lacks. |
-| Per-monitor shell positions | `PerMonitorConfig.qml` | Touches exclusive-zone maths; moderate risk. |
 | `CompositorColors.js` + `free.snap-*` keybinds | | Small dedup plus pure catalog data. |
+
+### Plan a futuro
+
+Features that were investigated and then deliberately dropped, recorded here so
+the reasoning survives and nobody re-opens them by accident. Recoverable from
+git if they are ever wanted.
+
+#### Isla dinámica en la barra — cancelada (2026-10-10)
+
+`barMode` (`extended` / `dynamic`) plus `IslandContent.qml` rendering the
+notch's `DefaultView` as a pill inside the bar. Cancelled by the user.
+
+Why it was not trivial: `barMode` is not a switch. `BarContent.qml` branches on
+it for width, height, x, y, reveal and auto-hide (7 sites in 856 lines), so it
+is a refactor of the bar's geometry rather than a component drop-in.
+
+#### Métricas en el notch / isla — descartadas (2026-10-10)
+
+`MetricsGroup.qml`, `MetricsGroupWrapper.qml` and a `NotchMetrics.qml` row in
+`DefaultView`, fed from Ambxst's `SystemResources`. It worked — live CPU, GPU,
+RAM and disk in the notch on both monitors — and was then removed on request.
+
+Two things worth keeping from the attempt:
+
+- **Ambxst has no power or FPS source.** The Go backend at
+  `backend/pkg/svc/systemmonitor` only emits `cpu{usage,temp}`, `ram`,
+  `disk{usage}` and `gpu{usages,temps}`. NothingLess also showed watts and
+  frame rate; there is no field to read them from, so they would have to be
+  invented. That was a permanent limitation, not a porting gap.
+- **`ConfigValidator.validate()` rebuilds the config by iterating the defaults
+  and copies only the keys it finds there.** Adding a property to `Config.qml`
+  alone is inert — the shell strips it back out of the JSON on the next save.
+  Any new setting needs its entry in `config/defaults/<section>.js` as well.
+
+#### Launching Ambxst
+
+Not a feature, but the thing most likely to waste an afternoon: the shell must be
+started with **`ambxst`**, not `qs -p .../shell.qml`. `BackendService` talks to
+the Go daemon over `$XDG_RUNTIME_DIR/ambxst.sock`; launching the shell directly
+leaves that socket absent, subscriptions fail with
+`BackendService: subscription socket error 2`, and every metric reads as a dash
+while `monitoringActive` is still `true`.
 
 ### Deliberately excluded
 
