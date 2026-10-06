@@ -1,5 +1,5 @@
 diff --git a/config/Config.qml b/config/Config.qml
-index e306828..53d9218 100644
+index e306828..674e215 100644
 --- a/config/Config.qml
 +++ b/config/Config.qml
 @@ -17,6 +17,7 @@ import "defaults/performance.js" as PerformanceDefaults
@@ -35,43 +35,20 @@ index e306828..53d9218 100644
              property bool disableHoverExpansion: true
          }
      }
-@@ -1358,6 +1361,47 @@ Singleton {
+@@ -1358,6 +1361,24 @@ Singleton {
          }
      }
  
-+    // ============================================
-+    // HAX LAUNCHER (axless.core)
-+    // ============================================
 +    FileView {
 +        id: haxLoader
 +        path: root.configDir + "/hax.json"
 +        atomicWrites: true
 +        watchChanges: true
-+        onLoaded: {
-+            if (!root.haxReady) {
-+                validateModule("hax", haxLoader, HaxDefaults.data, () => {
-+                    root.haxReady = true;
-+                });
-+            }
-+        }
-+        onLoadFailed: function(error) { if (String(error).includes("FileNotFound") && !root.haxReady) {
-+                handleMissingConfig("hax", haxLoader, HaxDefaults.data, () => {
-+                    root.haxReady = true;
-+                });
-+            }
-+        }
-+        onFileChanged: {
-+            root.pauseAutoSave = true;
-+            reload();
-+            root.pauseAutoSave = false;
-+        }
++        onLoaded: { if (!root.haxReady) validateModule("hax", haxLoader, HaxDefaults.data, () => { root.haxReady = true; }); }
++        onLoadFailed: function(error) { if (String(error).includes("FileNotFound") && !root.haxReady) handleMissingConfig("hax", haxLoader, HaxDefaults.data, () => { root.haxReady = true; }); }
++        onFileChanged: { root.pauseAutoSave = true; reload(); root.pauseAutoSave = false; }
 +        onPathChanged: reload()
-+        onAdapterUpdated: {
-+            if (root.haxReady && !root.pauseAutoSave) {
-+                haxLoader.writeAdapter();
-+            }
-+        }
-+
++        onAdapterUpdated: { if (root.haxReady && !root.pauseAutoSave) haxLoader.writeAdapter(); }
 +        adapter: JsonAdapter {
 +            property bool customColorEnabled: false
 +            property string customColor: "#ffb3ae"
@@ -83,7 +60,7 @@ index e306828..53d9218 100644
      // Keybinds (binds.json)
      // Timer to repair keybinds after initial load
      Timer {
-@@ -3593,6 +3637,7 @@ Singleton {
+@@ -3593,6 +3614,7 @@ Singleton {
  
      // Notch configuration
      property QtObject notch: notchLoader.adapter
@@ -91,7 +68,7 @@ index e306828..53d9218 100644
      property string notchTheme: notch.theme
      property string notchPosition: notch.position
  
-@@ -3704,6 +3749,21 @@ Singleton {
+@@ -3704,6 +3726,19 @@ Singleton {
      function savePinnedApps() {
          pinnedAppsLoader.writeAdapter();
      }
@@ -100,8 +77,6 @@ index e306828..53d9218 100644
 +        haxLoader.writeAdapter();
 +    }
 +
-+    // axless.core: NothingLess calls Config.saveHaxShortcuts() from its
-+    // shortcut editor but never defined it. Serialise and persist.
 +    function saveHaxShortcuts(list) {
 +        try {
 +            hax.customShortcuts = JSON.stringify(list || []);
@@ -156,11 +131,36 @@ index b1aa3be..8f53307 100644
          const isActive = Visibilities.currentActiveModule === "launcher";
          if (isActive && GlobalStates.widgetsTabCurrentIndex === 0 && GlobalStates.launcherSearchText === "") {
              Visibilities.setActiveModule("");
+diff --git a/modules/services/Visibilities.qml b/modules/services/Visibilities.qml
+index ee97b09..9e36656 100644
+--- a/modules/services/Visibilities.qml
++++ b/modules/services/Visibilities.qml
+@@ -168,6 +168,20 @@ Singleton {
+     }
+ 
+     function setActiveModule(moduleName) {
++        // axless.core: when Hax is the selected launcher, "launcher" and ""
++        // refer to the Hax spotlight instead of the notch launcher. Putting
++        // the branch here covers every caller at once - the bar's launcher
++        // button, UserInfo, the keybinds, the IPC command and the dashboard -
++        // which each call setActiveModule directly rather than going through
++        // GlobalShortcuts.toggleLauncher().
++        if (Config.notch && Config.notch.launcher === "hax") {
++            if (moduleName === "launcher")
++                GlobalStates.haxVisible = true;
++            else if (moduleName === "")
++                GlobalStates.haxVisible = false;
++            return;
++        }
++
+         const focusedMonitor = AxctlService.focusedMonitor;
+         if (!focusedMonitor)
+             return;
 diff --git a/modules/widgets/dashboard/controls/ShellPanel.qml b/modules/widgets/dashboard/controls/ShellPanel.qml
-index 9723b55..8a6268d 100644
+index 9723b55..c6d407b 100644
 --- a/modules/widgets/dashboard/controls/ShellPanel.qml
 +++ b/modules/widgets/dashboard/controls/ShellPanel.qml
-@@ -1041,6 +1041,28 @@ Item {
+@@ -1041,6 +1041,22 @@ Item {
                              }
                          }
  
@@ -168,14 +168,8 @@ index 9723b55..8a6268d 100644
 +                        SelectorRow {
 +                            label: I18n.t("settings.shell.notch_launcher")
 +                            options: [
-+                                {
-+                                    label: I18n.t("common.default"),
-+                                    value: "default"
-+                                },
-+                                {
-+                                    label: "Hax",
-+                                    value: "hax"
-+                                }
++                                { label: I18n.t("common.default"), value: "default" },
++                                { label: "Hax", value: "hax" }
 +                            ]
 +                            value: Config.notch.launcher ?? "default"
 +                            onValueSelected: newValue => {
