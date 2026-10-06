@@ -8,12 +8,10 @@ dependencies: one install gets everything.
 | Agent platform (MCP / HTTP bridge / command agents) | done |
 | Single compositor menu, per-compositor options | done |
 | Monitors, per compositor, runtime only | done |
-| Per-monitor shell positions | planned |
-| Notch metrics | planned |
-| Bar island mode | planned |
-| Video wallpaper engine | planned |
-| Task board | planned |
-| Boot splash | planned |
+| Video wallpaper engine (interpolation + crossfade) | done |
+| Task board (dashboard tab + calendar) | done |
+| Per-monitor shell positions | done |
+| Translations (en / es / ru) | done |
 | Hax spotlight | planned |
 
 Everything is adapted to Ambxst's own services, colours and animation model.
@@ -476,3 +474,67 @@ assigns `stdout.trim()` without checking whether the call failed, so with axctl
 down it captures the client's error text as the compositor name. Both this panel
 and `CompositorKeywords` whitelist the three real names and fall back to probing
 the clients directly.
+
+## Video wallpaper engine
+
+Ambxst renders video wallpapers with `MediaPlayer` + `VideoOutput`. That
+`VideoOutput` is a straight path to the screen: no frame handles, no
+timestamps, no motion vectors. There is nothing to interpolate *through*, so
+any real interpolation needs its own decode path.
+
+### Frame interpolation
+
+`InterpolatedVideo.qml` replaces the renderer inside `VideoWallpaper`. It keeps
+a live `Video` element and a frozen copy of the previous frame as two
+`ShaderEffectSource` textures, and a `FrameAnimation` advances a blend factor
+on the vsync. The `interpol.frag` shader warps both frames along the motion
+vectors the decoder produced and blends them, synthesising the frames the
+source never had. A 30 fps wallpaper plays at the display's refresh rate.
+
+Two details took real debugging:
+
+- **The shader must be compiled with `qsb --glsl 440`.** A bare `qsb` bakes no
+  GLSL into the `.qsb`, and the effect renders nothing. The vertex shader uses
+  `texelFetch`, which the legacy ES profile rejects, so the version flag is
+  mandatory. `shaders/build.sh` records the exact invocation.
+- **Sampling had to move to UV space.** Mixing `texture()` (resolution
+  independent) with `texelFetch(ivec2(uv * iResolution))` reads a sub-rectangle
+  stretched over the full effect — on a scaled output that is exactly the
+  devicePixelRatio, so the wallpaper rendered zoomed in. All sampling is UV
+  now.
+
+An optional pre-rendered path exists for heavy sources: the Go helper
+`axvideo` (in `video/`) decodes with `AV_CODEC_FLAG2_EXPORT_MVS` and writes an
+interpolated clip that the shell then loops, and `axprobe` reads the real
+`avg_frame_rate` through libavformat without decoding frames so the blend
+interval matches the source. Prebuilt binaries ship in `video/bin/`;
+`video/build.sh` rebuilds them.
+
+### Crossfade transitions
+
+Changing the wallpaper crossfades between the old and the new with a gentle
+zoom from 0.97, ported from NothingLess's two-layer design. The part that
+matters: **each layer carries its own source string**. The incoming wallpaper
+loads into whichever layer is idle while the current one keeps showing the old
+one at full opacity; only once the incoming layer reports its content is ready
+does a short settle timer start the fade. Sharing one source between both
+layers and flipping which is active makes the pending source equal the current
+one immediately, the swap never fires, and the wallpaper freezes on the first
+image it ever loaded — that was the bug the port was written to fix.
+
+A 3 s safety timeout forces the fade for formats that never signal readiness,
+and the layer that faded out is emptied so it stops holding the image or the
+video decoder. The wallpapers tab gains an interpolation toggle and an x2 to x5
+multiplier selector, inserted as siblings of the tint control in the filter
+bar.
+
+## Task board
+
+`TodoBoard.qml` backs a fourth dashboard tab with a kanban-style board and a
+calendar view (`TodoTab.qml`, `TodoCalendar.qml`). The dashboard tab row was
+patched to count the extra tab instead of assuming three.
+
+## Per-monitor shell positions
+
+`PerMonitorConfig.qml` plus a patch make shell elements remember their position
+per monitor, keyed by output name.

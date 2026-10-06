@@ -13,7 +13,64 @@ multi-compositor parity (`hyprland | niri | mango`).
 
 | Package | Status | Summary |
 |---|---|---|
-| [`axless.core`](packages/axless.core) | in progress | Everything in one mod: agent platform, a single compositor menu that shows only what the running compositor supports, per-compositor monitors, and the remaining NothingLess features. |
+| [`axless.core`](packages/axless.core) | working | Everything in one mod: an AI agent platform, a compositor panel filtered to what the running compositor supports, a monitor manager with a drag canvas, a video wallpaper engine with GPU frame interpolation and crossfade transitions, a dashboard task board, and per-monitor shell positions. |
+
+## What `axless.core` includes
+
+### AI agent platform
+
+The assistant stops being "a chat box with one hardcoded tool" and becomes an
+agent host. You register agents; each agent advertises its own tools; the tools
+discovered from every connected agent are merged into the request the model
+sees.
+
+- Three transports: **MCP over stdio**, **HTTP bridge**, and **command agents**.
+- Two reference servers ship in the mod: **NothingClaw** (a self-driving agent
+  loop over Ollama with sandboxed filesystem and shell tools) and an **OpenCode
+  adapter** exposing the `opencode serve` API.
+- The AI engine is reworked: correct OpenAI `tool_calls` / `role: "tool"`
+  shaping, a model-capability probe that asks the model what it can do instead
+  of guessing, multi-step chain enforcement, a text-based tool-call fallback
+  for small local models, and per-tier timeouts.
+
+### Compositor panel and monitors
+
+- The compositor settings menu shows **only what the running compositor
+  supports**. On niri that is the Ambxst TOML sections plus monitors; on
+  Hyprland the 73 extra NothingLess settings appear and write through
+  `hyprctl keyword`.
+- A monitor manager with a logical-pixel drag canvas, edge snapping, overlap
+  resolution, per-output error reporting, and writes that go straight to the
+  compositor's own IPC (`niri msg output`, `hyprctl keyword monitor`). Runtime
+  only: nothing writes a compositor config file.
+
+### Video wallpaper engine
+
+- **GPU frame interpolation.** A `Video` element is decoded through a
+  shader-based interpolator (`interpol.frag`) that synthesizes the frames the
+  source never had, using motion vectors. An optional Go helper (`axvideo`)
+  pre-renders an interpolated clip for heavy sources, and `axprobe` reads the
+  real frame rate so the blend interval matches the source.
+- **Crossfade transitions.** Changing the wallpaper crossfades between the old
+  and the new with a gentle zoom, ported from NothingLess's two-layer design:
+  each layer holds its own source and the fade only starts once the incoming
+  layer reports its content is ready, so it works for images, GIFs and video
+  alike, with a safety timeout for formats that never signal readiness.
+- A wallpapers-tab toggle and an x2 to x5 multiplier selector drive the
+  interpolator.
+
+### Dashboard task board
+
+A fourth dashboard tab (toggled with F5) with a kanban-style board and a
+calendar view, backed by `TodoBoard.qml`.
+
+### Per-monitor shell positions
+
+Shell elements remember their position per monitor (`PerMonitorConfig.qml`).
+
+### Translations
+
+Every key the mod uses resolves in English, Spanish and Russian.
 
 ## Planned
 
@@ -21,54 +78,35 @@ Inside `axless.core`, not yet implemented. Ordered by value per unit of risk.
 
 | Feature | Files | Notes |
 |---|---|---|
-| Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs Settings `section: 11` (10 is Mods). |
-| Multi-monitor editor | `MonitorsPanel.qml` + 4 sub-panels, `monitors_writer.py` | Large. Wants a Go `monitor` service wrapping `axctl` rather than the Python path. |
+| Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs a free Settings section id. |
 | Hax spotlight | `SpotlightView.qml` (5227 lines), `PluginManager.qml`, `Calculator.qml` | Runs as a standalone `qs` process, so it barely touches the base tree. Needs a new `ambxst spotlight` subcommand. |
 | Bar TaskTray | `TaskTray.qml`, `BarSliderBase.qml` | The task tray on its own; the island part was cancelled, see below. |
 | Cava audio visualizer | `CavaService.qml`, `CavaVisualizer.qml` | Distinct from the cancelled metrics work. |
 | Focus Mode + DND | `FocusModeService.qml` | DND does not exist in Ambxst at all. |
 | Battery charge limit | `ChargeLimitService.qml`, `set-charge-limit.sh` | The one battery feature Ambxst genuinely lacks. |
-| `CompositorColors.js` + `free.snap-*` keybinds | | Small dedup plus pure catalog data. |
 
-### Plan a futuro
+### Cancelled or dropped
 
 Features that were investigated and then deliberately dropped, recorded here so
 the reasoning survives and nobody re-opens them by accident. Recoverable from
-git if they are ever wanted.
+git history if they are ever wanted.
 
-#### Isla dinámica en la barra — cancelada (2026-10-10)
+- **Dynamic bar island** (`barMode` extended/dynamic rendering the notch as a
+  pill inside the bar). Cancelled: `barMode` is a refactor of the bar's whole
+  geometry, not a component drop-in.
+- **Notch / island metrics** (live CPU, GPU, RAM, disk in the notch). Removed on
+  request. Two findings survive: Ambxst's Go backend has no power or FPS source,
+  and `ConfigValidator.validate()` rebuilds the config from the defaults, so a
+  new setting needs an entry in `config/defaults/<section>.js` or it is stripped
+  on the next save.
+- **Boot splash** (F7). Implemented, then reverted on request.
 
-`barMode` (`extended` / `dynamic`) plus `IslandContent.qml` rendering the
-notch's `DefaultView` as a pill inside the bar. Cancelled by the user.
+### Launching Ambxst
 
-Why it was not trivial: `barMode` is not a switch. `BarContent.qml` branches on
-it for width, height, x, y, reveal and auto-hide (7 sites in 856 lines), so it
-is a refactor of the bar's geometry rather than a component drop-in.
-
-#### Métricas en el notch / isla — descartadas (2026-10-10)
-
-`MetricsGroup.qml`, `MetricsGroupWrapper.qml` and a `NotchMetrics.qml` row in
-`DefaultView`, fed from Ambxst's `SystemResources`. It worked — live CPU, GPU,
-RAM and disk in the notch on both monitors — and was then removed on request.
-
-Two things worth keeping from the attempt:
-
-- **Ambxst has no power or FPS source.** The Go backend at
-  `backend/pkg/svc/systemmonitor` only emits `cpu{usage,temp}`, `ram`,
-  `disk{usage}` and `gpu{usages,temps}`. NothingLess also showed watts and
-  frame rate; there is no field to read them from, so they would have to be
-  invented. That was a permanent limitation, not a porting gap.
-- **`ConfigValidator.validate()` rebuilds the config by iterating the defaults
-  and copies only the keys it finds there.** Adding a property to `Config.qml`
-  alone is inert — the shell strips it back out of the JSON on the next save.
-  Any new setting needs its entry in `config/defaults/<section>.js` as well.
-
-#### Launching Ambxst
-
-Not a feature, but the thing most likely to waste an afternoon: the shell must be
-started with **`ambxst`**, not `qs -p .../shell.qml`. `BackendService` talks to
-the Go daemon over `$XDG_RUNTIME_DIR/ambxst.sock`; launching the shell directly
-leaves that socket absent, subscriptions fail with
+Not a feature, but the thing most likely to waste an afternoon: the shell must
+be started with **`ambxst`**, not `qs -p .../shell.qml`. `BackendService` talks
+to the Go daemon over `$XDG_RUNTIME_DIR/ambxst.sock`; launching the shell
+directly leaves that socket absent, subscriptions fail with
 `BackendService: subscription socket error 2`, and every metric reads as a dash
 while `monitoringActive` is still `true`.
 
@@ -76,7 +114,7 @@ while `monitoringActive` is still `true`.
 
 - NothingLess's animation system (`Anim.qml`, `AnimatedBehavior.qml`). Ported
   code is translated to Ambxst's native `Config.animDuration` + `Easing.*`
-  instead, so the assistant matches the rest of the shell and there is no second
+  instead, so ported UI matches the rest of the shell and there is no second
   source of truth for durations.
 - `Surface`, `Speedometer`, `DiskBar`, `StatCard`, `CloseButton` — Ambxst's
   `StyledRect` and `Circular*` already cover them under other names.
@@ -87,9 +125,9 @@ while `monitoringActive` is still `true`.
   compositor keys it feeds. Ambxst generalises this in
   `backend/pkg/svc/compositor`; porting the translator would regress niri and
   mango.
-- NothingLess reimplements of clipboard, OCR/QR, screenshots, system monitor,
-  keystore, link preview, weather, night light, game mode, caffeine, power
-  profile and recorder. All native in `backend/pkg/svc/*`.
+- NothingLess reimplementations of clipboard, OCR/QR, screenshots, system
+  monitor, keystore, link preview, weather, night light, game mode, caffeine,
+  power profile and recorder. All native in `backend/pkg/svc/*`.
 - `ScreenTranslation.qml` and `MusicRecognizer.qml` — orphaned even in
   NothingLess.
 
@@ -102,7 +140,9 @@ ambxst reload
 ```
 
 There is exactly one package. It declares no dependencies and nothing outside
-the Ambxst tree is required.
+the Ambxst tree is required. For the optional pre-rendered interpolation path,
+`ffmpeg` and a Go toolchain (to rebuild `axvideo`) are used; prebuilt binaries
+ship in the mod.
 
 ## Conventions
 
@@ -119,3 +159,8 @@ the Ambxst tree is required.
   `testedBaseCommits`.
 - Do not ship `expectedSha256` for a payload file identical to the base; it is a
   no-op overlay that will fail the first time upstream touches it.
+
+## License
+
+AGPL-3.0, matching both upstreams ([Ambxst](https://github.com/Axenide/Ambxst)
+and NothingLess). See [LICENSE](LICENSE).
