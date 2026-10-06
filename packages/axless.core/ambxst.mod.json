@@ -447,6 +447,11 @@
     },
     {
       "type": "overlay",
+      "source": "payload/modules/widgets/spotlight/plugin-ejemplo.sh",
+      "target": "modules/widgets/spotlight/plugin-ejemplo.sh"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/components/CloseButton.qml",
       "target": "modules/components/CloseButton.qml"
     },
