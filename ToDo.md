@@ -235,10 +235,20 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
      el shell borraba `showMetrics` de `notch.json` en el siguiente guardado y
      el ajuste se reseteaba solo. Por eso el overlay de `defaults/notch.js`
      necesita `replace: true` + `expectedSha256`.
-  Verificado: con el flag activo `metricsActive`/`monitoringActive` pasan a
-  true, `notch.json` conserva la clave tras reiniciar el shell, el ancho del
-  notch crece (386 px) y llegan muestras reales (CPU 9.2% / 67 °C, RAM 78.8 %,
-  disco 12.1 %).
+  Verificado **en el shell real**: la fila se monta en los dos monitores con
+  `visible=true`, `enabled=true` y ancho que crece de 102 → 263 px según llegan
+  datos; muestras reales CPU 9.3 % / 73 °C, RAM 60.8 %, 1 GPU detectada.
+
+  ### ⚠ Requisito: hay que lanzar `ambxst`, no `qs -p shell.qml`
+  `BackendService` se conecta al socket `$XDG_RUNTIME_DIR/ambxst.sock`, que crea
+  el daemon Go de Ambxst. Si se arranca solo `qs -p .../shell.qml` no hay daemon,
+  el socket no aparece y se repiten `BackendService: subscription socket error 2`
+  — `SystemResources` se queda sin muestras y las métricas salen todas como
+  guiones, aunque `monitoringActive` sea `true`. Es un fallo de entorno, no de la
+  feature, pero parece un bug de ella. **Relanzar con `ambxst` a secas.**
+
+  El único ERROR que queda al arrancar es
+  `CompositorConfig: Error parsing animations`, preexistente y ajeno a esto.
 - [x] **Posiciones por monitor (F3)**: `services/PerMonitorConfig.qml` lee
   `~/.config/ambxst/config/monitors.json` y expone
   `resolve(screen, domain, key, default)`.
