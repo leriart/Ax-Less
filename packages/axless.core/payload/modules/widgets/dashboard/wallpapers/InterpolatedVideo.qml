@@ -78,11 +78,128 @@ Item {
     property int frameCountSinceLastSecond: 0
     property real lastFpsUpdateTime: 0
 
+    // ── Pre-rendered interpolation (axvideo) ──────────────────────
+    //
+    // The GPU shader estimates motion per block, and its previous-frame
+    // source cannot be made reliable from QML: Quickshell has no
+    // ImageProvider and ShaderEffectSource does not expose textureSize, so
+    // there is no way to feed it valid frames or size them correctly.
+    //
+    // So the real work is done up front by axvideo, which uses the decoder's
+    // own motion vectors, and the shell just plays the result. A wallpaper
+    // loops, so rendering a copy costs nothing at playback time.
+    property string interpolateScriptPath: Qt.resolvedUrl("../../../../video/bin/interpolate.sh")
+    property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/ambxst/interpolated"
+    // Non-empty once the interpolated copy exists and is what we play.
+    property string interpolatedPath: ""
+    property bool renderPending: false
+
+    // Keep playing the original until the render finishes, so enabling
+    // interpolation never blanks the wallpaper.
+    readonly property string playbackPath: (interpolate && interpolatedPath !== "") ? interpolatedPath : sourceFile
+
+    function _basename(p) {
+        const parts = String(p).split("/");
+        return parts[parts.length - 1];
+    }
+
+    function _cacheTarget() {
+        // Multiplier and source both land in the name, so changing either
+        // naturally produces a different cache entry.
+        return cacheDir + "/" + _basename(sourceFile) + ".x" + multiplier + ".mp4";
+    }
+
+    function _startRender() {
+        if (!sourceFile || interpolateScriptPath === "")
+            return;
+        const target = _cacheTarget();
+        // No existence check on this side: neither File.exists nor
+        // FileView.exists is available here (both throw), and interpolate.sh
+        // already no-ops on a cached target, printing the path either way.
+        renderPending = true;
+        // QML resolves a bare relative path against the *current working
+        // directory*, which is not where the shell runs. file:// URLs have to
+        // be stripped and turned into a real path before exec, otherwise the
+        // process fails silently and renderPending never clears.
+        let script = String(interpolateScriptPath).replace("file://", "");
+        // Run it through bash explicitly. Process execs the first argument
+        // directly, and a .sh with a shebang is not guaranteed to be treated
+        // as executable from here - the launch just failed and
+        // renderPending never cleared.
+        renderProc.command = ["bash", script, sourceFile, target, String(multiplier)];
+        renderProc.running = true;
+    }
+
+    onInterpolateChanged: {
+        if (interpolate && multiplier > 1) {
+            _startRender();
+            // Only prime the shader's frame sources while it is the thing
+            // actually drawing; once axvideo has rendered a copy the shader
+            // is skipped entirely.
+            if (interpolatedPath === "") {
+                previousFrame.scheduleUpdate();
+                lastCaptureTime = Date.now();
+            }
+            captureTimer.restart();
+            blendAnimation.running = true;
+        } else {
+            interpolatedPath = "";
+            renderPending = false;
+            captureTimer.stop();
+            blendAnimation.running = false;
+            // Reset so switching interpolation back on does not start from a
+            // stale blendFactor and show a single garbage frame.
+            blendFactor = 0;
+            isOriginalFrame = true;
+        }
+    }
+
+    onMultiplierChanged: {
+        interpolatedPath = "";
+        renderPending = false;
+        if (interpolate && multiplier > 1) {
+            _startRender();
+            captureTimer.restart();
+            blendAnimation.running = true;
+        } else {
+            captureTimer.stop();
+            blendAnimation.running = false;
+        }
+    }
+
+    // Switching source must invalidate the cache entry: a different clip
+    // means a different interpolated copy.
+    onPlaybackPathChanged: restart()
+
+    Process {
+        id: renderProc
+        running: false
+        stdout: StdioCollector {
+            id: renderOut
+                // The script prints the final path on its last stdout line. Read
+            // it here rather than on the process: Process has no onExited, and
+            // the collector's streamFinished is the only reliable end-of-output
+            // signal. A run that produced nothing simply clears the flag, so a
+            // failure leaves the original clip playing instead of blanking.
+            onStreamFinished: {
+                const out = renderOut.text.trim().split("\n").filter(s => s.length > 0);
+                const target = out.length > 0 ? out[out.length - 1] : "";
+                if (root.renderPending && target !== "") {
+                    root.interpolatedPath = target;
+                    root.restart();
+                } else if (root.renderPending) {
+                    console.warn("InterpolatedVideo: el render no produjo", target || "(nada)");
+                }
+                root.renderPending = false;
+            }
+        }
+    }
+
     function restart() {
-        if (!sourceFile)
+        if (!playbackPath)
             return;
         player.stop();
-        player.source = "file://" + sourceFile;
+        player.source = "file://" + playbackPath;
         playIfNeeded();
     }
 
@@ -117,6 +234,12 @@ Item {
     // before the probe answers, and if the binary is unavailable.
     property string axprobePath: Qt.resolvedUrl("../../../../video/bin/axprobe")
     property bool sourceProbed: false
+
+    // The GPU shader only fills in while no rendered copy exists. Once axvideo
+    // has produced one it is a better result - real decoder motion vectors
+    // instead of a per-block estimate - and it sidesteps the shader's
+    // unresolved previous-frame source problem entirely.
+    readonly property bool shaderActive: interpolate && multiplier > 1 && interpolatedPath === ""
 
     function probeSource() {
         if (!sourceFile || sourceProbed)
@@ -170,34 +293,10 @@ Item {
         restart();
     }
 
-    onInterpolateChanged: {
-        if (interpolate && multiplier > 1) {
-            previousFrame.scheduleUpdate();
-            lastCaptureTime = Date.now();
-            captureTimer.restart();
-            blendAnimation.running = true;
-        } else {
-            captureTimer.stop();
-            blendAnimation.running = false;
-            // Reset so switching interpolation back on does not start from a
-            // stale blendFactor and show a single garbage frame.
-            blendFactor = 0;
-            isOriginalFrame = true;
-        }
-    }
-
-    onMultiplierChanged: {
-        if (!interpolate || multiplier <= 1) {
-            captureTimer.stop();
-            blendAnimation.running = false;
-        } else {
-            captureTimer.restart();
-            blendAnimation.running = true;
-        }
-    }
-
     Component.onCompleted: {
         probeSource();
+        if (interpolate && multiplier > 1)
+            _startRender();
         restart();
     }
 
@@ -224,8 +323,8 @@ Item {
         // Null when interpolation is off: pointing this at the VideoOutput
         // would force texture-capture mode and cost a full-screen copy for
         // every frame just to throw it away.
-        sourceItem: root.interpolate && root.multiplier > 1 ? videoNode : null
-        live: root.interpolate && root.multiplier > 1
+        sourceItem: root.shaderActive ? videoNode : null
+        live: root.shaderActive
         hideSource: true
         smooth: true
         visible: false
@@ -234,7 +333,7 @@ Item {
     // ── The previous source frame, frozen ─────────────────────────
     ShaderEffectSource {
         id: previousFrame
-        sourceItem: root.interpolate && root.multiplier > 1 ? videoNode : null
+        sourceItem: root.shaderActive ? videoNode : null
         live: false
         hideSource: true
         smooth: true
