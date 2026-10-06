@@ -652,6 +652,7 @@ Rectangle {
         StyledRect {
             anchors.centerIn: parent
             width: 320
+            height: 396
             radius: Styling.radius(0)
             variant: "popup"
             clip: true
@@ -660,6 +661,14 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 8
+
+                Text {
+                    text: "Select date"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(1)
+                    font.weight: Font.Medium
+                    color: Colors.overBackground
+                }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -737,6 +746,7 @@ Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredHeight: 32
+                            Layout.maximumHeight: 32
                             radius: Styling.radius(-2)
                             color: !modelData.cur ? "transparent"
                                 : (pickerDay > 0 && new Date(pickerYear, pickerMonth, modelData.n).toDateString()
@@ -778,8 +788,19 @@ Rectangle {
                     }
                     TextField {
                         text: String(pickerTimeH).padStart(2, '0')
-                        Layout.preferredWidth: 40
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 32
                         inputMask: "99"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-1)
+                        color: Colors.overBackground
+                        horizontalAlignment: Text.AlignHCenter
+                        background: Rectangle {
+                            color: "transparent"
+                            border.color: Colors.outlineVariant
+                            border.width: 1
+                            radius: Styling.radius(-3)
+                        }
                         validator: IntValidator { bottom: 0; top: 23 }
                         onTextChanged: {
                             var v = parseInt(text)
@@ -794,8 +815,19 @@ Rectangle {
                     }
                     TextField {
                         text: String(pickerTimeM).padStart(2, '0')
-                        Layout.preferredWidth: 40
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 32
                         inputMask: "99"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-1)
+                        color: Colors.overBackground
+                        horizontalAlignment: Text.AlignHCenter
+                        background: Rectangle {
+                            color: "transparent"
+                            border.color: Colors.outlineVariant
+                            border.width: 1
+                            radius: Styling.radius(-3)
+                        }
                         validator: IntValidator { bottom: 0; top: 59 }
                         onTextChanged: {
                             var v = parseInt(text)
@@ -810,7 +842,7 @@ Rectangle {
                     spacing: 4
                     StyledRect {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
                         variant: "common"
                         radius: Styling.radius(-2)
                         Text {
@@ -828,7 +860,7 @@ Rectangle {
                     }
                     StyledRect {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
                         variant: "common"
                         radius: Styling.radius(-2)
                         Text {
@@ -846,7 +878,7 @@ Rectangle {
                     }
                     StyledRect {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
                         variant: "primary"
                         radius: Styling.radius(-2)
                         Text {
@@ -1008,6 +1040,7 @@ Rectangle {
                         editable: true
                         value: newTaskTimeH
                         Layout.preferredWidth: 52
+                        Layout.preferredHeight: 32
                         background: Rectangle { color: "transparent"; border.color: Colors.outlineVariant; border.width: 1; radius: Styling.radius(-3) }
                         contentItem: TextInput {
                             text: rangeHour.value
@@ -1033,6 +1066,7 @@ Rectangle {
                         editable: true
                         value: newTaskTimeM
                         Layout.preferredWidth: 52
+                        Layout.preferredHeight: 32
                         background: Rectangle { color: "transparent"; border.color: Colors.outlineVariant; border.width: 1; radius: Styling.radius(-3) }
                         contentItem: TextInput {
                             text: rangeMin.value
@@ -1053,7 +1087,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 6
                     StyledRect {
-                        Layout.preferredHeight: 28
+                        Layout.preferredHeight: 36
                         Layout.preferredWidth: 70
                         radius: Styling.radius(-2)
                         variant: "common"
@@ -1071,7 +1105,7 @@ Rectangle {
                         }
                     }
                     StyledRect {
-                        Layout.preferredHeight: 28
+                        Layout.preferredHeight: 36
                         Layout.preferredWidth: 60
                         radius: Styling.radius(-2)
                         variant: "common"
@@ -1093,7 +1127,7 @@ Rectangle {
                     }
                     Item { Layout.fillWidth: true }
                     StyledRect {
-                        Layout.preferredHeight: 28
+                        Layout.preferredHeight: 36
                         Layout.preferredWidth: 80
                         radius: Styling.radius(-2)
                         variant: "primary"
