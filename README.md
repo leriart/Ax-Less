@@ -1,0 +1,79 @@
+# Ax-Less
+
+Ambxst mods that bring the NothingLess feature set to
+[Ambxst](https://github.com/Axenide/Ambxst) 1.3.10.
+
+NothingLess is a full shell fork that diverged from Ambxst around v1.1.0. Most
+of what it added is **already in Ambxst 1.3.10 natively**, in the Go backend
+(`backend/pkg/svc/*`) rather than in QML and shell scripts. Those parts are not
+ported — copying them backwards would undo work Ambxst has since done, including
+multi-compositor parity (`hyprland | niri | mango`).
+
+## Packages
+
+| Package | Status | Summary |
+|---|---|---|
+| [`axless.motion`](packages/axless.motion) | done | Named motion profiles + `AnimatedBehavior`. Foundation mod. |
+| [`axless.agents`](packages/axless.agents) | done | Agent platform: MCP / HTTP-bridge / command agents, tool registry, reworked AI engine. Depends on `axless.motion`. |
+
+## Planned
+
+Not yet implemented. Ordered roughly by value per unit of risk.
+
+| Feature | Files | Notes |
+|---|---|---|
+| Todo board | `TodoTab.qml`, `TodoBoard.qml` | Cleanest port in the set: three append-only insertions in `Dashboard.qml`. |
+| Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs Settings `section: 11` (10 is Mods). |
+| Multi-monitor editor | `MonitorsPanel.qml` + 4 sub-panels, `monitors_writer.py` | Large. Wants a Go `monitor` service wrapping `axctl` rather than the Python path. |
+| Hax spotlight | `SpotlightView.qml` (5227 lines), `PluginManager.qml`, `Calculator.qml` | Runs as a standalone `qs` process, so it barely touches the base tree. Needs a new `ambxst spotlight` subcommand. |
+| Bar TaskTray + island mode | `TaskTray.qml`, `IslandContent.qml`, `BarSliderBase.qml` | |
+| Notch/desktop metrics + Cava | `MetricsGroup.qml`, `CavaService.qml`, `CavaVisualizer.qml` | Use Ambxst's `SystemResources` for the data, not NothingLess's Python monitors. |
+| Focus Mode + DND | `FocusModeService.qml` | DND does not exist in Ambxst at all. |
+| Battery charge limit | `ChargeLimitService.qml`, `set-charge-limit.sh` | The one battery feature Ambxst genuinely lacks. |
+| Per-monitor shell positions | `PerMonitorConfig.qml` | Touches exclusive-zone maths; moderate risk. |
+| `CompositorColors.js` + `free.snap-*` keybinds | | Small dedup plus pure catalog data. |
+
+### Deliberately excluded
+
+- `Anim.qml`'s migration of the **1088** `Config.animDuration` call sites. The
+  singleton is ported in `axless.motion`; migrating the tree is a separate job.
+- `Surface`, `Speedometer`, `DiskBar`, `StatCard`, `CloseButton` — Ambxst's
+  `StyledRect` and `Circular*` already cover them under other names.
+- Per-directory `qmldir` files. Ambxst resolves bar siblings with
+  `import "." as Bar`; adding a second resolution path risks the five existing
+  `Bar.*` references.
+- The Hyprland-only `sync-hyprland.py` (1533 lines) and the ~150 extra
+  compositor keys it feeds. Ambxst generalises this in
+  `backend/pkg/svc/compositor`; porting the translator would regress niri and
+  mango.
+- NothingLess reimplements of clipboard, OCR/QR, screenshots, system monitor,
+  keystore, link preview, weather, night light, game mode, caffeine, power
+  profile and recorder. All native in `backend/pkg/svc/*`.
+- `ScreenTranslation.qml` and `MusicRecognizer.qml` — orphaned even in
+  NothingLess.
+
+## Install
+
+```bash
+for p in packages/*/; do ambxst mods install "$(realpath "$p")"; done
+for id in axless.motion axless.agents; do ambxst mods enable "$id"; done
+ambxst reload
+```
+
+Enable `axless.motion` before `axless.agents`; the agents UI animates through
+it.
+
+## Conventions
+
+- One feature per package. A failing package must not take down the rest.
+- Prefer **patches** that only insert lines over `replace` overlays. Two mods
+  inserting at the same anchor both survive; two mods rewriting the same base
+  lines stop the build. `SettingsTab.qml` indexes `panelComponents` by section
+  id, so a new Settings section must claim the next free id and be appended —
+  never renumber.
+- Declare `author`, `authorUrl`, `homepage` and `license`. The install prompt is
+  where a user decides whether to trust the code.
+- Pin `compatibility.ambxst` to the range you tested and list
+  `testedBaseCommits`.
+- Do not ship `expectedSha256` for a payload file identical to the base; it is a
+  no-op overlay that will fail the first time upstream touches it.
