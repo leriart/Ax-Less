@@ -178,14 +178,19 @@ index 63137c2..83586ef 100644
  
                  Component.onCompleted: wallpaper.activeVideo = videoWallpaperChild
 diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
-index 195fd45..618b4af 100644
+index 195fd45..e3cf295 100644
 --- a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
 +++ b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
-@@ -764,6 +764,181 @@ FocusScope {
+@@ -764,11 +764,188 @@ FocusScope {
                                      }
                                  }
                              }
 +
+                         }
+                     }
+                 }
+             }
+ 
 +            // axless.core: interpolation toggle + frame multiplier, sitting
 +            // immediately after the tint control. Modelled on NothingLess: a
 +            // checkable tile that reveals an x2..x5 selector only while it is
@@ -205,7 +210,10 @@ index 195fd45..618b4af 100644
 +                    anchors.left: parent.left
 +                    anchors.top: parent.top
 +                    anchors.bottom: parent.bottom
-+                    width: 100
++                    // Wide enough for the longest translated label plus the
++                    // check box; the search field is the fillWidth item and
++                    // absorbs the difference.
++                    width: 148
 +                    radius: Styling.radius(4)
 +                    variant: interpolationContainer.checked ? "primary" : "pane"
 +
@@ -237,7 +245,6 @@ index 195fd45..618b4af 100644
 +                                font.weight: Font.Medium
 +                                verticalAlignment: Text.AlignVCenter
 +                                leftPadding: 8
-+                                elide: Text.ElideRight
 +                            }
 +                        }
 +
@@ -360,6 +367,6 @@ index 195fd45..618b4af 100644
 +                    }
 +                }
 +            }
-                         }
-                     }
-                 }
+             // Spacer
+             // Item { Layout.fillWidth: true }
+ 

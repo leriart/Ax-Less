@@ -238,6 +238,12 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
   y el toggle + selector x2..x5 está en la barra de filtros justo junto al
   botón de tinte (mismo patrón que NL: la_tile que se marca y revela el
   selector solo cuando está activo). Traducciones en/es añadidas.
+  **Arreglo de anidamiento**: la primera inserción del bloque quedó *dentro* de
+  `tintCheckboxContainer` (el ancla era el `MouseArea` del tinte, no su cierre),
+  así que se dibujaba encima de la casilla de tinte en una caja de 100 px y no
+  se veía. Va como hermano; verificado por profundidad de llaves y por captura
+  renderizada, que muestra "Interpolación" completo junto a "Tinte" y el chip
+  "x3" al activarlo. La etiqueta necesitaba 148 px, no 100.
   **Nota sobre el selector**: NL usa un `ComboBox`, pero dentro de un tab
   con scroll sus popups pelean con el gesto de scroll del propio tab, así que
   aquí cicla x2→x3→x4→x5→x2 al hacer clic, que no necesita popup.
