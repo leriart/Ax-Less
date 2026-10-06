@@ -266,6 +266,66 @@ compositor's output API instead of being staged for a config-file writer.
 Runtime only. Nothing here writes a compositor config file, so values reset
 when the compositor restarts.
 
+### Bugs found and fixed while making it functional
+
+**Reading an output's on/off state.** niri still lists an output that is off,
+and gives no `disabled` flag. The signal is that it reports `current_mode: null`
+and `logical: null`. The panel had `enabled: true` hardcoded, so an output the
+user had switched off still claimed to be on. Confirmed against the live
+compositor by toggling HDMI-A-1 off and diffing the payload.
+
+**Canvas geometry was wrong for niri.** `logicalWidth`/`logicalHeight` divided
+by scale, which is Hyprland's convention: `hyprctl` reports pixel dimensions
+plus a separate scale and positions in already-divided logical units. niri
+reports `logical.width` in pixels and positions in that same space - a 1536-wide
+panel at scale 1.25 puts the next output at x=1536, not 1229. The same rule for
+both compositors misplaced every box. It is now `pixelsAreLogical`, true for
+niri and false for the sway-style clients.
+
+**Hyprland had no `positionAuto`.** The write map had no case for it, so the
+Auto button reported "Unknown action". Mapped to `monitor <name>,position,auto`.
+
+**Hyprland VRR state could not be read back.** `hyprctl` reports whether VRR
+is supported but not whether it is on, so the toggle would always show off.
+Whatever was last requested is now remembered per output.
+
+**One shared error string for every output.** A rejected change on one monitor
+showed on the panel title with no indication of which output it belonged to.
+Errors are now per output, shown on the card, and cleared on success.
+
+**The poll could fight the writes.** The 4 s refresh could land between the
+compositor applying a change and the panel's own bookkeeping, flicking a
+control back to its old value. The poll now stands down while any write is in
+flight, and a second write for the same output supersedes the first instead of
+racing it.
+
+### Improvements over the first version
+
+- Collapsible cards. A 27" panel here exposes 39 modes; rendering every one as
+  a chip made the list unusable.
+- Preferred modes are marked with a star, and there is an Auto chip for both
+  mode and scale, which niri supports.
+- Identify. Neither niri nor hyprctl exposes a flash-this-output verb, so it
+  highlights the output on the canvas for ~2 s and dims the others.
+- Per-output busy and error state, and stale state is dropped when an output
+  disappears and comes back.
+- Serial number and physical size shown when the compositor reports them.
+
+### Verified against the live compositor
+
+Every write path exercised on HDMI-A-1 and restored afterwards:
+
+```
+scale 1.5              -> applied (niri adjusted the mode to 1280x720 logically)
+transform 90           -> applied (720x1280, rotated)
+position 3000,0        -> applied
+mode 1920x1080@74.998  -> applied (switched to 75 Hz)
+invalid action         -> clean "Unknown action"
+off                    -> enabled=false width=0 refresh=0.000
+on                     -> enabled=true
+restore                -> scale 1, Normal, 1536,0, 1920x1080@60.000
+```
+
 Verified against the live niri daemon with two real outputs:
 
 ```

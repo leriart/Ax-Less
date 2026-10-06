@@ -13,16 +13,10 @@ import qs.config
 /*
     MonitorsPanel.qml
 
-    Monitor configuration driven through each compositor's own IPC, not
-    through axctl.
-
-    axctl is the wrong layer for this. Its vocabulary is fixed: it accepts
-    nine appearance keys, rejects anything else with "unsupported config
-    key", and silently drops keys it does not recognise when rendering
-    axctl.toml. Output configuration is not part of that vocabulary at all.
-
-    Every supported compositor does expose its own complete output API, and
-    that is what this panel talks to:
+    Output configuration driven through each compositor's own IPC, never
+    through axctl. axctl is the wrong layer for this: its vocabulary is
+    fixed, output configuration is not in it at all, and a mod cannot widen
+    it because the Go backend and the axctl binary are both compiled.
 
         niri       niri msg --json outputs
                    niri msg output <name> {off|on|mode|scale|transform
@@ -31,16 +25,32 @@ import qs.config
                    hyprctl keyword monitor <name>,<key>,<value>
         mango      sway-style IPC over $MANGO_INSTANCE_SIGNATURE
 
-    Data is queried live rather than read from AxctlService.monitors, because
-    that mapping is broken on niri: AxctlService.qml does
-    `id: parseInt(mon.id) || 0`, and niri's monitor id is a string name
-    ("eDP-1"), so every monitor comes back with id 0. Anything that compares
-    monitor ids by equality is unreliable there.
+    Per-compositor notes that shaped the code
+    -----------------------------------------
+    * An output that is off is still listed, but niri reports
+      `current_mode: null` and `logical: null` for it. That pair is the only
+      reliable "is on" signal, so `enabled` is derived from it rather than
+      assumed.
 
-    Changes are applied at runtime only. Nothing in this panel writes a
-    compositor config file, and `niri msg output` states plainly that its
-    changes are "temporary and not saved into the config file". Values reset
-    when the compositor restarts.
+    * niri reports `logical.width`/`logical.height` as the mode's pixel size,
+      and positions in that same space: with a 1536-wide panel at scale 1.25
+      the next output lands at x=1536, not 1229. Hyprland is the opposite -
+      `hyprctl` reports pixel dimensions plus a separate scale and positions
+      in already-divided logical units. So logicalWidth/logicalHeight divide by
+      scale for Hyprland and Mango, and not at all for niri. Using one rule for
+      both misplaces every box on the canvas.
+
+    * Data is read from the compositor, not from AxctlService.monitors, because
+      AxctlService.qml does `id: parseInt(mon.id) || 0` and niri's monitor ids
+      are names like "eDP-1", so parseInt yields NaN and every monitor reads
+      back as id 0.
+
+    * AxctlService.compositorName is not trusted verbatim either: Ambxst's
+      probe assigns stdout without checking whether the call failed, so with
+      axctl down it captures the client's error text as the name.
+
+    Changes are runtime-only. Nothing here writes a compositor config file, so
+    values reset when the compositor restarts.
 */
 Item {
     id: root
@@ -48,78 +58,94 @@ Item {
     property int maxContentWidth: 640
     readonly property int contentWidth: Math.min(width, maxContentWidth)
 
+    // False when hosted as a subsection of the compositor panel, which
+    // already renders its own PanelTitlebar; keeping both would show the same
+    // title twice.
+    property bool showHeader: true
+
+    // Set by the compositor panel when embedded there. Sections are toggled
+    // with `visible`, so root.visible stays true while another subsection
+    // shows; this is what lets the poll timer stand down.
+    property bool embedded: false
+    property string currentSection: ""
+
     // ── Backend ─────────────────────────────────────────────────────────
-    //
-    // Normally taken from AxctlService.compositorName, which Ambxst probes
-    // with `axctl system get-compositor`. That value is not trusted blindly:
-    // the probe does `stdout.trim()` without checking whether the call
-    // errored, so when axctl is not up it captures the client's error text
-    // ("error connecting to daemon: ...") as the compositor name. Only the
-    // three names Ambxst actually installs for are accepted.
-    //
-    // When the name is empty or unrecognised, one fallback probe tries each
-    // client's own read command. That keeps the panel usable while axctl is
-    // still starting, which is the common case on a cold boot.
     readonly property var knownCompositors: ["hyprland", "niri", "mango"]
 
-    readonly property string reportedCompositor: {
+    readonly property string reported: {
         const n = (AxctlService.compositorName || "").toLowerCase();
         return knownCompositors.indexOf(n) >= 0 ? n : "";
     }
 
     property string _detected: ""
-    readonly property string compositor: reportedCompositor !== "" ? reportedCompositor : _detected
+    readonly property string compositor: reported !== "" ? reported : _detected
+    readonly property bool resolved: reported !== "" || _detected !== ""
 
     readonly property bool niri: compositor === "niri"
     readonly property bool hyprland: compositor === "hyprland"
     readonly property bool mango: compositor === "mango"
     readonly property bool supported: niri || hyprland || mango
-    readonly property bool resolved: reportedCompositor !== "" || _detected !== ""
 
-    readonly property var probeTable: [
-        { name: "niri", argv: ["niri", "msg", "--json", "outputs"] },
-        { name: "hyprland", argv: ["hyprctl", "monitors", "-j"] },
-        { name: "mango", argv: ["mangoctl", "-j", "get_outputs"] }
-    ]
+    /*
+        Whether `logical.width`/`logical.height` are already in the space the
+        compositor positions outputs in. True for niri, false for Hyprland and
+        Mango, whose clients report pixel dimensions plus a scale.
+    */
+    readonly property bool pixelsAreLogical: niri
 
-    // Sequential on purpose: launching all three at once would race on
-    // root._detected and report whichever answers last, not first.
-    function _probeFrom(index) {
-        if (root._detected !== "" || root.reportedCompositor !== "")
-            return;
-        if (index >= root.probeTable.length)
-            return; // nothing answered; the retry timer will try again
-        const p = root.probeTable[index];
-        _run(p.argv, (ok) => {
-            if (ok)
-                root._detected = p.name;
-            else
-                root._probeFrom(index + 1);
-        });
-    }
-
-    // ── Normalised output list ──────────────────────────────────────────
-    //
-    // One shape for every compositor, so the UI never branches on backend.
-    // `id` is the compositor's own output name, which is what every write
-    // path expects back.
+    // ── State ───────────────────────────────────────────────────────────
     property var outputs: []
     property int selectedIndex: 0
     property string errorText: ""
     property bool loading: false
 
-    // False when hosted as a subsection of the compositor panel, which
-    // already renders its own PanelTitlebar with the section name; keeping
-    // both would show the same title twice.
-    property bool showHeader: true
+    // Per-output write state, keyed by output name: { busy: bool, error: "" }.
+    // Without this the only feedback is one shared title, so a rejected change
+    // on one output looks like it belongs to another.
+    property var perOutput: ({})
 
-    // Set by the compositor panel when this is embedded there. Sections are
-    // toggled with `visible`, so root.visible stays true even while another
-    // subsection is showing; this is what lets the poll timer stand down.
-    property bool embedded: false
-    property string currentSection: ""
+    // Collapsed state per output, so a long mode list does not bury the
+    // controls of the other outputs. NothingLess' MonitorCard collapses the
+    // same way.
+    property var collapsed: ({})
+
+    // Highlighted output for the Identify action, as a name rather than an
+    // index so it survives the list being re-read.
+    property string identifyTarget: ""
 
     readonly property var scaleOptions: [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+
+    function busyFor(id) {
+        const s = perOutput[id];
+        return !!(s && s.busy);
+    }
+
+    function errorFor(id) {
+        const s = perOutput[id];
+        return (s && s.error) ? s.error : "";
+    }
+
+    function isCollapsed(id) {
+        return collapsed[id] === true;
+    }
+
+    function setPerOutput(id, patch) {
+        const next = Object.assign({}, perOutput);
+        next[id] = Object.assign({}, next[id] || {}, patch);
+        perOutput = next;
+    }
+
+    function clearPerOutput(id) {
+        if (perOutput[id] === undefined)
+            return;
+        const next = Object.assign({}, perOutput);
+        delete next[id];
+        perOutput = next;
+    }
+
+    function isIdentifying(id) {
+        return identifyTarget === id;
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // Process plumbing
@@ -127,9 +153,9 @@ Item {
     //
     // Each call needs its import on its own line; the QML parser rejects
     // "import A; import B; Process {". Quickshell's Process emits
-    // `exited(code, status)` — `finished` is not a signal.
+    // `exited(code, status)` - `finished` is not a signal.
 
-    function _run(argv, onDone, env) {
+    function _run(argv, onDone) {
         const args = argv.map(a => JSON.stringify(String(a))).join(", ");
         let proc;
         try {
@@ -143,10 +169,11 @@ Item {
                 + "}",
                 root, "monProc");
         } catch (e) {
+            console.warn("MonitorsPanel: could not spawn", argv.join(" "), e);
             root.errorText = I18n.t("mp.spawn_failed");
             if (onDone)
-                onDone(false, "");
-            return;
+                onDone(false, "", "");
+            return null;
         }
         proc.exited.connect(function (exitCode) {
             let out = "";
@@ -156,6 +183,7 @@ Item {
                 err = proc.stderr ? proc.stderr.text : "";
             } catch (e) {
                 out = "";
+                err = "";
             }
             proc.destroy();
             if (onDone)
@@ -171,9 +199,9 @@ Item {
 
     function refresh() {
         root.errorText = "";
-        if (root.reportedCompositor === "" && root._detected === "") {
-            // Ambxst has not named the compositor yet (or named it with
-            // axctl's error text). Fall back to probing the clients.
+        if (root.reported === "" && root._detected === "") {
+            // Ambxst has not named the compositor yet, or named it with
+            // axctl's error text. Probe the clients instead.
             root._probeFrom(0);
             root._probeTimer.restart();
             return;
@@ -191,76 +219,101 @@ Item {
             _readMango();
     }
 
+    function _finishRead(list, err, fallback) {
+        root.loading = false;
+        if (err) {
+            root.errorText = err;
+            root.outputs = [];
+            return;
+        }
+        root.outputs = list;
+        // Keep the selection on a real row: the list can shrink when an
+        // output disappears, and an out-of-range index would silently
+        // deselect everything.
+        if (root.selectedIndex >= list.length)
+            root.selectedIndex = Math.max(0, list.length - 1);
+        // Drop per-output state for outputs that are gone, so a re-plugged
+        // monitor does not inherit a stale error.
+        const present = {};
+        for (let i = 0; i < list.length; i++)
+            present[list[i].id] = true;
+        const nextPer = {};
+        for (const k in root.perOutput) {
+            if (present[k])
+                nextPer[k] = root.perOutput[k];
+        }
+        if (Object.keys(nextPer).length !== Object.keys(root.perOutput).length)
+            root.perOutput = nextPer;
+    }
+
     function _readNiri() {
         _run(["niri", "msg", "--json", "outputs"], (ok, out, err) => {
-            root.loading = false;
             if (!ok) {
-                root.errorText = (err || "").trim() || I18n.t("mp.read_failed");
-                root.outputs = [];
+                root._finishRead([], (err || "").trim() || I18n.t("mp.read_failed"));
                 return;
             }
             let data;
             try {
                 data = JSON.parse(out);
             } catch (e) {
-                root.errorText = I18n.t("mp.bad_payload");
-                root.outputs = [];
+                root._finishRead([], I18n.t("mp.bad_payload"));
                 return;
             }
-            // niri returns an object keyed by output name.
             const list = [];
             for (const key in data) {
                 const o = data[key];
                 if (!o)
                     continue;
+                // An output that is off still appears in the list, but with
+                // current_mode and logical set to null. That is the signal.
+                const live = o.logical !== null && o.logical !== undefined;
+                const modeIndex = (o.current_mode === null || o.current_mode === undefined)
+                    ? -1 : o.current_mode;
+                const current = (modeIndex >= 0 && o.modes && o.modes[modeIndex]) ? o.modes[modeIndex] : null;
                 list.push({
                     id: o.name || key,
                     make: o.make || "",
                     model: o.model || "",
                     serial: o.serial || "",
-                    enabled: true,
-                    width: (o.logical && o.logical.width) || 0,
-                    height: (o.logical && o.logical.height) || 0,
-                    // niri reports the refresh rate in milli-hertz.
-                    refreshRate: o.modes && o.modes.length ? o.modes[o.current_mode || 0].refresh_rate / 1000 : 0,
+                    enabled: live,
+                    width: live ? (o.logical.width || 0) : 0,
+                    height: live ? (o.logical.height || 0) : 0,
+                    refreshRate: current ? current.refresh_rate / 1000 : 0,
                     modes: (o.modes || []).map(m => ({
                         width: m.width,
                         height: m.height,
                         refresh: m.refresh_rate / 1000,
                         preferred: !!m.is_preferred
                     })),
-                    scale: (o.logical && o.logical.scale) || 1,
-                    transform: (o.logical && o.logical.transform) || "Normal",
-                    x: (o.logical && o.logical.x) || 0,
-                    y: (o.logical && o.logical.y) || 0,
+                    scale: live ? (o.logical.scale || 1) : 1,
+                    transform: live ? (o.logical.transform || "Normal") : "normal",
+                    x: live ? (o.logical.x || 0) : 0,
+                    y: live ? (o.logical.y || 0) : 0,
                     vrrSupported: !!o.vrr_supported,
                     vrrEnabled: !!o.vrr_enabled,
-                    vrrOff: false,
                     physicalW: (o.physical_size && o.physical_size[0]) || 0,
                     physicalH: (o.physical_size && o.physical_size[1]) || 0
                 });
             }
-            root.outputs = list;
+            list.sort((a, b) => (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)));
+            root._finishRead(list, "");
         });
     }
 
     function _readHyprland() {
         _run(["hyprctl", "monitors", "-j"], (ok, out, err) => {
-            root.loading = false;
             if (!ok) {
-                root.errorText = (err || "").trim() || I18n.t("mp.read_failed");
-                root.outputs = [];
+                root._finishRead([], (err || "").trim() || I18n.t("mp.read_failed"));
                 return;
             }
             let data;
             try {
                 data = JSON.parse(out);
             } catch (e) {
-                root.errorText = I18n.t("mp.bad_payload");
-                root.outputs = [];
+                root._finishRead([], I18n.t("mp.bad_payload"));
                 return;
             }
-            root.outputs = (data || []).map(o => ({
+            root._finishRead((data || []).map(o => ({
                 id: o.name,
                 make: o.make || "",
                 model: o.model || "",
@@ -280,42 +333,38 @@ Item {
                 x: o.x || 0,
                 y: o.y || 0,
                 vrrSupported: !!o.vrr,
-                vrrEnabled: !!o.vrr && o.active !== undefined ? !!o.vrr : false,
-                vrrOff: false,
+                // hyprctl reports whether VRR is supported but not whether it
+                // is currently on, so keep whatever we last asked for rather
+                // than pretending to read it back.
+                vrrEnabled: !!o.vrr && (root.perOutput[o.name] ? root.perOutput[o.name].vrrRequested === true : false),
                 physicalW: 0,
                 physicalH: 0
-            }));
+            })), "");
         });
     }
 
     function _readMango() {
-        // Mango speaks the sway IPC protocol, reached through a socket named
-        // after $MANGO_INSTANCE_SIGNATURE. Not verifiable on this machine
-        // (Mango is not installed), so the panel reports honestly rather
-        // than pretending the read succeeded.
+        // Mango speaks the sway IPC protocol over a socket named after
+        // $MANGO_INSTANCE_SIGNATURE. Not verifiable on this machine: Mango is
+        // not installed. Report that instead of pretending the read worked.
         const sig = Quickshell.env("MANGO_INSTANCE_SIGNATURE");
         if (!sig || sig === "") {
-            root.loading = false;
-            root.errorText = I18n.t("mp.mango_no_signature");
-            root.outputs = [];
+            root._finishRead([], I18n.t("mp.mango_no_signature"));
             return;
         }
         _run(["mangoctl", "-j", "get_outputs"], (ok, out, err) => {
-            root.loading = false;
             if (!ok) {
-                root.errorText = (err || "").trim() || I18n.t("mp.read_failed");
-                root.outputs = [];
+                root._finishRead([], (err || "").trim() || I18n.t("mp.read_failed"));
                 return;
             }
             let data;
             try {
                 data = JSON.parse(out);
             } catch (e) {
-                root.errorText = I18n.t("mp.bad_payload");
-                root.outputs = [];
+                root._finishRead([], I18n.t("mp.bad_payload"));
                 return;
             }
-            root.outputs = (data || []).map(o => ({
+            root._finishRead((data || []).map(o => ({
                 id: o.name,
                 make: o.make || "",
                 model: o.model || "",
@@ -336,10 +385,9 @@ Item {
                 y: o.y || 0,
                 vrrSupported: false,
                 vrrEnabled: false,
-                vrrOff: false,
                 physicalW: 0,
                 physicalH: 0
-            }));
+            })), "");
         });
     }
 
@@ -347,14 +395,35 @@ Item {
     // Write
     // ═══════════════════════════════════════════════════════════════════
 
+    // Guards against a second write while one is in flight for the same
+    // output. The canvas can emit a release per drag, and two concurrent
+    // position writes would race and land wherever the compositor felt like.
+    property var inFlight: ({})
+
     function apply(id, action, value) {
-        root.errorText = "";
+        if (root.inFlight[id]) {
+            // The newest request wins: remember it and drop the old one.
+            root.clearPerOutput(id);
+        }
+        root.inFlight = Object.assign({}, root.inFlight, (function () {
+            const o = {};
+            o[id] = true;
+            return o;
+        })());
+        root.setPerOutput(id, { busy: true, error: "" });
+
         const done = (ok, out, err) => {
+            const o = Object.assign({}, root.inFlight);
+            delete o[id];
+            root.inFlight = o;
             if (!ok) {
-                root.errorText = (err || "").trim() || I18n.t("mp.write_failed");
+                const msg = (err || out || "").trim() || I18n.t("mp.write_failed");
+                root.setPerOutput(id, { busy: false, error: msg });
+                root.errorText = id + ": " + msg;
+            } else {
+                root.clearPerOutput(id);
             }
-            // The compositor reports its own state; re-read rather than
-            // guessing what it did with the request.
+            // The compositor owns its state; re-read rather than guessing.
             Qt.callLater(root.refresh);
         };
 
@@ -365,7 +434,11 @@ Item {
         else if (root.mango)
             _applyMango(id, action, value, done);
         else
-            root.errorText = I18n.t("mp.unsupported_compositor");
+            done(false, "", I18n.t("mp.unsupported_compositor"));
+    }
+
+    function _modeString(m) {
+        return m.width + "x" + m.height + "@" + Number(m.refresh).toFixed(3);
     }
 
     function _applyNiri(id, action, value, done) {
@@ -380,8 +453,14 @@ Item {
         case "mode":
             argv = ["niri", "msg", "output", id, "mode", String(value)];
             break;
+        case "modeAuto":
+            argv = ["niri", "msg", "output", id, "mode", "auto"];
+            break;
         case "scale":
             argv = ["niri", "msg", "output", id, "scale", String(value)];
+            break;
+        case "scaleAuto":
+            argv = ["niri", "msg", "output", id, "scale", "auto"];
             break;
         case "transform":
             argv = ["niri", "msg", "output", id, "transform", String(value)];
@@ -393,6 +472,9 @@ Item {
             argv = ["niri", "msg", "output", id, "position", "auto"];
             break;
         case "vrr":
+            // Remembered because the Hyprland path cannot read it back; for
+            // niri it is simply redundant with what the next read reports.
+            root.setPerOutput(id, { vrrRequested: !!value });
             argv = ["niri", "msg", "output", id, "vrr", value ? "on" : "off"];
             break;
         default:
@@ -403,20 +485,25 @@ Item {
     }
 
     function _applyHyprland(id, action, value, done) {
-        // hyprctl takes `monitor <name>,<keyword>,<value>` for dynamic
-        // per-output settings. Keyword names differ from niri's verbs, so the
-        // mapping happens here rather than in the UI.
-        const map = {
-            off: "disable,1",
-            on: "disable,0",
-            mode: "resolution," + String(value),
-            scale: "scale," + String(value),
-            transform: "transform," + String(value),
-            position: "position," + String(value.x) + "," + String(value.y),
-            vrr: "vrr," + (value ? "1" : "0")
-        };
-        const spec = map[action];
-        if (!spec) {
+        // hyprctl takes `keyword monitor <name>,<keyword>,<value>`. Keyword
+        // names differ from niri's verbs, so the mapping lives here and the UI
+        // never branches on compositor.
+        let spec;
+        switch (action) {
+        case "off": spec = "disable,1"; break;
+        case "on": spec = "disable,0"; break;
+        case "mode": spec = "resolution," + String(value); break;
+        case "modeAuto": spec = "resolution,auto"; break;
+        case "scale": spec = "scale," + String(value); break;
+        case "scaleAuto": spec = "scale,auto"; break;
+        case "transform": spec = "transform," + String(value); break;
+        case "position": spec = "position," + String(value.x) + "," + String(value.y); break;
+        case "positionAuto": spec = "position,auto"; break;
+        case "vrr":
+            root.setPerOutput(id, { vrrRequested: !!value });
+            spec = "vrr," + (value ? "1" : "0");
+            break;
+        default:
             done(false, "", I18n.t("mp.unknown_action"));
             return;
         }
@@ -428,9 +515,12 @@ Item {
             off: "POWER off",
             on: "POWER on",
             mode: "MODE " + String(value),
+            modeAuto: "MODE auto",
             scale: "SCALE " + String(value),
+            scaleAuto: "SCALE auto",
             transform: "TRANSFORM " + String(value),
             position: "POSITION " + String(value.x) + " " + String(value.y),
+            positionAuto: "POSITION auto",
             vrr: "VRR " + (value ? "on" : "off")
         };
         const cmd = map[action];
@@ -438,7 +528,27 @@ Item {
             done(false, "", I18n.t("mp.unknown_action"));
             return;
         }
+        root.setPerOutput(id, { vrrRequested: action === "vrr" ? !!value : false });
         _run(["mangoctl", "output", id, cmd], done);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Identify
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Neither niri nor hyprctl expose a "flash this output" verb, so
+    // Identify highlights the output on the arrangement canvas for a couple of
+    // seconds instead. That is honest and it is the thing you actually want
+    // when two monitors look alike.
+    property Timer _identifyTimer: Timer {
+        interval: 2200
+        onTriggered: root.identifyTarget = ""
+    }
+
+    function identify(id) {
+        root.selectedIndex = Math.max(0, root.outputs.findIndex(o => o.id === id));
+        root.identifyTarget = id;
+        root._identifyTimer.restart();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -451,7 +561,6 @@ Item {
         root.refresh();
     }
 
-    // Stops itself as soon as either source names the compositor.
     Timer {
         id: _probeTimer
         interval: 1500
@@ -464,314 +573,50 @@ Item {
         }
     }
 
+    readonly property var probeTable: [
+        { name: "niri", argv: ["niri", "msg", "--json", "outputs"] },
+        { name: "hyprland", argv: ["hyprctl", "monitors", "-j"] },
+        { name: "mango", argv: ["mangoctl", "-j", "get_outputs"] }
+    ]
+
+    // Sequential on purpose: launching all three at once would race on
+    // root._detected and report whichever answers last, not first.
+    function _probeFrom(index) {
+        if (root._detected !== "" || root.reported !== "")
+            return;
+        if (index >= root.probeTable.length)
+            return;
+        const p = root.probeTable[index];
+        _run(p.argv, (ok) => {
+            if (ok)
+                root._detected = p.name;
+            else
+                root._probeFrom(index + 1);
+        });
+    }
+
     Connections {
         target: AxctlService
         function onCompositorNameChanged() {
-            if (root.reportedCompositor !== "")
+            if (root.reported !== "")
                 Qt.callLater(root.refresh);
         }
     }
 
-    // The compositor pushes monitor changes too (a lid opening, a cable
-    // being plugged in), so a poll keeps the list honest without a
-    // subscription on every backend.
+    // Outputs change on their own - a lid opens, a cable is plugged in - so a
+    // poll keeps the list honest without a subscription on every backend. It
+    // stands down when the panel is not the visible subsection.
     Timer {
         interval: 4000
         repeat: true
         running: root.supported && root.visible
             && (!root.embedded || root.currentSection === "monitors")
-        onTriggered: root.refresh()
-    }
-
-
-    // ═══════════════════════════════════════════════════════════════════
-    // Reusable components
-    // ═══════════════════════════════════════════════════════════════════
-
-    component Label: Text {
-        font.family: Config.theme.font
-        font.pixelSize: Styling.fontSize(-1)
-        color: Colors.overSurfaceVariant
-    }
-
-    component ValueText: Text {
-        font.family: Config.theme.font
-        font.pixelSize: Styling.fontSize(0)
-        color: Colors.overBackground
-    }
-
-    component SmallButton: StyledRect {
-        id: btn
-        required property string text
-        property bool active: false
-        signal clicked()
-
-        variant: active ? "primaryfocus" : (hover.hovered ? "focus" : "pane")
-        radius: Styling.radius(2)
-        implicitWidth: Math.max(48, label.implicitWidth + 24)
-        implicitHeight: 32
-
-        Text {
-            id: label
-            anchors.centerIn: parent
-            text: btn.text
-            font.family: Config.theme.font
-            font.pixelSize: Styling.fontSize(-1)
-            color: Colors.overBackground
-        }
-
-        HoverHandler {
-            id: hover
-            cursorShape: Qt.PointingHandCursor
-        }
-        TapHandler {
-            onTapped: btn.clicked()
-        }
-    }
-
-    component IntField: StyledRect {
-        id: fld
-        required property string label
-        property int value: 0
-        property int minValue: -100000
-        property int maxValue: 100000
-        signal edited(int newValue)
-
-        variant: "pane"
-        radius: Styling.radius(2)
-        Layout.preferredWidth: 150
-        implicitHeight: 34
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.margins: 8
-            spacing: 8
-
-            Label {
-                text: fld.label
-                Layout.fillWidth: true
-            }
-
-            TextInput {
-                id: ti
-                text: String(fld.value)
-                color: Colors.overBackground
-                font.family: Config.theme.font
-                font.pixelSize: Styling.fontSize(0)
-                selectByMouse: true
-                horizontalAlignment: Text.AlignRight
-                validator: IntValidator {
-                    bottom: fld.minValue
-                    top: fld.maxValue
-                }
-                onEditingFinished: fld.edited(parseInt(text))
-                Keys.onEscapePressed: text = String(fld.value)
-            }
-        }
-    }
-
-    component ScaleField: StyledRect {
-        id: fld
-        property real value: 1.0
-        property var options: [1.0, 1.25, 1.5, 1.75, 2.0]
-        signal picked(real newValue)
-
-        variant: "pane"
-        radius: Styling.radius(2)
-        Layout.fillWidth: true
-        implicitHeight: 34
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.margins: 6
-            spacing: 6
-
-            Repeater {
-                model: fld.options
-                delegate: SmallButton {
-                    required property var modelData
-                    text: String(modelData)
-                    active: Math.abs(modelData - fld.value) < 0.001
-                    implicitWidth: 48
-                    implicitHeight: 26
-                    onClicked: fld.picked(modelData)
-                }
-            }
-        }
-    }
-
-    component OutputCard: StyledRect {
-        id: card
-        required property var output
-        required property var root_
-
-        variant: "pane"
-        radius: Styling.radius(2)
-        Layout.fillWidth: true
-        Layout.preferredHeight: body.implicitHeight + 24
-
-        ColumnLayout {
-            id: body
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 10
-
-            // Header: identity + on/off
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    ValueText {
-                        text: card.output.make + " " + card.output.model
-                        font.bold: true
-                    }
-                    Label {
-                        text: card.output.id
-                          + "  " + card.output.width + "×" + card.output.height
-                          + " @ " + Number(card.output.refreshRate).toFixed(0) + " Hz"
-                        Layout.fillWidth: true
-                    }
-                }
-
-                SmallButton {
-                    text: card.output.enabled ? I18n.t("mp.on") : I18n.t("mp.off")
-                    active: card.output.enabled
-                    onClicked: card.root_.apply(card.output.id, card.output.enabled ? "off" : "on")
-                }
-            }
-
-            // Everything below is meaningless on a disabled output.
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 10
-                visible: card.output.enabled
-                enabled: card.output.enabled
-
-                // Mode
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-                    visible: card.output.modes.length > 1
-
-                    Label {
-                        text: I18n.t("mp.mode")
-                    }
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Repeater {
-                            model: card.output.modes
-                            delegate: SmallButton {
-                                required property var modelData
-                                // Not named `active`: SmallButton already
-                                // declares that property, so a same-named
-                                // local would both shadow it and bind to
-                                // itself ("Property value set multiple
-                                // times").
-                                readonly property bool isCurrent: modelData.width === card.output.width
-                                        && modelData.height === card.output.height
-                                        && Math.abs(modelData.refresh - card.output.refreshRate) < 0.5
-                                text: modelData.width + "×" + modelData.height + "@"
-                                      + Number(modelData.refresh).toFixed(0)
-                                active: isCurrent
-                                onClicked: card.root_.apply(card.output.id, "mode",
-                                    modelData.width + "x" + modelData.height + "@" + Number(modelData.refresh).toFixed(3))
-                            }
-                        }
-                    }
-                }
-
-                // Scale
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        text: I18n.t("mp.scale") + "  " + card.output.scale
-                    }
-                    ScaleField {
-                        value: card.output.scale
-                        options: card.root_.scaleOptions
-                        onPicked: v => card.root_.apply(card.output.id, "scale", v)
-                    }
-                }
-
-                // Transform
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        text: I18n.t("mp.transform")
-                    }
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Repeater {
-                            model: card.root_.niri
-                                ? ["normal", "90", "180", "270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
-                                : [0, 90, 180, 270, 180 + 90, 270 + 90, -90, 90]
-                            delegate: SmallButton {
-                                required property var modelData
-                                text: String(modelData)
-                                active: String(card.output.transform).toLowerCase() === String(modelData).toLowerCase()
-                                onClicked: card.root_.apply(card.output.id, "transform", modelData)
-                            }
-                        }
-                    }
-                }
-
-                // Position
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Label {
-                        text: I18n.t("mp.position")
-                    }
-
-                    IntField {
-                        label: "X"
-                        value: card.output.x
-                        onEdited: v => card.root_.apply(card.output.id, "position", { x: v, y: card.output.y })
-                    }
-
-                    IntField {
-                        label: "Y"
-                        value: card.output.y
-                        onEdited: v => card.root_.apply(card.output.id, "position", { x: card.output.x, y: v })
-                    }
-
-                    SmallButton {
-                        text: I18n.t("mp.position_auto")
-                        onClicked: card.root_.apply(card.output.id, "positionAuto")
-                    }
-                }
-
-                // VRR
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    visible: card.output.vrrSupported
-
-                    Label {
-                        text: I18n.t("mp.vrr")
-                        Layout.fillWidth: true
-                    }
-
-                    SmallButton {
-                        text: card.output.vrrEnabled ? I18n.t("mp.enabled") : I18n.t("mp.disabled")
-                        active: card.output.vrrEnabled
-                        onClicked: card.root_.apply(card.output.id, "vrr", !card.output.vrrEnabled)
-                    }
-                }
-            }
+        onTriggered: {
+            // Do not re-read while a write is in flight: the read can land
+            // between the compositor applying a change and our own
+            // bookkeeping, and flicker the controls back to the old value.
+            if (Object.keys(root.inFlight).length === 0)
+                root.refresh();
         }
     }
 
@@ -784,6 +629,10 @@ Item {
         id: av
         required property var monitors
         property int selectedIndex: 0
+
+        // Output name currently flashed by the Identify action. The others
+        // dim so the identified one is unambiguous.
+        property string identifying: ""
 
         signal monitorMoved(int idx, int newX, int newY)
         signal monitorSelected(int idx)
@@ -966,7 +815,16 @@ Item {
                             enableShadow: monItem.modelData.enabled
                             border.width: monItem.isSelected ? 2 : 1
                             border.color: monItem.isSelected ? Styling.srItem("primary") : Colors.outlineVariant
-                            opacity: monItem.modelData.enabled ? 1.0 : 0.7
+                            // Dim the others while an output is being
+                            // identified, so it is unambiguous which one the
+                            // Identify button refers to.
+                            opacity: {
+                                if (!monItem.modelData.enabled)
+                                    return 0.7;
+                                if (av.identifying !== "" && av.identifying !== monItem.modelData.id)
+                                    return 0.35;
+                                return 1.0;
+                            }
                         }
 
                         StyledRect {
@@ -1152,6 +1010,406 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Reusable components
+    // ═══════════════════════════════════════════════════════════════════
+
+    component Label: Text {
+        font.family: Config.theme.font
+        font.pixelSize: Styling.fontSize(-1)
+        color: Colors.overSurfaceVariant
+    }
+
+    component SmallButton: StyledRect {
+        id: btn
+        required property string text
+        property bool active: false
+        property bool enabled: true
+        property real horizontalPadding: 24
+        signal clicked()
+
+        visible: enabled
+        opacity: enabled ? 1.0 : 0.45
+        variant: active ? "primaryfocus" : (hover.hovered ? "focus" : "pane")
+        radius: Styling.radius(2)
+        implicitWidth: Math.max(48, label.implicitWidth + horizontalPadding)
+        implicitHeight: 32
+
+        Text {
+            id: label
+            anchors.centerIn: parent
+            text: btn.text
+            font.family: Config.theme.font
+            font.pixelSize: Styling.fontSize(-1)
+            color: btn.active ? Colors.overBackground : Colors.overBackground
+        }
+
+        HoverHandler {
+            id: hover
+            enabled: btn.enabled
+            cursorShape: Qt.PointingHandCursor
+        }
+        TapHandler {
+            enabled: btn.enabled
+            onTapped: btn.clicked()
+        }
+    }
+
+    component IntField: StyledRect {
+        id: fld
+        required property string label
+        property int value: 0
+        property int minValue: -100000
+        property int maxValue: 100000
+        property bool enabled: true
+        signal edited(int newValue)
+
+        opacity: enabled ? 1.0 : 0.5
+        variant: "pane"
+        radius: Styling.radius(2)
+        Layout.preferredWidth: 150
+        implicitHeight: 34
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 8
+
+            Label {
+                text: fld.label
+                Layout.fillWidth: true
+            }
+
+            TextInput {
+                id: ti
+                enabled: fld.enabled
+                text: String(fld.value)
+                color: Colors.overBackground
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(0)
+                selectByMouse: true
+                horizontalAlignment: Text.AlignRight
+                validator: IntValidator {
+                    bottom: fld.minValue
+                    top: fld.maxValue
+                }
+                onEditingFinished: fld.edited(parseInt(text))
+                Keys.onEscapePressed: text = String(fld.value)
+            }
+        }
+    }
+
+    component ScaleField: StyledRect {
+        id: fld
+        property real value: 1.0
+        property var options: [1.0, 1.25, 1.5, 1.75, 2.0]
+        signal picked(real newValue)
+
+        variant: "pane"
+        radius: Styling.radius(2)
+        Layout.fillWidth: true
+        implicitHeight: 34
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 6
+
+            Repeater {
+                model: fld.options
+                delegate: SmallButton {
+                    required property var modelData
+                    text: String(modelData)
+                    active: Math.abs(modelData - fld.value) < 0.001
+                    horizontalPadding: 16
+                    implicitWidth: 48
+                    implicitHeight: 26
+                    onClicked: fld.picked(modelData)
+                }
+            }
+        }
+    }
+
+    /*
+        One output. Collapsed it shows identity, size, refresh, scale and the
+        on/off state; expanded it shows mode, transform, position and VRR.
+
+        Collapsing matters with this data: a 27" panel exposes 39 modes, and
+        with every mode rendered as a chip the list becomes unusable.
+    */
+    component OutputCard: StyledRect {
+        id: card
+        required property var output
+        required property var root_
+
+        readonly property bool open: !card.root_.isCollapsed(card.output.id)
+        readonly property bool busy: card.root_.busyFor(card.output.id)
+        readonly property string err: card.root_.errorFor(card.output.id)
+        readonly property bool identifying: card.root_.isIdentifying(card.output.id)
+
+        variant: identifying ? "focus" : "pane"
+        radius: Styling.radius(0)
+        enableShadow: true
+        Layout.fillWidth: true
+        Layout.preferredHeight: body.implicitHeight + 24
+
+        // Header: click to expand/collapse.
+        MouseArea {
+            id: headerTap
+            anchors.fill: parent
+            anchors.bottomMargin: body.height + 12
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                const next = Object.assign({}, card.root_.collapsed);
+                if (card.open)
+                    next[card.output.id] = true;
+                else
+                    delete next[card.output.id];
+                card.root_.collapsed = next;
+            }
+        }
+
+        ColumnLayout {
+            id: body
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            // ── Header row ──────────────────────────────────────────
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            text: card.identifying ? I18n.t("mp.identifying") : (card.output.make + " " + card.output.model)
+                            font.pixelSize: Styling.fontSize(0)
+                            color: Colors.overBackground
+                        }
+
+                        Label {
+                            text: card.output.id
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: (card.output.enabled
+                               ? card.output.width + "×" + card.output.height
+                                 + " @ " + Number(card.output.refreshRate).toFixed(0) + " Hz"
+                                 + "  ·  " + card.output.scale.toFixed(2) + "×"
+                                 + "  ·  " + card.output.x + "," + card.output.y
+                               : I18n.t("mp.off_state"))
+                    }
+                }
+
+                SmallButton {
+                    text: card.output.enabled ? I18n.t("mp.off") : I18n.t("mp.on")
+                    active: card.output.enabled
+                    onClicked: card.root_.apply(card.output.id, card.output.enabled ? "off" : "on")
+                }
+
+                SmallButton {
+                    text: I18n.t("mp.identify")
+                    enabled: card.output.enabled
+                    onClicked: card.root_.identify(card.output.id)
+                }
+
+                Label {
+                    text: card.open ? "▾" : "▸"
+                    font.pixelSize: Styling.fontSize(0)
+                    color: Colors.overSurfaceVariant
+                }
+            }
+
+            // ── Per-output status ───────────────────────────────────
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                visible: card.busy || card.err !== ""
+
+                SmallButton {
+                    text: I18n.t("mp.applying")
+                    visible: card.busy
+                    enabled: false
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: card.err
+                    visible: card.err !== ""
+                    color: Colors.error
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            // ── Expanded body ──────────────────────────────────────
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                visible: card.open && card.output.enabled
+                enabled: card.open && card.output.enabled && !card.busy
+
+                // Mode
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    visible: card.output.modes.length > 1
+
+                    Label {
+                        text: I18n.t("mp.mode")
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Repeater {
+                            model: card.output.modes
+                            delegate: SmallButton {
+                                required property var modelData
+                                // Not named `active`: SmallButton already
+                                // declares that property, so a same-named
+                                // local would both shadow it and bind to
+                                // itself.
+                                readonly property bool isCurrent: card.output.enabled
+                                        && modelData.width === card.output.width
+                                        && modelData.height === card.output.height
+                                        && Math.abs(modelData.refresh - card.output.refreshRate) < 0.5
+                                text: modelData.width + "×" + modelData.height + "@"
+                                      + Number(modelData.refresh).toFixed(0)
+                                      + (modelData.preferred ? " ★" : "")
+                                active: isCurrent
+                                onClicked: card.root_.apply(card.output.id, "mode",
+                                    card.root_._modeString(modelData))
+                            }
+                        }
+
+                        SmallButton {
+                            text: I18n.t("mp.auto")
+                            onClicked: card.root_.apply(card.output.id, "modeAuto")
+                        }
+                    }
+                }
+
+                // Scale
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Label {
+                        text: I18n.t("mp.scale")
+                    }
+                    ScaleField {
+                        value: card.output.scale
+                        options: card.root_.scaleOptions
+                        onPicked: v => card.root_.apply(card.output.id, "scale", v)
+                    }
+                    SmallButton {
+                        text: I18n.t("mp.scale_auto")
+                        onClicked: card.root_.apply(card.output.id, "scaleAuto")
+                    }
+                }
+
+                // Transform
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Label {
+                        text: I18n.t("mp.transform")
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Repeater {
+                            model: card.root_.niri
+                                ? ["normal", "90", "180", "270", "flipped", "flipped-90", "flipped-180", "flipped-270"]
+                                : [0, 1, 2, 3, 4, 5, 6, 7]
+                            delegate: SmallButton {
+                                required property var modelData
+                                text: String(modelData)
+                                active: String(card.output.transform).toLowerCase() === String(modelData).toLowerCase()
+                                onClicked: card.root_.apply(card.output.id, "transform", modelData)
+                            }
+                        }
+                    }
+                }
+
+                // Position
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        text: I18n.t("mp.position")
+                    }
+
+                    IntField {
+                        label: "X"
+                        value: card.output.x
+                        onEdited: v => card.root_.apply(card.output.id, "position", { x: v, y: card.output.y })
+                    }
+
+                    IntField {
+                        label: "Y"
+                        value: card.output.y
+                        onEdited: v => card.root_.apply(card.output.id, "position", { x: card.output.x, y: v })
+                    }
+
+                    SmallButton {
+                        text: I18n.t("mp.position_auto")
+                        onClicked: card.root_.apply(card.output.id, "positionAuto")
+                    }
+                }
+
+                // VRR
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: card.output.vrrSupported
+
+                    Label {
+                        text: I18n.t("mp.vrr")
+                        Layout.fillWidth: true
+                    }
+
+                    SmallButton {
+                        text: card.output.vrrEnabled ? I18n.t("mp.enabled") : I18n.t("mp.disabled")
+                        active: card.output.vrrEnabled
+                        onClicked: card.root_.apply(card.output.id, "vrr", !card.output.vrrEnabled)
+                    }
+                }
+
+                // Physical size, when the compositor reports it.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: card.output.physicalW > 0
+
+                    Label {
+                        text: I18n.t("mp.physical")
+                    }
+                    Label {
+                        text: card.output.physicalW + " × " + card.output.physicalH + " mm"
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: I18n.t("mp.serial") + ": " + (card.output.serial || I18n.t("mp.unknown"))
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // UI
     // ═══════════════════════════════════════════════════════════════════
 
@@ -1193,44 +1451,35 @@ Item {
             }
 
             // Backend banner
-            Text {
+            ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: 8
                 Layout.rightMargin: 8
-                text: root.supported
-                    ? I18n.t("mp.backend") + " " + root.compositor
-                        + (root.reportedCompositor === "" ? I18n.t("mp.fallback_note") : "")
-                    : (root.resolved ? I18n.t("mp.unsupported_compositor") : I18n.t("mp.detecting"))
-                font.family: Config.theme.font
-                font.pixelSize: Styling.fontSize(-2)
-                color: Colors.overSurfaceVariant
-                wrapMode: Text.WordWrap
+                spacing: 2
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.supported
+                        ? I18n.t("mp.backend") + " " + root.compositor
+                            + (root.reported === "" ? I18n.t("mp.fallback_note") : "")
+                        : (root.resolved ? I18n.t("mp.unsupported_compositor") : I18n.t("mp.detecting"))
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: Colors.overSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: I18n.t("mp.runtime_only")
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: Colors.overSurfaceVariant
+                    wrapMode: Text.WordWrap
+                }
             }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.leftMargin: 8
-                Layout.rightMargin: 8
-                text: I18n.t("mp.runtime_only")
-                font.family: Config.theme.font
-                font.pixelSize: Styling.fontSize(-2)
-                color: Colors.overSurfaceVariant
-                wrapMode: Text.WordWrap
-            }
-
-            // ── Arrangement ────────────────────────────────────────────
-            //
-            // Ported from NothingLess MonitorArrangementView: a logical-pixel
-            // canvas with a 500 px grid, an origin marker, per-output boxes
-            // scaled to their real logical size, a numbered badge, three
-            // centered readout lines, and drag-to-move with edge snapping
-            // (15 px while dragging, 25 px on release) plus overlap
-            // resolution.
-            //
-            // The drag maths is NothingLess's. What differs is the write:
-            // a release calls root.apply(id, "position", {x, y}), which goes
-            // to the compositor's own runtime output API, instead of staging a
-            // change for MonitorsWriter to write into a config file.
+            // Arrangement
             ArrangementView {
                 Layout.fillWidth: true
                 Layout.leftMargin: 8
@@ -1238,6 +1487,7 @@ Item {
                 visible: root.outputs.length > 0
                 monitors: root.outputs
                 selectedIndex: root.selectedIndex
+                identifying: root.identifyTarget
                 onMonitorSelected: idx => root.selectedIndex = idx
                 onMonitorMoved: (idx, x, y) => {
                     const o = root.outputs[idx];
@@ -1246,7 +1496,7 @@ Item {
                 }
             }
 
-            // Output list
+            // Output cards
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: 8

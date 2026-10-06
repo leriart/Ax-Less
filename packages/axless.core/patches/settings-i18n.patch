@@ -1,5 +1,5 @@
 diff --git a/translations/en.json b/translations/en.json
-index d36a85a2..a23a6989 100644
+index d36a85a2..c8f74618 100644
 --- a/translations/en.json
 +++ b/translations/en.json
 @@ -249,29 +249,109 @@
@@ -112,8 +112,24 @@ index d36a85a2..a23a6989 100644
    "compositor.sync_border_color": "Sync Border Color",
    "compositor.sync_border_size": "Sync Border Size",
    "compositor.sync_rounding": "Sync Rounding",
+@@ -410,6 +490,15 @@
+   "mods.untested_base": "%1. You can still enable it.",
+   "mods.update": "Update",
+   "mods.working": "Working…",
++  "mp.applying": "Applying…",
++  "mp.auto": "Auto",
++  "mp.identify": "Identify",
++  "mp.identifying": "Identifying…",
++  "mp.off_state": "off",
++  "mp.physical": "Physical size",
++  "mp.scale_auto": "Auto scale",
++  "mp.serial": "Serial",
++  "mp.unknown": "unknown",
+   "notch.ambxst": "Ambxst",
+   "notch.compositor": "Compositor",
+   "notes.days_ago": "%1 days ago",
 diff --git a/translations/es.json b/translations/es.json
-index bfa93c7d..3d87a063 100644
+index bfa93c7d..a251b18d 100644
 --- a/translations/es.json
 +++ b/translations/es.json
 @@ -249,29 +249,109 @@
@@ -226,8 +242,24 @@ index bfa93c7d..3d87a063 100644
    "compositor.sync_border_color": "Sincr. color del borde",
    "compositor.sync_border_size": "Sincr. tamaño del borde",
    "compositor.sync_rounding": "Sincr. redondeo",
+@@ -410,6 +490,15 @@
+   "mods.untested_base": "%1. Aun así puedes activarlo.",
+   "mods.update": "Actualizar",
+   "mods.working": "Procesando…",
++  "mp.applying": "Aplicando…",
++  "mp.auto": "Automático",
++  "mp.identify": "Identificar",
++  "mp.identifying": "Identificando…",
++  "mp.off_state": "apagada",
++  "mp.physical": "Tamaño físico",
++  "mp.scale_auto": "Escala automática",
++  "mp.serial": "Número de serie",
++  "mp.unknown": "desconocido",
+   "notch.ambxst": "Ambxst",
+   "notch.compositor": "Compositor",
+   "notes.days_ago": "hace %1 días",
 diff --git a/translations/ru.json b/translations/ru.json
-index 6f084700..bdcddf58 100644
+index 6f084700..ea54fffb 100644
 --- a/translations/ru.json
 +++ b/translations/ru.json
 @@ -249,29 +249,109 @@
@@ -340,3 +372,19 @@ index 6f084700..bdcddf58 100644
    "compositor.sync_border_color": "Синхр. цвет границы",
    "compositor.sync_border_size": "Синхр. размер границы",
    "compositor.sync_rounding": "Синхр. скругление",
+@@ -406,6 +486,15 @@
+   "mods.untested_base": "%1. Включить всё равно можно.",
+   "mods.update": "Обновить",
+   "mods.working": "Выполняется…",
++  "mp.applying": "Применение…",
++  "mp.auto": "Авто",
++  "mp.identify": "Определить",
++  "mp.identifying": "Определение…",
++  "mp.off_state": "выключен",
++  "mp.physical": "Физический размер",
++  "mp.scale_auto": "Авто-масштаб",
++  "mp.serial": "Серийный номер",
++  "mp.unknown": "неизвестно",
+   "notch.ambxst": "Ambxst",
+   "notch.compositor": "Композитор",
+   "notes.days_ago": "%1 дн. назад",
