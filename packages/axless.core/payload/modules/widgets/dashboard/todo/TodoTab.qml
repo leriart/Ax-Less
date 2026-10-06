@@ -204,6 +204,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 44
+            Layout.minimumHeight: 44
             spacing: 12
 
             Text {
@@ -234,6 +235,7 @@ Rectangle {
                     delegate: StyledRect {
                         required property var modelData
                         Layout.preferredHeight: 24
+                        Layout.minimumHeight: 24
                         Layout.preferredWidth: 48
                         radius: Styling.radius(-2)
                         variant: TodoBoard.filterPriority === modelData.val ? "primary" : "common"
@@ -267,6 +269,7 @@ Rectangle {
             // Calendar panel toggle
             StyledRect {
                 Layout.preferredHeight: 24
+                Layout.minimumHeight: 24
                 Layout.preferredWidth: 28
                 radius: Styling.radius(-2)
                 variant: root.showCalendar ? "primary" : "common"
@@ -288,6 +291,7 @@ Rectangle {
             // Hide done toggle
             StyledRect {
                 Layout.preferredHeight: 24
+                Layout.minimumHeight: 24
                 Layout.preferredWidth: 70
                 radius: Styling.radius(-2)
                 variant: TodoBoard.hideDone ? "primary" : "common"
@@ -308,6 +312,7 @@ Rectangle {
             // Clear done
             StyledRect {
                 Layout.preferredHeight: 24
+                Layout.minimumHeight: 24
                 Layout.preferredWidth: 60
                 radius: Styling.radius(-2)
                 variant: "common"
@@ -331,6 +336,7 @@ Rectangle {
         StyledRect {
             Layout.fillWidth: true
             Layout.preferredHeight: 44
+            Layout.minimumHeight: 44
             radius: Styling.radius(-2)
             variant: "pane"
 
@@ -357,6 +363,7 @@ Rectangle {
                 StyledRect {
                     id: priorityChip
                     Layout.preferredHeight: 24
+                    Layout.minimumHeight: 24
                     Layout.preferredWidth: 56
                     radius: Styling.radius(-2)
                     variant: "bg"
@@ -384,6 +391,7 @@ Rectangle {
                 StyledRect {
                     id: calButton
                     Layout.preferredHeight: 28
+                    Layout.minimumHeight: 28
                     Layout.preferredWidth: 64
                     radius: Styling.radius(-2)
                     variant: (root.newTaskDueDate !== "" || root.pendingStartDate !== "" || root.pendingEndDate !== "")
@@ -426,6 +434,7 @@ Rectangle {
 
                 StyledRect {
                     Layout.preferredHeight: 28
+                    Layout.minimumHeight: 28
                     Layout.preferredWidth: 36
                     radius: Styling.radius(-2)
                     variant: root.newTaskText.trim() === "" ? "common" : "primary"
@@ -479,6 +488,7 @@ Rectangle {
                     Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 28
+                        Layout.minimumHeight: 28
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 12
@@ -604,6 +614,7 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 24
+                    Layout.minimumHeight: 24
                     spacing: 8
 
                     Text {
@@ -650,17 +661,36 @@ Rectangle {
         }
 
         StyledRect {
+            id: datePopup
             anchors.centerIn: parent
-            width: 320
-            height: 396
+            // Fit the tab area instead of assuming a size: the tab is only
+            // ~430 px tall, so a fixed height used to overflow and clip the
+            // action row (clip: true cut Clear/Cancel/Save in half).
+            width: Math.min(320, parent.width - 16)
+            height: Math.min(396, parent.height - 16)
             radius: Styling.radius(0)
             variant: "popup"
             clip: true
 
-            ColumnLayout {
+            // Scrollable: if the tab is shorter than the calendar grid the
+            // popup shrinks and the content scrolls instead of being cut.
+            Flickable {
+                id: dateFlick
                 anchors.fill: parent
-                anchors.margins: 12
+                contentWidth: width
+                contentHeight: dateCol.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {
+                    policy: dateFlick.contentHeight > dateFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                }
+
+            ColumnLayout {
+                id: dateCol
+                width: dateFlick.width
                 spacing: 8
+
+                Item { Layout.preferredHeight: 8 }
 
                 Text {
                     text: "Select date"
@@ -716,14 +746,11 @@ Rectangle {
                     Repeater {
                         model: root._dowNames
                         delegate: Text {
-                            // Force to String: in some QML contexts (e.g.
-                            // when the parent scope exposes Quickshell.screens
-                            // via implicit binding) modelData has been seen
-                            // resolving to a QuickshellScreenInfo object,
-                            // which then fails to assign to QString with
-                            // 'Unable to assign QuickshellScreenInfo to
-                            // QString'. The String() cast is a safe no-op
-                            // for the real strings we expect.
+                            // Without the required declaration, modelData is
+                            // not in scope here (ReferenceError at runtime,
+                            // logged 7x on every picker open). The String()
+                            // cast stays as a no-op safety net.
+                            required property var modelData
                             text: String(modelData)
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-3)
@@ -746,6 +773,7 @@ Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredHeight: 32
+                            Layout.minimumHeight: 32
                             Layout.maximumHeight: 32
                             radius: Styling.radius(-2)
                             color: !modelData.cur ? "transparent"
@@ -790,6 +818,7 @@ Rectangle {
                         text: String(pickerTimeH).padStart(2, '0')
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 32
+                        Layout.minimumHeight: 32
                         inputMask: "99"
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-1)
@@ -817,6 +846,7 @@ Rectangle {
                         text: String(pickerTimeM).padStart(2, '0')
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 32
+                        Layout.minimumHeight: 32
                         inputMask: "99"
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-1)
@@ -843,6 +873,7 @@ Rectangle {
                     StyledRect {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         variant: "common"
                         radius: Styling.radius(-2)
                         Text {
@@ -861,6 +892,7 @@ Rectangle {
                     StyledRect {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         variant: "common"
                         radius: Styling.radius(-2)
                         Text {
@@ -879,6 +911,7 @@ Rectangle {
                     StyledRect {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         variant: "primary"
                         radius: Styling.radius(-2)
                         Text {
@@ -895,6 +928,8 @@ Rectangle {
                         }
                     }
                 }
+                }
+                Item { Layout.preferredHeight: 8 }
             }
         }
     }
@@ -918,18 +953,31 @@ Rectangle {
         StyledRect {
             id: rangePopup
             anchors.centerIn: parent
-            width: 340
-            height: 440
+            width: Math.min(340, parent.width - 16)
+            height: Math.min(440, parent.height - 16)
             radius: Styling.radius(0)
             variant: "popup"
             clip: true
 
             property int monthOffset: 0
 
-            ColumnLayout {
+            Flickable {
+                id: rangeFlick
                 anchors.fill: parent
-                anchors.margins: 12
+                contentWidth: width
+                contentHeight: rangeCol.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {
+                    policy: rangeFlick.contentHeight > rangeFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                }
+
+            ColumnLayout {
+                id: rangeCol
+                width: rangeFlick.width
                 spacing: 8
+
+                Item { Layout.preferredHeight: 8 }
 
                 Text {
                     text: "Select date range"
@@ -946,6 +994,7 @@ Rectangle {
                     StyledRect {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 26
+                        Layout.minimumHeight: 26
                         radius: Styling.radius(-2)
                         variant: rangeMode === 0 ? "primary" : "common"
                         Text {
@@ -975,6 +1024,7 @@ Rectangle {
                     StyledRect {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 26
+                        Layout.minimumHeight: 26
                         radius: Styling.radius(-2)
                         variant: rangeMode === 1 ? "primary" : "common"
                         Text {
@@ -1041,6 +1091,7 @@ Rectangle {
                         value: newTaskTimeH
                         Layout.preferredWidth: 52
                         Layout.preferredHeight: 32
+                        Layout.minimumHeight: 32
                         background: Rectangle { color: "transparent"; border.color: Colors.outlineVariant; border.width: 1; radius: Styling.radius(-3) }
                         contentItem: TextInput {
                             text: rangeHour.value
@@ -1067,6 +1118,7 @@ Rectangle {
                         value: newTaskTimeM
                         Layout.preferredWidth: 52
                         Layout.preferredHeight: 32
+                        Layout.minimumHeight: 32
                         background: Rectangle { color: "transparent"; border.color: Colors.outlineVariant; border.width: 1; radius: Styling.radius(-3) }
                         contentItem: TextInput {
                             text: rangeMin.value
@@ -1088,6 +1140,7 @@ Rectangle {
                     spacing: 6
                     StyledRect {
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         Layout.preferredWidth: 70
                         radius: Styling.radius(-2)
                         variant: "common"
@@ -1106,6 +1159,7 @@ Rectangle {
                     }
                     StyledRect {
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         Layout.preferredWidth: 60
                         radius: Styling.radius(-2)
                         variant: "common"
@@ -1128,6 +1182,7 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                     StyledRect {
                         Layout.preferredHeight: 36
+                        Layout.minimumHeight: 36
                         Layout.preferredWidth: 80
                         radius: Styling.radius(-2)
                         variant: "primary"
@@ -1152,6 +1207,8 @@ Rectangle {
                         }
                     }
                 }
+                Item { Layout.preferredHeight: 8 }
+            }
             }
         }
     }
@@ -1240,6 +1297,7 @@ Rectangle {
                 StyledRect {
                     Layout.preferredWidth: 56
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     radius: Styling.radius(-2)
                     variant: row.task.priority > 0 ? "common" : "transparent"
                     color: TodoBoard.priorityBgColor(row.task.priority)
@@ -1259,6 +1317,7 @@ Rectangle {
                 Item {
                     Layout.preferredWidth: 56
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     visible: row.task.priority === 0
                 }
 
@@ -1266,6 +1325,7 @@ Rectangle {
                 Loader {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 24
+                    Layout.minimumHeight: 24
                     sourceComponent: root.editingRowId === row.task.id ? inlineEdit : displayText
 
                     Component {
@@ -1339,6 +1399,7 @@ Rectangle {
                 Item {
                     Layout.preferredWidth: 130
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     Text {
                         anchors.left: parent.left
                         anchors.right: parent.right
@@ -1384,6 +1445,7 @@ Rectangle {
                 StyledRect {
                     Layout.preferredWidth: 70
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     radius: Styling.radius(-2)
                     variant: row.task.done ? "common" : "primary"
                     Text {
@@ -1401,6 +1463,7 @@ Rectangle {
                     id: editBtn
                     Layout.preferredWidth: 22
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     radius: Styling.radius(-2)
                     variant: editMa.containsMouse ? "focus" : "common"
                     visible: !row.task.done && root.editingRowId !== row.task.id
@@ -1431,6 +1494,7 @@ Rectangle {
                     id: delBtn
                     Layout.preferredWidth: 22
                     Layout.preferredHeight: 22
+                    Layout.minimumHeight: 22
                     Layout.rightMargin: 12
                     radius: Styling.radius(-2)
                     variant: delMa.containsMouse ? "error" : "common"

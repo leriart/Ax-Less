@@ -77,6 +77,22 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
 - [x] **Tablero de tareas (F5)**: `services/TodoBoard.qml` (singleton, persiste en `~/.config/ambxst/todo/tasks.json`, recordatorios vía `Notifications`), `widgets/dashboard/todo/{TodoTab,TodoCalendar,TodoCalendarDayButton}.qml` + `todoCalendarLayout.js` (calendario propio con selección de rango; NO se tocó el `calendar/` del dashboard de Ambxst), `Icons.todo` añadido, cuarto tab en `Dashboard.qml`. Adaptación: `nothingless/todo`→`ambxst/todo`, `Anim.*`→`Config.animDuration`. Verificado: carga sin errores, `tasks.json` se crea y la lógica ordena/overdue correctamente.
   - **Fixes post-port (06-10)**: (a) `getYForIndex` de `Dashboard.qml` estaba hardcodeado a 3 tabs (`idx <= 2`) → al pulsar el tab ToDo la píldora de resaltado saltaba al botón de settings; ahora `idx < root.tabCount` (igual que NL) + clamp para que un tab desbordado nunca pinte sobre el gear. (b) Los botones de tab que cruzarían el área del botón de settings se ocultan (`visible: index*(h+spacing)+h <= controlsButtonContainer.y`). (c) Tab ToDo ensanchado a 640 px en `nonAnimWidth` (400 px ahogaba la tabla con el calendario lateral de 280 px); `TodoTab` implicitWidth 800→640/600→430, panel de calendario 280→232 px y plegable con botón "Cal" en el header.
   - **Fixes del selector de fechas (06-10)**: el popup de fecha no tenía altura propia (`width: 320` sin `height`) y la `ColumnLayout` comprimía todos los hijos — los botones quedaban "aplanados de arriba y abajo". Ahora: altura fija 396 px (título 24 + días 6×32 + hora 32 + botones 36 + márgenes), título "Select date", celdas del mes con `Layout.maximumHeight: 32`, botones de ambos popups 28/32→36 px, campos de hora con fondo transparente y borde (antes estilo Material por defecto), SpinBoxes con altura fija 32. `color: rangePopup.item` es válido en Ambxst (`StyledRect.item` existe) — no era bug del port.
+  - **Aplastado real de botones + popup desbordado (06-10, 2º pase)**: la causa
+    de fondo era que en Qt Quick Layouts un hijo con `Layout.preferredHeight`
+    pero **sin `Layout.minimumHeight`** se encoge cuando el layout no tiene
+    espacio (`minimumHeight` por defecto = 0). Añadido `minimumHeight` a los
+    29 elementos con altura fija (chips del header 24, botones 28/32/36, filas)
+    y a las filas header/new-task (44). Los popups ya no tienen altura fija:
+    `width: Math.min(320, parent.width-16)`, `height: Math.min(396, parent.height-16)`
+    (rango: 340/440) y su contenido va en un `Flickable` con `ScrollBar`, así
+    si el tab es más bajo que la rejilla el contenido se desplaza en vez de
+    cortarse. Además se corrigió un `ReferenceError: modelData is not defined`
+    en el delegate de los días de la semana (faltaba `required property var
+    modelData`), que salía 7 veces por cada apertura del selector.
+    **Medido en runtime** (probe sobre el tab a 640x430): chips del header
+    24.0 px, botones del selector de fecha Clear/Cancel/Save 36.0 px, los del
+    selector de rango Cancel/Clear/Apply 36.0 px, popup de fecha 396 px y de
+    rango 414 px — ambos dentro de los 430 px del tab, sin recorte.
 - [x] Traducciones completas (grep del payload, no batch suelto).
 
 ### Pendiente de portar (features)
