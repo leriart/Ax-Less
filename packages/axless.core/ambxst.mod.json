@@ -234,6 +234,35 @@
     {
       "type": "patch",
       "source": "patches/settings-i18n.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/TodoBoard.qml",
+      "target": "modules/services/TodoBoard.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/todo/TodoTab.qml",
+      "target": "modules/widgets/dashboard/todo/TodoTab.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/todo/TodoCalendar.qml",
+      "target": "modules/widgets/dashboard/todo/TodoCalendar.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/todo/TodoCalendarDayButton.qml",
+      "target": "modules/widgets/dashboard/todo/TodoCalendarDayButton.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/todo/todoCalendarLayout.js",
+      "target": "modules/widgets/dashboard/todo/todoCalendarLayout.js"
+    },
+    {
+      "type": "patch",
+      "source": "patches/dashboard-todo.patch"
     }
   ]
 }

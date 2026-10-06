@@ -50,7 +50,7 @@ este hueco vertical, no de la fórmula del arrastre.
 | F2 | **Métricas en el notch** | `modules/widgets/defaultview/MetricsGroup.qml`, `MetricsGroupWrapper.qml`, `DefaultView.qml` (`metricsActive`), `Notch.qml`, `NotchContent.qml` | Usar `SystemResources` de Ambxst para los datos, NO `system_monitor.py`. |
 | F3 | **Posiciones por monitor** | `modules/services/PerMonitorConfig.qml` | Depende de NC-1 porque la UI de colocación por pantalla comparte el canvas. |
 | F4 | **Motor de wallpaper de vídeo + interpol + palette** | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real: Ambxst **no tiene** fuente de FPS, solo `refreshRate` por monitor desde `axctl` (sin usar). Los `.qsb` se generan con `qsb` (incluido en el sistema), hay que compilarlos. No tocar `Wallpaper.qml` si F2 lo toca. |
-| F5 | **Tablero de tareas** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | El más limpio: 3 inserciones append-only en `Dashboard.qml`. |
+| ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
 | F6 | **Hax spotlight** | `modules/widgets/spotlight/*` (5227 líneas), `Calculator.qml`, `PluginManager.qml` | Proceso standalone (`qs -n -p spotlight_entry.qml`), apenas toca el árbol. Necesita subcomando `ambxst spotlight`. |
 | F7 | **Splash con el logo del shell** | `shell.qml` (bloque splash) + `assets/ambxst/*.svg` | Usar `assets/ambxst/ambxst-icon.svg` / `ambxst-logo.svg`, no el `NOTHING_splash.webp`. |
 
@@ -74,6 +74,7 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
 - [x] Agente/NLP: `Ai.qml`+estrategias+`AgentManager`/`AgentStore`/MCP/HTTP/command+`mcp/nothingclaw` (3.3 k-linas). Reemplaza `Ai.qml` (overlay con sha).
 - [x] Menú de compositor único (sección 8) con opciones por compositor + `CompositorKeywords.qml` (73 claves de NothingLess, vía Hyprland; ocultas en niri).
 - [x] Monitores por compositor + arrangement canvas arrastrable (`MonitorsPanel.qml`).
+- [x] **Tablero de tareas (F5)**: `services/TodoBoard.qml` (singleton, persiste en `~/.config/ambxst/todo/tasks.json`, recordatorios vía `Notifications`), `widgets/dashboard/todo/{TodoTab,TodoCalendar,TodoCalendarDayButton}.qml` + `todoCalendarLayout.js` (calendario propio con selección de rango; NO se tocó el `calendar/` del dashboard de Ambxst), `Icons.todo` añadido, cuarto tab en `Dashboard.qml`. Adaptación: `nothingless/todo`→`ambxst/todo`, `Anim.*`→`Config.animDuration`. Verificado: carga sin errores, `tasks.json` se crea y la lógica ordena/overdue correctamente.
 - [x] Traducciones completas (grep del payload, no batch suelto).
 
 ### Pendiente de portar (features)
@@ -83,7 +84,7 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
 | F2 | Métricas en notch | `Modules/widgets/defaultview/MetricsGroup*.qml`, `DefaultView.qml`, `Notch*.qml` | parcial → usar `SystemResources` (Go) para los datos |
 | F3 | Posiciones por monitor | `modules/services/PerMonitorConfig.qml` | no |
 | F4 | Wallpaper de vídeo + interpol + palette | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real NO existe en Ambxst (solo `refreshRate` por monitor) |
-| F5 | Tablero de tareas | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
+| ~~F5~~ | ~~Tablero de tareas~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
 | F6 | Hax spotlight | `modules/widgets/spotlight/*` (5.2 k-linas), `Calculator.qml`, `PluginManager.qml` | no (proceso standalone) |
 | F7 | Splash con logo | bloque splash de `shell.qml` + `assets/ambxst/*.svg` | no |
 

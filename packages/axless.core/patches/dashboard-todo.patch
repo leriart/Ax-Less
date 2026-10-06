@@ -1,0 +1,65 @@
+diff --git a/modules/theme/Icons.qml b/modules/theme/Icons.qml
+index 3333506..bfc3b06 100644
+--- a/modules/theme/Icons.qml
++++ b/modules/theme/Icons.qml
+@@ -58,6 +58,7 @@ QtObject {
+     readonly property string hand: ""
+     readonly property string handGrab: ""
+     readonly property string heartbeat: ""
++    readonly property string todo: ""  // format list bulleted
+     readonly property string cpu: ""
+     readonly property string gpu: ""
+     readonly property string ram: ""
+diff --git a/modules/widgets/dashboard/Dashboard.qml b/modules/widgets/dashboard/Dashboard.qml
+index 6b60935..67e2b08 100644
+--- a/modules/widgets/dashboard/Dashboard.qml
++++ b/modules/widgets/dashboard/Dashboard.qml
+@@ -11,6 +11,7 @@ import qs.modules.widgets.dashboard.widgets
+ import qs.modules.widgets.dashboard.controls
+ import qs.modules.widgets.dashboard.wallpapers
+ import qs.modules.widgets.dashboard.metrics
++import qs.modules.widgets.dashboard.todo
+ import qs.config
+ 
+ NotchAnimationBehavior {
+@@ -23,7 +24,7 @@ NotchAnimationBehavior {
+         property int currentTab: GlobalStates.dashboardCurrentTab
+     }
+ 
+-    readonly property var tabModel: [Icons.widgets, Icons.wallpapers, Icons.heartbeat]
++    readonly property var tabModel: [Icons.widgets, Icons.wallpapers, Icons.heartbeat, Icons.todo]
+     readonly property int tabCount: tabModel.length
+     readonly property int tabSpacing: 8
+ 
+@@ -461,6 +462,13 @@ NotchAnimationBehavior {
+                     sourceComponent: metricsComponent
+                     z: visible ? 1 : 0
+                 }
++
++                // Tab 3: Todo board
++                TabLoader {
++                    property int index: 3
++                    sourceComponent: todoComponent
++                    z: visible ? 1 : 0
++                }
+                 
+                 // Helper to access current item for focus
+                 property var currentItem: {
+@@ -468,6 +476,7 @@ NotchAnimationBehavior {
+                         case 0: return children[0].item;
+                         case 1: return children[1].item;
+                         case 2: return children[2].item;
++                        case 3: return children[3].item;
+                         default: return null;
+                     }
+                 }
+@@ -593,4 +602,9 @@ NotchAnimationBehavior {
+         id: wallpapersComponent
+         WallpapersTab {}
+     }
++
++    Component {
++        id: todoComponent
++        TodoTab {}
++    }
+ }
