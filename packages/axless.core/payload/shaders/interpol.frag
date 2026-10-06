@@ -84,13 +84,25 @@ void main() {
     int h = bSize / 2;
     ivec2 minBound = ivec2(h, h);
     ivec2 maxBound = res - h - 1;
+    // Two different clamps, and conflating them is what put a hard border
+    // around the interpolated picture.
+    //
+    // `safeCoord` keeps the *search* inside the region where a whole block
+    // fits, which is what the block math needs. But it was also being used to
+    // sample the colour, so every pixel within h of the frame edge was read
+    // from h pixels further in: a 6 px ring of edge content replaced by
+    // interior content on every side. Visible as the frame appearing inset,
+    // and it ignored searchRadius entirely, which is why shrinking the search
+    // never changed it.
     ivec2 safeCoord = clampCoord(texelCoord, minBound, maxBound);
+    // Colour is sampled at the true pixel, clamped only to the frame.
+    ivec2 colorCoord = clampCoord(texelCoord, ivec2(0), res - 1);
 
     ivec2 blockIdx = safeCoord / bSize;
     ivec2 blockCenter = blockIdx * bSize + h;
 
-    vec3 curr = samplePixel(currentFrame, safeCoord);
-    vec3 prev = samplePixel(previousFrame, safeCoord);
+    vec3 curr = samplePixel(currentFrame, colorCoord);
+    vec3 prev = samplePixel(previousFrame, colorCoord);
 
     vec2 motion = vec2(0.0);
     float bestCost = 1e10;
@@ -151,17 +163,31 @@ void main() {
     vec2 halfTexel = texelSize * 0.5;
 
     vec2 warpedUV = uv - motionUV * ubuf.blendFactor;
-    warpedUV = clamp(warpedUV, halfTexel, 1.0 - halfTexel);
-    vec3 warpedPrev = texture(previousFrame, warpedUV).rgb;
-
     vec2 warpedCurrUV = uv + motionUV * (1.0 - ubuf.blendFactor);
+
+    // A warp that leaves the frame has nothing to sample. Clamping it to the
+    // edge instead - which is what this shader used to do - drags interior
+    // pixels outward, eating a band of the picture and reading as the frame
+    // being inset. It only shows on the side the motion points away from,
+    // which is why it looked like a single bad corner.
+    //
+    // Out of bounds means no motion compensation for this pixel; the plain
+    // cross-fade below is the correct fallback and is already computed.
+    bool warpedPrevInBounds = all(greaterThanEqual(warpedUV, vec2(0.0)))
+                           && all(lessThanEqual(warpedUV, vec2(1.0)));
+    bool warpedCurrInBounds = all(greaterThanEqual(warpedCurrUV, vec2(0.0)))
+                           && all(lessThanEqual(warpedCurrUV, vec2(1.0)));
+
+    // Only now clamp to a half texel, to keep the filtered fetch in range.
+    warpedUV = clamp(warpedUV, halfTexel, 1.0 - halfTexel);
     warpedCurrUV = clamp(warpedCurrUV, halfTexel, 1.0 - halfTexel);
+    vec3 warpedPrev = texture(previousFrame, warpedUV).rgb;
     vec3 warpedCurr = texture(currentFrame, warpedCurrUV).rgb;
 
     vec3 blended = mix(prev, curr, ubuf.blendFactor);
     vec3 finalColor;
 
-    if (motionValid) {
+    if (motionValid && warpedPrevInBounds && warpedCurrInBounds) {
         vec3 centerWarpedPrev = texture(previousFrame, warpedUV).rgb;
         float holeWeight = clamp(dot(abs(curr - centerWarpedPrev), vec3(0.299, 0.587, 0.114)) / 0.3, 0.0, 1.0);
         vec3 motionCompensated = mix(warpedPrev, warpedCurr, holeWeight);
