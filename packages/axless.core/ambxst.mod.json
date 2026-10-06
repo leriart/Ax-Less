@@ -375,6 +375,26 @@
       "type": "overlay",
       "source": "payload/video/bin/interpolate.sh",
       "target": "video/bin/interpolate.sh"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/palette.frag",
+      "target": "shaders/palette.frag"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/palette.frag.qsb",
+      "target": "shaders/palette.frag.qsb"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/palette.vert",
+      "target": "shaders/palette.vert"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/shaders/palette.vert.qsb",
+      "target": "shaders/palette.vert.qsb"
     }
   ]
 }

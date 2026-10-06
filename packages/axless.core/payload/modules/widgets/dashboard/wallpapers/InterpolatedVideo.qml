@@ -41,7 +41,16 @@ Item {
     // ── Source ────────────────────────────────────────────────────
     property string sourceFile: ""
     property bool tint: false
-    property alias tintSource: paletteSourceItem
+
+    // The colours the tint shader is allowed to remap the video onto. Same list
+    // Ambxst's own VideoWallpaper used, so the result matches the static-image
+    // wallpaper path.
+    readonly property var optimizedPalette: ["background", "overBackground", "shadow",
+        "surface", "surfaceBright", "surfaceDim", "surfaceContainer", "surfaceContainerHigh",
+        "surfaceContainerHighest", "surfaceContainerLow", "surfaceContainerLowest",
+        "primary", "secondary", "tertiary", "red", "lightRed", "green", "lightGreen",
+        "blue", "lightBlue", "yellow", "lightYellow", "cyan", "lightCyan",
+        "magenta", "lightMagenta"]
 
     // ── Interpolation ──────────────────────────────────────────────
     // `multiplier` is the *declared* output rate: a 30 fps clip with a
@@ -444,11 +453,59 @@ Item {
         // effect (seek both to one timestamp, or capture one instance twice).
         z: 0
         visible: !effect.visible
+
+        // Tint for video wallpapers, exactly where Ambxst had it. Kept on the
+        // VideoOutput rather than folded into the interpolation effect: that
+        // one already binds two samplers for the frame sources, and
+        // palette.frag needs its own palette texture alongside them.
+        layer.enabled: root.tint
+        layer.effect: ShaderEffect {
+            property var paletteTexture: paletteTextureSource
+            property real paletteSize: root.optimizedPalette.length
+            property real texWidth: width
+            property real texHeight: height
+
+            vertexShader: "../../../../shaders/palette.vert.qsb"
+            fragmentShader: "../../../../shaders/palette.frag.qsb"
+        }
     }
 
     // ── Palette (tint) ────────────────────────────────────────────
+    //
+    // A 1-pixel-tall strip of the shell palette, uploaded once and read by
+    // palette.frag as paletteTexture. Built as a Row of 1x1 rectangles rather
+    // than drawn into a Canvas: it is static, so there is nothing to repaint
+    // when the theme changes and the Row re-evaluates on its own.
     Item {
         id: paletteSourceItem
-        visible: false
+        width: InterpolatedVideo.optimizedPalette.length
+        height: 1
+        opacity: 0
+
+        Row {
+            anchors.fill: parent
+            Repeater {
+                model: InterpolatedVideo.optimizedPalette
+                Rectangle {
+                    width: 1
+                    height: 1
+                    color: Colors[modelData]
+                }
+            }
+        }
     }
+
+    ShaderEffectSource {
+        id: paletteTextureSource
+        sourceItem: paletteSourceItem
+        hideSource: true
+        visible: false
+        smooth: false
+        recursive: false
+    }
+
+    // The tint is a layer effect on the VideoOutput, which is where Ambxst
+    // put it. It cannot ride on the interpolation ShaderEffect instead: that
+    // one already consumes two sampler bindings for the frame sources, and
+    // palette.frag needs its own.
 }
