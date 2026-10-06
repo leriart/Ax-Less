@@ -80,56 +80,10 @@ Inside `axless.core`, not yet implemented. Ordered by value per unit of risk.
 |---|---|---|
 | Miracast screen sharing | `MiraiService.qml`, `ScreenSharingPanel.qml`, `ScreenReceiver.qml` | Needs a free Settings section id. |
 | Hax spotlight | `SpotlightView.qml` (5227 lines), `PluginManager.qml`, `Calculator.qml` | Runs as a standalone `qs` process, so it barely touches the base tree. Needs a new `ambxst spotlight` subcommand. |
-| Bar TaskTray | `TaskTray.qml`, `BarSliderBase.qml` | The task tray on its own; the island part was cancelled, see below. |
-| Cava audio visualizer | `CavaService.qml`, `CavaVisualizer.qml` | Distinct from the cancelled metrics work. |
+| Bar TaskTray | `TaskTray.qml`, `BarSliderBase.qml` | The task tray on its own. |
+| Cava audio visualizer | `CavaService.qml`, `CavaVisualizer.qml` | |
 | Focus Mode + DND | `FocusModeService.qml` | DND does not exist in Ambxst at all. |
 | Battery charge limit | `ChargeLimitService.qml`, `set-charge-limit.sh` | The one battery feature Ambxst genuinely lacks. |
-
-### Cancelled or dropped
-
-Features that were investigated and then deliberately dropped, recorded here so
-the reasoning survives and nobody re-opens them by accident. Recoverable from
-git history if they are ever wanted.
-
-- **Dynamic bar island** (`barMode` extended/dynamic rendering the notch as a
-  pill inside the bar). Cancelled: `barMode` is a refactor of the bar's whole
-  geometry, not a component drop-in.
-- **Notch / island metrics** (live CPU, GPU, RAM, disk in the notch). Removed on
-  request. Two findings survive: Ambxst's Go backend has no power or FPS source,
-  and `ConfigValidator.validate()` rebuilds the config from the defaults, so a
-  new setting needs an entry in `config/defaults/<section>.js` or it is stripped
-  on the next save.
-- **Boot splash** (F7). Implemented, then reverted on request.
-
-### Launching Ambxst
-
-Not a feature, but the thing most likely to waste an afternoon: the shell must
-be started with **`ambxst`**, not `qs -p .../shell.qml`. `BackendService` talks
-to the Go daemon over `$XDG_RUNTIME_DIR/ambxst.sock`; launching the shell
-directly leaves that socket absent, subscriptions fail with
-`BackendService: subscription socket error 2`, and every metric reads as a dash
-while `monitoringActive` is still `true`.
-
-### Deliberately excluded
-
-- NothingLess's animation system (`Anim.qml`, `AnimatedBehavior.qml`). Ported
-  code is translated to Ambxst's native `Config.animDuration` + `Easing.*`
-  instead, so ported UI matches the rest of the shell and there is no second
-  source of truth for durations.
-- `Surface`, `Speedometer`, `DiskBar`, `StatCard`, `CloseButton` — Ambxst's
-  `StyledRect` and `Circular*` already cover them under other names.
-- Per-directory `qmldir` files. Ambxst resolves bar siblings with
-  `import "." as Bar`; adding a second resolution path risks the five existing
-  `Bar.*` references.
-- The Hyprland-only `sync-hyprland.py` (1533 lines) and the ~150 extra
-  compositor keys it feeds. Ambxst generalises this in
-  `backend/pkg/svc/compositor`; porting the translator would regress niri and
-  mango.
-- NothingLess reimplementations of clipboard, OCR/QR, screenshots, system
-  monitor, keystore, link preview, weather, night light, game mode, caffeine,
-  power profile and recorder. All native in `backend/pkg/svc/*`.
-- `ScreenTranslation.qml` and `MusicRecognizer.qml` — orphaned even in
-  NothingLess.
 
 ## Install
 
