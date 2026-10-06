@@ -13,11 +13,11 @@ multi-compositor parity (`hyprland | niri | mango`).
 
 | Package | Status | Summary |
 |---|---|---|
-| [`axless.agents`](packages/axless.agents) | done | Agent platform: MCP / HTTP-bridge / command agents, tool registry, reworked AI engine. |
+| [`axless.core`](packages/axless.core) | in progress | Everything in one mod: agent platform, advanced compositor panel, and the remaining NothingLess features. |
 
 ## Planned
 
-Not yet implemented. Ordered roughly by value per unit of risk.
+Inside `axless.core`, not yet implemented. Ordered by value per unit of risk.
 
 | Feature | Files | Notes |
 |---|---|---|
@@ -61,12 +61,13 @@ for id in $(ls packages); do ambxst mods enable "$id"; done
 ambxst reload
 ```
 
-Each package stands alone: nothing here depends on anything outside the Ambxst
-tree, so `axless.agents` can be installed and enabled on its own.
+There is exactly one package. It declares no dependencies and nothing outside
+the Ambxst tree is required.
 
 ## Conventions
 
-- One feature per package. A failing package must not take down the rest.
+- One package. Everything ships together, so a given feature cannot be enabled
+  on its own; prefer gating a feature on its own config key instead.
 - Prefer **patches** that only insert lines over `replace` overlays. Two mods
   inserting at the same anchor both survive; two mods rewriting the same base
   lines stop the build. `SettingsTab.qml` indexes `panelComponents` by section

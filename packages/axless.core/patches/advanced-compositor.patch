@@ -1,0 +1,160 @@
+diff --git a/modules/widgets/dashboard/controls/SettingsIndex.qml b/modules/widgets/dashboard/controls/SettingsIndex.qml
+index b50d54fc..42bf84be 100644
+--- a/modules/widgets/dashboard/controls/SettingsIndex.qml
++++ b/modules/widgets/dashboard/controls/SettingsIndex.qml
+@@ -22,6 +22,10 @@ QtObject {
+         { label: "Install mod", keywords: "add local directory archive git repository source", section: 10, subSection: "", subLabel: "Mods", icon: Icons.puzzlePiece, isIcon: true },
+         { label: "Rollback generation", keywords: "restore recover previous failed", section: 10, subSection: "", subLabel: "Mods", icon: Icons.arrowCounterClockwise, isIcon: true },
+ 
++        // --- axless.core ---
++        { label: I18n.t("ca.title"), keywords: "advanced compositor capabilities axctl", section: 11, subSection: "", subLabel: "", icon: Icons.compositor, isIcon: true },
++        { label: I18n.t("ca.layout"), keywords: "layout tiling dwindle master scrolling", section: 11, subSection: "", subLabel: I18n.t("ca.layout"), icon: Icons.compositor, isIcon: true },
++
+         // --- Network ---
+         { label: I18n.t("settings.network"), keywords: "internet wifi connection ethernet ip", section: 0, subSection: "", subLabel: "", icon: Icons.wifiHigh, isIcon: true },
+ 
+diff --git a/modules/widgets/dashboard/controls/SettingsTab.qml b/modules/widgets/dashboard/controls/SettingsTab.qml
+index aaef9eca..83827733 100644
+--- a/modules/widgets/dashboard/controls/SettingsTab.qml
++++ b/modules/widgets/dashboard/controls/SettingsTab.qml
+@@ -70,7 +70,7 @@ Rectangle {
+         property int currentPanelIndex: 0
+         property var aggregatedItems: []
+         property bool isIndexing: false
+-        readonly property var panels: contentArea.panelComponents.filter(panel => panel.section !== 10)
++        readonly property var panels: contentArea.panelComponents.filter(panel => panel.section !== 10 && panel.section !== 11)
+ 
+         // Helper to load panels one by one
+         Loader {
+@@ -266,6 +266,15 @@ Rectangle {
+             label: I18n.t("settings.ambxst"),
+             section: 9,
+             isIcon: false
++        },
++        // axless.core: new section id 11. Appended only - the panel list
++        // below is indexed by section id (panelComponents[currentSection]),
++        // so inserting anywhere else would renumber 9 and 10.
++        {
++            icon: Icons.compositor,
++            label: I18n.t("ca.title"),
++            section: 11,
++            isIcon: true
+         }
+     ]
+ 
+@@ -545,7 +554,7 @@ Rectangle {
+             clip: true
+ 
+             property int previousSection: 0
+-            readonly property int maxContentWidth: root.currentSection === 10 ? 760 : 480
++            readonly property int maxContentWidth: (root.currentSection === 10 || root.currentSection === 11) ? 760 : 480
+ 
+             // Track section changes for animation direction
+             onVisibleChanged: {
+@@ -606,6 +615,10 @@ Rectangle {
+                 {
+                     component: "ModsPanel.qml",
+                     section: 10
++                },
++                {
++                    component: "CompositorAdvancedPanel.qml",
++                    section: 11
+                 }
+             ]
+ 
+diff --git a/translations/en.json b/translations/en.json
+index d36a85a2..b60676a1 100644
+--- a/translations/en.json
++++ b/translations/en.json
+@@ -91,6 +91,27 @@
+   "bluetooth.open_manager": "Open Blueman",
+   "bluetooth.paired": "Paired",
+   "bluetooth.scan": "Scan for devices",
++  "ca.cap_animations": "Animations",
++  "ca.cap_blur": "Blur",
++  "ca.cap_rounded_corners": "Rounded corners",
++  "ca.cap_shadows": "Shadows",
++  "ca.cap_windows_supported": "Windows",
++  "ca.cap_workspaces_supported": "Workspaces",
++  "ca.compositor": "Compositor",
++  "ca.detecting": "detecting...",
++  "ca.environment": "Environment",
++  "ca.fallback": "built-in",
++  "ca.layout": "Layout",
++  "ca.layout_failed": "The compositor rejected that layout change",
++  "ca.layout_note": "Layouts reported as \"built-in\" come from axctl's static fallback list, not from the running compositor. Switching to one of them may have no effect.",
++  "ca.next": "Next",
++  "ca.no": "not supported",
++  "ca.prev": "Previous",
++  "ca.refresh": "Refresh",
++  "ca.title": "Advanced compositor",
++  "ca.unsupported": "Why some settings are missing here",
++  "ca.unsupported_body": "This panel only offers what actually reaches your compositor. Settings are written by Ambxst's Go backend into axctl.toml, which the external axctl binary then translates into your compositor's own config. axctl understands a fixed set of keys and silently drops the rest, and a mod cannot add keys to either the backend or axctl. That is why there are no controls for cursor themes, touchpad options, gestures, snapping, per-layout tuning, XWayland, VRR or XKB options - unlike the NothingLess panel, which wrote hyprland.conf directly and was Hyprland-only. Note also that the compositor itself may ignore keys it accepts: niri, for example, handles opacity and blur per window rule rather than globally. Appearance settings remain in the Compositor panel.",
++  "ca.yes": "supported",
+   "calendar.bar.no_events": "No events today",
+   "calendar.bar.section_past": "Past",
+   "calendar.bar.section_upcoming": "Upcoming",
+diff --git a/translations/es.json b/translations/es.json
+index bfa93c7d..fbe9ed4e 100644
+--- a/translations/es.json
++++ b/translations/es.json
+@@ -91,6 +91,27 @@
+   "bluetooth.open_manager": "Abrir Blueman",
+   "bluetooth.paired": "Vinculado",
+   "bluetooth.scan": "Buscar dispositivos",
++  "ca.cap_animations": "Animaciones",
++  "ca.cap_blur": "Desenfoque",
++  "ca.cap_rounded_corners": "Esquinas redondeadas",
++  "ca.cap_shadows": "Sombras",
++  "ca.cap_windows_supported": "Ventanas",
++  "ca.cap_workspaces_supported": "Espacios de trabajo",
++  "ca.compositor": "Compositor",
++  "ca.detecting": "detectando...",
++  "ca.environment": "Entorno",
++  "ca.fallback": "integrada",
++  "ca.layout": "Disposición",
++  "ca.layout_failed": "El compositor rechazó el cambio de disposición",
++  "ca.layout_note": "Las disposiciones marcadas como \"integrada\" provienen de la lista estática de axctl, no del compositor en ejecución. Cambiar a una de ellas puede no tener efecto.",
++  "ca.next": "Siguiente",
++  "ca.no": "no soportado",
++  "ca.prev": "Anterior",
++  "ca.refresh": "Actualizar",
++  "ca.title": "Compositor avanzado",
++  "ca.unsupported": "Por qué faltan algunos ajustes aquí",
++  "ca.unsupported_body": "Este panel solo ofrece lo que de verdad llega a tu compositor. Los ajustes los escribe el backend Go de Ambxst en axctl.toml, y el binario externo axctl los traduce luego a la configuración nativa del compositor. axctl entiende un conjunto fijo de claves y descarta el resto en silencio, y un mod no puede añadir claves ni al backend ni a axctl. Por eso no hay controles de tema de cursor, opciones del táctil, gestos, anclaje, ajustes por disposición, XWayland, VRR u opciones de XKB, a diferencia del panel de NothingLess, que escribía hyprland.conf directamente y era exclusivo de Hyprland. Ten en cuenta además que el propio compositor puede ignorar claves que sí acepta: niri, por ejemplo, gestiona opacidad y desenfoque por regla de ventana y no de forma global. Los ajustes de apariencia siguen en el panel Compositor.",
++  "ca.yes": "soportado",
+   "calendar.bar.no_events": "Sin eventos hoy",
+   "calendar.bar.section_past": "Pasados",
+   "calendar.bar.section_upcoming": "Próximos",
+diff --git a/translations/ru.json b/translations/ru.json
+index 6f084700..b67c7783 100644
+--- a/translations/ru.json
++++ b/translations/ru.json
+@@ -91,6 +91,27 @@
+   "bluetooth.open_manager": "Открыть Blueman",
+   "bluetooth.paired": "Сопряжено",
+   "bluetooth.scan": "Поиск устройств",
++  "ca.cap_animations": "Анимации",
++  "ca.cap_blur": "Размытие",
++  "ca.cap_rounded_corners": "Скруглённые углы",
++  "ca.cap_shadows": "Тени",
++  "ca.cap_windows_supported": "Окна",
++  "ca.cap_workspaces_supported": "Рабочие области",
++  "ca.compositor": "Композитор",
++  "ca.detecting": "определение...",
++  "ca.environment": "Окружение",
++  "ca.fallback": "встроенная",
++  "ca.layout": "Раскладка",
++  "ca.layout_failed": "Композитор отклонил смену раскладки",
++  "ca.layout_note": "Раскладки со значением «встроенная» берутся из статического списка axctl, а не от работающего композитора. Переключение на них может не дать эффекта.",
++  "ca.next": "Следующая",
++  "ca.no": "не поддерживается",
++  "ca.prev": "Предыдущая",
++  "ca.refresh": "Обновить",
++  "ca.title": "Расширенный композитор",
++  "ca.unsupported": "Почему здесь нет части настроек",
++  "ca.unsupported_body": "Эта панель предлагает только то, что действительно доходит до композитора. Настройки записывает Go-бэкенд Ambxst в axctl.toml, а внешний бинарник axctl переводит их в нативный конфиг композитора. axctl понимает фиксированный набор ключей и молча отбрасывает остальные, а мод не может добавить ключи ни в бэкенд, ни в axctl. Поэтому здесь нет управления темами курсора, параметрами тачпада, жестами, привязкой, настройками раскладок, XWayland, VRR и параметрами XKB — в отличие от панели NothingLess, которая писала hyprland.conf напрямую и работала только с Hyprland. Учтите также, что сам композитор может игнорировать принимаемые ключи: например, niri применяет непрозрачность и размытие по правилам окна, а не глобально. Настройки внешнего вида остаются в панели «Композитор».",
++  "ca.yes": "поддерживается",
+   "calendar.bar.no_events": "Нет событий сегодня",
+   "calendar.bar.section_past": "Прошедшие",
+   "calendar.bar.section_upcoming": "Предстоящие",

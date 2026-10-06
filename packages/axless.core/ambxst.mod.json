@@ -1,10 +1,10 @@
 {
   "$schema": "../../../docs/mods/manifest.schema.json",
   "manifestVersion": 1,
-  "id": "axless.agents",
-  "name": "Ax-Less Agent Platform",
+  "id": "axless.core",
+  "name": "Ax-Less Core",
   "version": "1.0.0",
-  "description": "Pluggable AI agent runtime for the assistant: MCP / HTTP-bridge / command agent connections with live tool discovery, a merged tool registry, multi-step chain enforcement, and a reworked AI engine with capability probing and OpenAI-compatible provider support. Animates with Ambxst's native Config.animDuration.",
+  "description": "The NothingLess feature set as one Ambxst mod: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine), an advanced compositor panel, per-monitor shell positions, notch metrics, bar island mode, a video wallpaper engine, a task board and a boot splash. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "GPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
@@ -16,17 +16,24 @@
       "bc60230283a3822eec2e23c949f44990480d0f43"
     ]
   },
+  "commands": [
+    "python3",
+    "curl",
+    "ollama",
+    "axctl",
+    "ffmpeg"
+  ],
   "permissions": [
     "Replaces the AI engine (Ai.qml) and the assistant sidebar with the agent-capable versions",
     "Spawns MCP servers, HTTP agent processes and command agents as child processes",
     "Executes shell commands and approved tools on the user's system",
     "Reads and writes the system prompt, tool allowlist and agent profile files",
-    "Reads the DeepSeek and other provider API keys from the Ambxst keystore"
-  ],
-  "commands": [
-    "python3",
-    "curl",
-    "ollama"
+    "Reads provider API keys from the Ambxst keystore",
+    "Runs axctl to read compositor capabilities and layouts, and to set window opacity live",
+    "Re-applies window opacity on every Ambxst start",
+    "Adds a new Settings section (section id 11) with a matching panel entry",
+    "Adds compositor and translation configuration keys",
+    "Spawns ffmpeg to build downscaled video wallpaper caches"
   ],
   "operations": [
     {
@@ -108,6 +115,11 @@
       "type": "overlay",
       "source": "payload/mcp/nothingclaw/README.md",
       "target": "mcp/nothingclaw/README.md"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/widgets/dashboard/controls/CompositorAdvancedPanel.qml",
+      "target": "modules/widgets/dashboard/controls/CompositorAdvancedPanel.qml"
     },
     {
       "type": "overlay",
@@ -203,6 +215,10 @@
     {
       "type": "patch",
       "source": "patches/agent-platform.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/advanced-compositor.patch"
     }
   ]
 }

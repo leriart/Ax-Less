@@ -1,12 +1,30 @@
-# axless.agents
+# axless.core
 
-Pluggable agent runtime for the Ambxst assistant, ported from the NothingLess
-AI subsystem.
+The NothingLess feature set as a single Ambxst mod. No companion packages, no
+dependencies: one install gets everything.
 
-This mod turns the assistant from "a chat box with one hardcoded
-`run_shell_command` tool" into an agent host: you register agents, each agent
-advertises its own tools, and the tools discovered from every connected agent
-are merged into the request the model sees.
+| Feature | Status |
+|---|---|
+| Agent platform (MCP / HTTP bridge / command agents) | done |
+| Advanced compositor panel | done |
+| Per-monitor shell positions | planned |
+| Notch metrics | planned |
+| Bar island mode | planned |
+| Video wallpaper engine | planned |
+| Task board | planned |
+| Boot splash | planned |
+| Hax spotlight | planned |
+
+Everything is adapted to Ambxst's own services, colours and animation model.
+Nothing here reimplements what Ambxst 1.3.10 already does natively in its Go
+backend; see the repository README for the exclusion list.
+
+## Agent platform
+
+Turns the assistant from "a chat box with one hardcoded `run_shell_command`
+tool" into an agent host: you register agents, each agent advertises its own
+tools, and the tools discovered from every connected agent are merged into the
+request the model sees.
 
 ## What it adds
 
@@ -50,12 +68,59 @@ local models, throttled streaming, and a request watchdog.
 ## Installing
 
 ```bash
-ambxst mods install /path/to/Ax-Less/packages/axless.agents
-ambxst mods enable axless.agents
+ambxst mods install /path/to/Ax-Less/packages/axless.core
+ambxst mods enable axless.core
 ambxst reload
 ```
 
-The package has no dependencies and adds no companion mod.
+One package, no dependencies.
+
+## Advanced compositor panel
+
+`CompositorAdvancedPanel.qml`, registered as Settings **section 11** (10 is
+Mods).
+
+It offers only what genuinely reaches the compositor:
+
+- **A capability report** from `axctl system get-capabilities`.
+- **Layout selection** via `axctl layout set/next/prev`, flagging entries that
+  come from axctl's static fallback list rather than the running compositor.
+
+### Why there are no appearance controls here
+
+Compositor settings travel `Panel QML -> Config.qml -> IPC compositor.write ->
+Go backend -> axctl.toml -> the axctl binary -> hyprland.lua / niri.kdl /
+mango.conf`. A mod can add QML but cannot recompile the Go backend or extend
+the `axctl` binary, and **axctl has a fixed vocabulary**: an unknown key is
+silently dropped from the generated config, and `axctl config set` rejects it.
+
+Verified live against niri on Ambxst 1.3.10:
+
+```
+axctl config set cursor.size 1              -> Error: unsupported config key
+axctl config set touchpad.natural_scroll 1  -> Error: unsupported config key
+an invented [zztest.foo] in axctl.toml      -> absent from the generated niri.kdl
+```
+
+Even the nine accepted keys do not all apply. `axctl config set
+opacity.active 0.92` reports success and `axctl config get` returns `0.92`,
+yet the generated `axctl.toml` still carries `active = 1.0`, and the
+`niri.kdl` axctl writes says:
+
+```
+// Not supported in niri static config: outer gaps (use inner gaps in niri);
+// opacity (niri uses per-app window-rule opacity); blur (configure via
+// blur {} block at top level in niri); shadow (configure per-app ...)
+```
+
+An earlier revision of this panel did offer window opacity, written live
+through `axctl config set`. It was removed: on niri it is a control that
+reports success and changes nothing. Appearance settings stay in the stock
+Compositor panel, which drives the TOML path where the values do apply.
+
+NothingLess's panel was not restricted this way because it wrote
+`hyprland.conf` directly through `scripts/sync-hyprland.py` (1533 lines),
+bypassing axctl entirely — which is also why it was Hyprland-only.
 
 ## Resetting the system prompt
 

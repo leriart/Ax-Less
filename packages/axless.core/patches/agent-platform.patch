@@ -9,7 +9,7 @@ index b7b39906..d49ff259 100644
 +            // Legacy, kept so existing binds keep resolving. Ignored in
 +            // favour of enabledTools.
              property string tool: "none"
-+            // axless.agents: explicit tool selection. Empty means "fall back
++            // axless.core: explicit tool selection. Empty means "fall back
 +            // to toolAllowlist intersected with the active agents' tools".
 +            property list<var> enabledTools: []
 +            // Names auto-approved without an approval row in the sidebar.
@@ -175,7 +175,7 @@ index 3333506c..edcec820 100644
      readonly property string thermometer: temperature
      readonly property string windowsLogo: terminalWindow
      readonly property string frameCorners: crop
-+    // axless.agents: names used by the agent sidebar and its panels that
++    // axless.core: names used by the agent sidebar and its panels that
 +    // this icon set does not define. Mapped onto the closest equivalent so
 +    // a glyph change in the sidebar cannot leave a hole in the icon.
 +    readonly property string check: accept
