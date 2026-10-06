@@ -1935,6 +1935,26 @@ Item {
 
                                 MonitorsPanel {
                                     Layout.fillWidth: true
+                                    /*
+                                        Fixed viewport height; the panel
+                                        scrolls inside it.
+
+                                        Kept as a constant on purpose. Deriving
+                                        it from the panel's implicitHeight is a
+                                        trap: the child's implicit height
+                                        depends on its own width, the parent
+                                        sizes the child from it, and QML
+                                        resolves that cycle by handing the
+                                        child zero width.
+
+                                        720 is the value this shipped with and
+                                        is taller than the ~618 px of usable
+                                        height in SettingsWindow (900x650 less
+                                        anchors.margins: 16), so the section is
+                                        reached through the compositor panel's
+                                        own scroller and the monitor list
+                                        scrolls inside its own viewport.
+                                    */
                                     Layout.preferredHeight: 720
                                     // MonitorsPanel is a full panel with its own
                                     // titlebar; the compositor panel's own

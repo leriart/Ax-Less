@@ -266,6 +266,25 @@ compositor's output API instead of being staged for a config-file writer.
 Runtime only. Nothing here writes a compositor config file, so values reset
 when the compositor restarts.
 
+### Snapping and placement
+
+Two things were wrong about dragging a monitor, both from the same root
+cause: thresholds expressed in canvas pixels and divided by `viewScale`.
+
+On a 3656 px wide desktop the canvas lands near `viewScale` 0.11, so
+NothingLess's `15 / viewScale` was **132 logical px while dragging and 220 on
+release**. Any monitor dropped within 220 px of a neighbour got yanked flush
+against it, so two screens could not be left a few pixels apart, and the yank
+got worse the larger the desktop. The threshold is now converted to logical
+units and capped at 24 px while dragging and 40 px on release - a little under
+two steps of the 10 px grid, enough to feel magnetic without taking over the
+placement.
+
+Horizontal placement is bounded: a monitor may sit entirely left of everything
+or entirely right of everything, but cannot be flung into empty space beyond
+the arrangement. Vertical placement is deliberately unbounded, because
+lining one monitor up under another is a normal thing to want.
+
 ### Bugs found and fixed while making it functional
 
 **Reading an output's on/off state.** niri still lists an output that is off,
@@ -325,6 +344,19 @@ off                    -> enabled=false width=0 refresh=0.000
 on                     -> enabled=true
 restore                -> scale 1, Normal, 1536,0, 1920x1080@60.000
 ```
+
+### Labels showing as bare key names
+
+`I18n.t()` falls back to `humanize(key)` when a key is absent, so a missing
+`mp.title` rendered as the literal word "title" on the section button. The
+translation patch had been regenerated from a tree whose `translations/` had
+been reset, which silently dropped the `ca.*` and `mp.*` keys and left only the
+20 added most recently.
+
+Translations are now generated from the set of keys the payload actually
+references rather than added in batches, so a key cannot be used without one
+existing. All 139 keys used by the mod resolve in en, es and ru, and the patch
+deletes zero lines.
 
 Verified against the live niri daemon with two real outputs:
 

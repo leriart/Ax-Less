@@ -640,7 +640,7 @@ Item {
         variant: "pane"
         radius: Styling.radius(0)
         enableShadow: true
-        Layout.preferredHeight: canvasArea.implicitHeight + 16
+        Layout.preferredHeight: Math.max(150, Math.min(320, canvasArea.implicitHeight + 16))
 
         // Logical size of an output, accounting for rotation and scale.
         function logicalWidth(m) {
@@ -674,6 +674,33 @@ Item {
 
         property var viewBounds: ({ minX: -100, minY: -100, maxX: 100, maxY: 100, spanW: 200, spanH: 200 })
         property real viewScale: 0.1
+
+
+        // Height follows width; width also drives the scale. Both are done in
+        // the single onWidthChanged handler further down.
+
+        /*
+            Snap thresholds, in logical pixels.
+
+            NothingLess states them in canvas pixels and divides by
+            viewScale, which makes the threshold grow without bound as the
+            canvas zooms out. On a 3656 px wide desktop the canvas lands
+            near 0.11, so 15 / 0.11 = 132 logical px while dragging and 220
+            on release. Any monitor dropped within 220 px of a neighbour was
+            yanked flush against it, which is why two screens could not be
+            left a few pixels apart - and the yank got worse the larger the
+            desktop.
+
+            So the canvas-pixel figure is converted to logical units and then
+            capped. 24 px is a little under two steps of the 10 px grid,
+            which is enough to feel magnetic without taking the placement over.
+        */
+        readonly property int snapDragLogical: 24
+        readonly property int snapReleaseLogical: 40
+
+        function snapDistance(canvasPx, capLogical) {
+            return Math.max(2, Math.min(canvasPx / av.viewScale, capLogical));
+        }
 
         function recalcBounds() {
             const list = av.monitors || [];
@@ -715,6 +742,35 @@ Item {
             av.viewScale = Math.min((cw - 20) / vb.spanW, (ch - 20) / vb.spanH);
         }
 
+        /*
+            Horizontal limits for a drag.
+
+            A monitor may sit entirely to the left of everything or entirely
+            to the right of everything, but it cannot be flung out into empty
+            space beyond the arrangement: a single flick would throw it
+            hundreds of pixels off with nothing to scroll back to.
+
+            Vertical placement is deliberately unbounded. Desktops are wide
+            and short, lining one monitor up under another is a normal thing
+            to want, and the canvas scrolls to follow.
+        */
+        function xBounds(idx, ownW) {
+            let lo = Infinity;
+            let hi = -Infinity;
+            const list = av.monitors || [];
+            for (let k = 0; k < list.length; k++) {
+                if (k === idx || !list[k].enabled)
+                    continue;
+                lo = Math.min(lo, list[k].x);
+                hi = Math.max(hi, list[k].x + av.logicalWidth(list[k]));
+            }
+            if (!isFinite(lo) || !isFinite(hi)) {
+                // A single output has no neighbours to be relative to.
+                return { min: -ownW * 4, max: ownW * 4 };
+            }
+            return { min: lo - ownW, max: hi };
+        }
+
         function realToCanvasX(rx) { return (rx - av.viewBounds.minX) * av.viewScale + 10; }
         function realToCanvasY(ry) { return (ry - av.viewBounds.minY) * av.viewScale + 10; }
 
@@ -722,6 +778,8 @@ Item {
 
         Component.onCompleted: recalcBounds()
 
+        // One handler only: two onWidthChanged assignments in the same
+        // component are rejected with "Property value set multiple times".
         onWidthChanged: recalcScale()
         onHeightChanged: recalcScale()
 
@@ -926,9 +984,11 @@ Item {
                                 let newY = Math.round((sry + dRY) / 10) * 10;
                                 const mw = monItem.logicalW;
                                 const mh = monItem.logicalH;
-                                const snapPx = 15 / av.viewScale;
+                                const snapPx = av.snapDistance(15, av.snapDragLogical);
 
                                 const list = av.monitors || [];
+                                // X is clamped to the arrangement; Y is free.
+                                const bounds = av.xBounds(monItem.index, mw);
                                 for (let k = 0; k < list.length; k++) {
                                     if (k === monItem.index || !list[k].enabled)
                                         continue;
@@ -944,7 +1004,8 @@ Item {
                                     if (Math.abs(newX - ox) < snapPx) newX = ox;
                                     if (Math.abs(newY - oy) < snapPx) newY = oy;
                                 }
-                                monItem.dragX = newX;
+                                monItem.dragX = Math.max(bounds.min, Math.min(bounds.max, newX));
+                                // No vertical clamp: stacking a monitor under another is
                                 monItem.dragY = newY;
                             }
                             onReleased: function () {
@@ -956,7 +1017,7 @@ Item {
                                 let ry = monItem.dragY;
                                 const mw = monItem.logicalW;
                                 const mh = monItem.logicalH;
-                                const snapPx = 25 / av.viewScale;
+                                const snapPx = av.snapDistance(25, av.snapReleaseLogical);
                                 const list = av.monitors || [];
 
                                 for (let k = 0; k < list.length; k++) {
@@ -998,7 +1059,9 @@ Item {
                                     }
                                 }
 
-                                rx = Math.round(rx / 10) * 10;
+                                const finalBounds = av.xBounds(monItem.index, mw);
+                                rx = Math.round(Math.max(finalBounds.min, Math.min(finalBounds.max, rx)) / 10) * 10;
+                                // Rounded to the 10 px grid, never clamped on Y.
                                 ry = Math.round(ry / 10) * 10;
                                 av.monitorMoved(monItem.index, rx, ry);
                             }
