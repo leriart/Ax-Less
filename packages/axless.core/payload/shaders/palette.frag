@@ -2,7 +2,7 @@
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
 
-layout(binding = 1) uniform sampler2D source;
+layout(binding = 1) uniform sampler2D videoFrame;
 layout(binding = 2) uniform sampler2D paletteTexture;
 
 layout(std140, binding = 0) uniform buf {
@@ -14,7 +14,7 @@ layout(std140, binding = 0) uniform buf {
 } ubuf;
 
 void main() {
-    vec4 tex = texture(source, qt_TexCoord0);
+    vec4 tex = texture(videoFrame, qt_TexCoord0);
     vec3 color = tex.rgb;
 
     vec3 accumulatedColor = vec3(0.0);
@@ -49,6 +49,15 @@ void main() {
     // Normalize
     vec3 finalColor = accumulatedColor / (totalWeight + 0.00001); // Avoid div by zero
 
-    // Pre-multiply alpha for proper blending in Qt Quick
-    fragColor = vec4(finalColor * tex.a, tex.a) * ubuf.qt_Opacity;
+    // Opaque, not pre-multiplied by the source alpha.
+    //
+    // A VideoOutput has no alpha channel, and in the FBO that
+    // ShaderEffectSource captures it arrives with alpha 0. Premultiplying by
+    // it - which is right for a still image, where alpha carries the
+    // transparency - makes the whole result transparent, so the tint showed
+    // nothing and the wallpaper rendered as whatever was behind it. Static
+    // wallpapers kept working because an Image does carry alpha 1.
+    //
+    // This effect covers the full item, so it is simply opaque.
+    fragColor = vec4(finalColor, 1.0) * ubuf.qt_Opacity;
 }

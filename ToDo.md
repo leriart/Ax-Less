@@ -42,6 +42,44 @@ este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
+## Tinte (palette) de wallpapers de vídeo — NO FUNCIONA
+
+El tinte funciona en imágenes fijas y nunca ha funcionado en vídeo. Es un bug
+**de Ambxst**, no del mod.
+
+**Causa raíz probada (bug de Ambxst):** un item layer renderiza el item a un
+FBO por la ruta normal, y esa ruta **no captura nodos de scene-graph
+personalizados** — `QSGVideoNode` entre ellos. Comprobado sustituyendo
+`palette.frag` por un shader que pinta **rojo sólido**: como layer sobre el
+`VideoOutput` no renderiza nada, ni el rojo. Las imágenes fijas no se ven
+afectadas porque un `Image` sí renderiza por la ruta normal.
+
+**Tres fallos más encontrados al intentar arreglarlo:**
+1. `ShaderEffectSource` captura como textura **vacía** cualquier item con
+   `opacity: 0`. La tira de paleta usaba `opacity: 0` para esconderse, así que
+   su textura salía vacía y `palette.frag` pintaba el vídeo de negro.
+2. `palette.frag` premultiplica por el alfa del origen
+   (`vec4(finalColor * tex.a, tex.a)`). Un `VideoOutput` no tiene canal alfa y
+   en el FBO llega con alfa 0 → resultado totalmente transparente. Una imagen
+   fija sí lleva alfa 1. Corregido en el shader del mod.
+3. Mantener la captura (`liveSource`) activa **merma el `VideoOutput`**: con la
+   textura capturándose pero sin nada encima, el vídeo desaparece (captura de
+   646 bytes, todo blanco). Con el efecto de interpolación encima, la misma
+   captura funciona. Por eso la captura solo se activa con la interpolación.
+
+**Estado:** el tinte de vídeo queda **neutralizado** (`visible: false`) porque
+un shader alimentado desde la captura renderiza superficie vacía y dejaría el
+escritorio en blanco. Es preferible a blanquear el escritorio: el vídeo se ve
+normal, simplemente sin teñir. Ambxst tampoco tiene un camino que funcione
+como referencia.
+
+**Lo que falta para cerrarlo:** que `palette.frag` reciba la textura del vídeo
+sin mermar el `VideoOutput`. Probado y **descartado**: `source` sombreado
+(como hace `UnifiedPanelEffect.qml`) → no liga; sampler renombrado a
+`videoFrame` (como el del interpolador) → tampoco. El siguiente paso es
+investigar por qué la captura y el `VideoOutput` no conviven cuando el efecto
+de tint es el único que está montado.
+
 ## Sidebar de IA — animaciones alineadas con Ambxst (06-10)
 
 El port de la sidebar traía el sistema de animación de NothingLess

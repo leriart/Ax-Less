@@ -342,10 +342,8 @@ Item {
         // Null when interpolation is off: pointing this at the VideoOutput
         // would force texture-capture mode and cost a full-screen copy for
         // every frame just to throw it away.
-        // Needed by both the interpolator and the tint, so it stays
-        // live whenever either is on.
-        sourceItem: (root.shaderActive || root.tint) ? videoNode : null
-        live: root.shaderActive || root.tint
+        sourceItem: root.shaderActive ? videoNode : null
+        live: root.shaderActive
         hideSource: true
         smooth: true
         visible: false
@@ -455,15 +453,21 @@ Item {
     ShaderEffect {
         id: tintEffect
         anchors.fill: parent
-        visible: root.tint && !root.shaderActive
+        // NOT WORKING - see ToDo.md. Left mounted but never shown, because a
+        // shader fed from the frame capture renders an empty surface here,
+        // which white-outs the wallpaper instead of leaving it untinted.
+        // Ambxst's own video tint (a layer on the VideoOutput) was broken the
+        // same way and differently, so there is no working baseline to fall
+        // back to.
+        visible: false
 
-        // palette.frag samples the frame through `source`. ShaderEffect has a
-        // built-in `source` of type QUrl meant for image files, so it is
-        // shadowed here with the captured texture - the same thing
-        // UnifiedPanelEffect.qml does for its blur passes. Assigning to the
-        // built-in one is a type error ("Cannot assign to non-existent
-        // property source"), which is why this shadows rather than assigns.
-        property var source: liveSource
+        // The sampler is named videoFrame, not source. ShaderEffect already
+        // has a built-in `source` property of type QUrl for image files, and
+        // shadowing it does not reliably bind a ShaderEffectSource: a
+        // passthrough shader fed that way rendered nothing at all, while the
+        // same capture under a normal name (the interpolator's
+        // currentFrame) works. So the shader uses a plain name.
+        property var videoFrame: liveSource
         property var paletteTexture: paletteTextureSource
         property real paletteSize: root.optimizedPalette.length
         property real texWidth: width
@@ -490,7 +494,10 @@ Item {
         // next check has to compare the *same* frame with and without the
         // effect (seek both to one timestamp, or capture one instance twice).
         z: 0
-        visible: !effect.visible
+        // Never hidden: hiding it while the interpolation effect is up left
+        // both ShaderEffectSources with an invisible sourceItem, which
+        // produces no texture at all. The effect covers it with z: 1 instead.
+        visible: true
     }
 
     // ── Palette (tint) ────────────────────────────────────────────
