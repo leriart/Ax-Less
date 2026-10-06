@@ -110,9 +110,13 @@ PanelWindow {
             debugOpenMs = -1;
             _debugOpenTimer.restart();
         } else {
-            // Only close on explicit dismiss (spotlight.closeSpotlight() was called)
-            // External clear events should not auto-close
-            if (!_pendingInternalClose) return;
+            // axless.core: NothingLess guarded this branch with
+            // `_pendingInternalClose` because its visibility came from a
+            // per-screen module that other code could clear. Here the flag is
+            // driven directly by the launcher keybind, which flips
+            // GlobalStates.haxVisible without going through closeSpotlight(),
+            // so requiring the guard left the window stuck open. Closing is
+            // driven purely by the flag now.
             _pendingInternalClose = false;
             openAnim.stop();
             stopMonitor();
@@ -140,14 +144,12 @@ PanelWindow {
     }
 
     function closeSpotlight() {
+        // axless.core: the close animation is driven by onSpotlightOpenChanged
+        // when the flag goes false, so flipping it is the whole close. The
+        // `_pendingInternalClose` flag is kept for compatibility with the other
+        // call sites but no longer gates anything.
         _pendingInternalClose = true;
-        // Integrated dismiss: flip the flag that drives onSpotlightOpenChanged.
         GlobalStates.haxVisible = false;
-        // If standalone (setActiveModule is a no-op), close directly
-        if (!spotlightOpen) {
-            openAnim.stop();
-            closeAnim.start();
-        }
     }
 
     // axless.core: this runs inside the Ambxst shell, not as a standalone
@@ -291,13 +293,12 @@ PanelWindow {
             });
         });
 
-        // Auto-open in standalone mode
-        Qt.callLater(function() {
-            animProgress = 0.0;
-            showHax = true;
-            openAnim.start();
-            searchInput.forceActiveFocus();
-        });
+        // axless.core: the original auto-opened here because NothingLess runs
+        // this file as a standalone `qs` process, where nothing else could ask
+        // for it to show. Inside the Ambxst shell it is opened by the launcher
+        // keybind via GlobalStates.haxVisible, so auto-opening here made it pop
+        // up on every shell start and the keybind could not close it (the
+        // close path is guarded by _pendingInternalClose).
     }
 
     // Debug mode
