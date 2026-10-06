@@ -5,46 +5,40 @@ lo pendiente, ordenado por valor por unidad de riesgo.
 
 ## NC — Bug conocido y no resuelto (monitores)
 
-### 1. Arrastre entre pantallas exige "insistir" con el ratón
+### 1. Pared al mover el cursor entre pantallas (compositor, no el menú)
 
-**Síntoma (reportado por el usuario):** hay que insistir con el ratón para
-desplazar un monitor de un lado al otro; no se mueve con un único gesto limpo.
+**Síntoma (reportado por el usuario, aclarado):** NO es el arrastre del menú de
+monitores. Es el **cursor del compositor**: al moverlo de un borde de pantalla
+a la otra se nota "como una pared" que lo frena — hay que insistir para cruzar.
 
-**Qué ya se descartó:**
+**Hecho probado en vivo (06-10):**
+Las dos pantallas están **apiladas en vertical**, no una junto a la otra:
 
-- *Fórmula del arrastre*: la de NothingLess (`pcx` capturado en `onPressed`,
-  restado de `mouse.x + monItem.x`) es correcta — verificada por simulación
-  paso a paso, no por intuición. La variante de solo-delta-dentro-de-la-caja
-  está rota y NO debe volver.
-- *Límite de X*: ahora permite un ancho de monitor de margen a cada lado
-  (`[-3072, 3072]` para un vecino de 1536). No bloquea colocaciones con aire.
-- *Imantado*: 16 px arrastrando / 24 px al soltar, en unidades lógicas.
-- *Coordenadas negativas*: se pasan con `--`, niri las acepta.
-- *Escala*: `pixelsAreLogical` es correcto en niri (píxeles) y en
-  Hyprland/Mango (÷scale).
+```
+eDP-1    Logical position: 0, 850    altura 960   -> ocupa 850..1810
+HDMI-A    Logical position: 0, -40    altura 864   -> ocupa -40..824
+----> hueco vertical entre ellas: 850 - 824 = 26 px
+```
 
-**Líneas a investigar (en orden):**
+Ese hueco de **26 px en Y** es la "pared": el cursor choca contra él y, como
+el desplazamiento cruzado es vertical (de 0,850 hacia 0,-40), atraviesa un
+vacío de 26 px donde no hay ninguna pantalla. Es **comportamiento normal** de
+niri: no hay salto de cursor ni warping configurado, el cursor cruza solo
+donde las pantallas se tocan.
 
-1. **`dRY` y el agarre** — si el punto de agarre se desplaza hacia arri/abajo
-   `y` al arrastrar, el monitor "pelea" y hay que re-presionar. Comprobar que
-   `pcy` se captura una vez y que `onPositionChanged` no reasigna `pcy`.
-2. **El `monItem` persigue al cursor, no el modelo** — `dragX`/`dragY` son
-   copias; el `MouseArea` está sobre `monItem`. Si el `mouse` sale del `Item`
-   durante el arrastre (cursor rápido), `onPositionChanged` deja de darse y el
-   `Item` no crece. Con un escritorio de 3656 px a escala ~0.11 los monitores
-   son pequeños (50-150 px) y a alta velocidad el cursor se les escapa fácil.
-   Solución probable: usar `drag.target` de QML (`MouseArea.drag.target:
-   monItem`) con `drag.axis` y `drag.threshold`, o capturar la posición global
-   del ratón (QMLE tiene `Grabber` local; en `MouseArea` hay
-   `mouse.accepted` y se puede rastrear con `containsMouse`), y hacer que el
-   `MouseArea` cubra todo el canvas mientras `dragging`.
-3. **Ratio de traducción** — confirmar que la posición del compositor tras el
-   arrastre coincide con el punto de agarre (no con la esquina) comparando
-   `monItem` en pantalla contra `niri msg --json outputs` después del solt.
+**Opciones (decidir con el usuario):**
+1. **Dejarlo**: es el hueco legítimo entre dos pantallas apiladas. La pared
+   desaparece si las pantallas se superponen 0-1 px (alinear sus bordes).
+   "Colocar juntos" en el menú de monitores sirve para eso.
+2. **`focus-ring` / warp de cursor en borde**: niri no expone warp de cursor
+   por borde; habría que revisar keybinds de niri (`niri msg action move-cursor
+   ...`) si existe, para mover el foco/cursor de pantalla con atajo en lugar de
+   por arrastre. NO está en la funcionalidad estándar.
 
-**Cómo probarlo:** en los pasos 2-3, mostrar un `console.log` en
-`onPositionChanged`/`onPressed`/`onReleased` con `mouse.x`, `monItem.x`,
-`pcx`, `dRX`, `newX` y comparar contra el log de `apply()` al soltar.
+**Para el menú de monitores (relacionado, ya casi resuelto):** la UI de
+arrastre del lienzo es correcta (ver commit "widen horizontal drag bound"), y
+el NC anterior del "insistir con el ratón" quedó descartado como síntoma de
+este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
@@ -66,6 +60,41 @@ desplazar un monitor de un lado al otro; no se mueve con un único gesto limpo.
   se genere una feature nueva que añada claves. Las traducciones se generan
   desde el conjunto real de claves usadas por el payload (ver commit de
   "traducciones completas"). Nunca insertar claves sueltas a mano.
+
+## Lo que falta por portear de NothingLess al mod (inventario completo)
+
+Fuente: `~/Documentos/GitHub/NothingLess` (fork v1.1.0). Ambxst 1.3.10
+(`~/.local/src/ambxst`) ya tiene **en su backend Go** muchas de estas cosas
+(clipboard, OCR/QR, screenshots, system monitor, keystore, link preview,
+weather, night light, game mode, caffeine, power profile, recorder) — esas se
+**excluyen** y NO se portea para no revertir trabajo nativo multi-compositor.
+Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
+
+### Ya portado y verificado en `axless.core`
+- [x] Agente/NLP: `Ai.qml`+estrategias+`AgentManager`/`AgentStore`/MCP/HTTP/command+`mcp/nothingclaw` (3.3 k-linas). Reemplaza `Ai.qml` (overlay con sha).
+- [x] Menú de compositor único (sección 8) con opciones por compositor + `CompositorKeywords.qml` (73 claves de NothingLess, vía Hyprland; ocultas en niri).
+- [x] Monitores por compositor + arrangement canvas arrastrable (`MonitorsPanel.qml`).
+- [x] Traducciones completas (grep del payload, no batch suelto).
+
+### Pendiente de portar (features)
+| # | Feature | Archivos (NothingLess) | Excluido por backend Go? |
+|---|---|---|---|
+| F1 | Island de barra | `modules/bar/IslandContent.qml`, `BarContent.qml`, `config/defaults/bar.js` | no |
+| F2 | Métricas en notch | `Modules/widgets/defaultview/MetricsGroup*.qml`, `DefaultView.qml`, `Notch*.qml` | parcial → usar `SystemResources` (Go) para los datos |
+| F3 | Posiciones por monitor | `modules/services/PerMonitorConfig.qml` | no |
+| F4 | Wallpaper de vídeo + interpol + palette | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real NO existe en Ambxst (solo `refreshRate` por monitor) |
+| F5 | Tablero de tareas | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` | no |
+| F6 | Hax spotlight | `modules/widgets/spotlight/*` (5.2 k-linas), `Calculator.qml`, `PluginManager.qml` | no (proceso standalone) |
+| F7 | Splash con logo | bloque splash de `shell.qml` + `assets/ambxst/*.svg` | no |
+
+### Explicitamente excluido (Ambxst ya lo hace mejor en Go; NO portar)
+- **Clipboard** (`svc/clipboard` + sqlite cifrado + fts5 + wlr-data-control) — NothingLess usa bash+python.
+- **Screenshot / thumbnails / recorder** (`internal/screenshot`, `thumbs_native.go`, `recorder`) — NothingLess usa python/ffmpeg.
+- **OCR / QR** (`svc/ocr`: tesseract+gozxing en Go) — NothingLess usa scripts.
+- **System monitor / FPS de juegos** (`svc/systemmonitor`) — NothingLess usa `system_monitor.py`/`fps_monitor.py` (776 l.). Usar `SystemResources`/`Screenshot` en su lugar.
+- **Keystore / link preview / weather / night light / game mode / caffeine / power profile** (`svc/*`) — NothingLess reimplementa en QML/python.
+- **Compositor**: `sync-hyprland.py` (1533 l., Hyprland-only) y las ~150 claves extra — Ambxst generaliza en `backend/pkg/svc/compositor` (multi-compositor). La parte de hyprctl ya está en el menú.
+- **ScreenTranslation / MusicRecognizer**: huérfanos incluso en NothingLess.
 
 ## Backlog (no-prioritario)
 
