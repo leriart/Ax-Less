@@ -42,6 +42,35 @@ este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
+## Motor de wallpapers — copiado literal de NothingLess (07-10)
+
+`Wallpaper.qml` de NothingLess (1759 líneas) sustituye por completo al de
+Ambxst (1255). Traídos tal cual, sin adaptar:
+
+- `wallpapers/Wallpaper.qml` — el motor entero: crossfade de dos capas, `contentReady`, interpolación, tinte, debug overlay, teclado
+- `wallpapers/FilterBar.qml`, `wallpapers/SchemeSelector.qml`
+- `wallpapers/interpol.frag`, `interpol.vert` (los originales compilados aparte, con el factor ×4 y los clamps ya corregidos)
+- `services/VideoWallpaperService.qml`, `services/GpuDetector.qml`
+
+**Por qué era viable:** el único servicio NL-only del que depende
+`Wallpaper.qml` es `VideoWallpaperService` (6 referencias), y se copiaría con
+él. El resto de `Config.*` que usa son el `JsonAdapter` y métodos de `FileView`.
+
+**Cómo se aplica:** overlay con `replace: true` + `expectedSha256` del fichero
+base, porque un overlay normal no puede sobrescribir. El parche
+`wallpaper-interpolation.patch` se retiró: `Wallpaper.qml` llega literal, y
+`VideoWallpaper.qml` deja de usarse (NL gestiona el vídeo dentro de
+`Wallpaper.qml`).
+
+**Verificado:** `Wallpaper.qml` byte-idéntico a NothingLess, generación sin un
+solo ERROR, y sin `ReferenceError` ni `TypeError` de servicios.
+
+**Lo que deja de estar:** las数据中心 integraciones que Ambxst tenía en su
+`Wallpaper.qml` y NL no — blur del overview, `perScreenWallpapers`,
+integración con presets, y el_extract de scheme. También
+`payload/modules/widgets/dashboard/wallpapers/InterpolatedVideo.qml` queda sin
+uso: era mi reimplementación del motor y NL lo sustituye entero.
+
 ## Tinte (palette) de wallpapers de vídeo — FUNCIONA (07-10)
 
 **La causa era `VideoOutput` frente a `Video`.** NothingLess usa:
