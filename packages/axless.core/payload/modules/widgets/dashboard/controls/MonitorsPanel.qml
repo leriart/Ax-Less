@@ -1096,13 +1096,64 @@ Item {
                                     const o2 = list[j];
                                     const o2w = av.logicalWidth(o2);
                                     const o2h = av.logicalHeight(o2);
-                                    if (rx < o2.x + o2w && rx + mw > o2.x && ry < o2.y + o2h && ry + mh > o2.y) {
+                                    // Al snap the passive box exactly to the
+                                    // edge, the two are adjacent with a zero
+                                    // gap, which reads as a 1 px touch and
+                                    // triggers the overlap solver: it pushes
+                                    // the screen back out, and the layout
+                                    // visibly shifts while nothing is being
+                                    // dragged.
+                                    //
+                                    // The real cause is that when the user
+                                    // drags one screen tight against the
+                                    // neighbour, `rx/ry` land a single grid
+                                    // step (10 px) past the exact edge. The
+                                    // solver sees a *sliver* of overlap and
+                                    // resolves it by pushing along the smaller
+                                    // axis - which on a stacked desktop is the
+                                    // vertical one - so the monitor jumps
+                                    // upward/downward instead of settling.
+                                    //
+                                    // Fix: only treat as overlap when the
+                                    // penetration is real (>= 1 logical px on
+                                    // both axes). A 1-4 px sliver is edge
+                                    // tolerance, not a collision; round it
+                                    // away instead of pushing.
+                                    // Schedule, then resolve: this list is
+                                    // iterated once per dropped output, and two
+                                    // neighbours pushed against each other can
+                                    // fight. Resolving eagerly inside the loop
+                                    // makes HDMI settle, then eDP settles next
+                                    // iteration and shoves HDMI back out - the
+                                    // layout visibly shifting with nothing
+                                    // being dragged.
+                                    //
+                                    // Only a real overlap (>= 2 logical px on
+                                    // both axes from the 1 px reduction below)
+                                    // counts. A 1 px sliver from rounding to
+                                    // the 10 px grid is edge tolerance, not a
+                                    // collision.
+                                    if (rx < o2.x + o2w - 1 && rx + mw - 1 > o2.x
+                                        && ry < o2.y + o2h - 1 && ry + mh - 1 > o2.y) {
                                         const dL = rx + mw - o2.x;
                                         const dR = o2.x + o2w - rx;
                                         const dU = ry + mh - o2.y;
                                         const dD = o2.y + o2h - ry;
                                         const d = Math.min(dL, dR, dU, dD);
-                                        if (d === dL) rx = o2.x - mw;
+                                        // Prefer resolving horizontally for a
+                                        // sliver (penetration < 8 px on the
+                                        // other axis is tiny): a vertical push
+                                        // on our stacked desktop (two screens
+                                        // same x, different y) makes the
+                                        // dragged monitor leap a whole screen
+                                        // up or down, which reads as the
+                                        // layout shifting while nothing moves.
+                                        // A horizontal nudge of a few px is
+                                        // gentle and gets it out of the way.
+                                        const sliver = d < 8;
+                                        if (sliver && d === dU) rx = o2.x - mw;
+                                        else if (sliver && d === dD) rx = o2.x + o2w;
+                                        else if (d === dL) rx = o2.x - mw;
                                         else if (d === dR) rx = o2.x + o2w;
                                         else if (d === dU) ry = o2.y - mh;
                                         else ry = o2.y + o2h;
