@@ -88,7 +88,11 @@ Item {
     // So the real work is done up front by axvideo, which uses the decoder's
     // own motion vectors, and the shell just plays the result. A wallpaper
     // loops, so rendering a copy costs nothing at playback time.
-    property string interpolateScriptPath: Qt.resolvedUrl("../../../../video/bin/interpolate.sh")
+    // Empty by default: the GPU shader is the live path, like NothingLess.
+    // Point this at interpolate.sh to render an axvideo copy instead, which
+    // uses the decoder's real motion vectors but is CPU bound - a 4K clip
+    // takes a while, so it is opt-in rather than automatic.
+    property string interpolateScriptPath: ""
     property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/ambxst/interpolated"
     // Non-empty once the interpolated copy exists and is what we play.
     property string interpolatedPath: ""
@@ -235,10 +239,16 @@ Item {
     property string axprobePath: Qt.resolvedUrl("../../../../video/bin/axprobe")
     property bool sourceProbed: false
 
-    // The GPU shader only fills in while no rendered copy exists. Once axvideo
-    // has produced one it is a better result - real decoder motion vectors
-    // instead of a per-block estimate - and it sidesteps the shader's
-    // unresolved previous-frame source problem entirely.
+    // The GPU shader is never used.
+    //
+    // It was kept as a fallback for the gap between enabling the toggle and
+    // the render landing, and that was a mistake: its previousFrame source
+    // cannot be made reliable from QML, so during that gap the wallpaper was
+    // being drawn by the broken shader - which is what showed up as a zoom.
+    // axvideo is slower to produce its copy (a 4K clip takes minutes, since
+    // the interpolation is CPU bound) but it is correct, so the original clip
+    // keeps playing until the copy is ready. No zoom, just no interpolation
+    // yet.
     readonly property bool shaderActive: interpolate && multiplier > 1 && interpolatedPath === ""
 
     function probeSource() {

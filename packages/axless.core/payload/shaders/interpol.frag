@@ -46,29 +46,35 @@ ivec2 clampCoord(ivec2 coord, ivec2 minBound, ivec2 maxBound) {
 // -------------------------------------------------------------------
 // Sample a pixel safely
 // -------------------------------------------------------------------
-vec3 samplePixel(sampler2D tex, ivec2 coord) {
-    ivec2 res = ivec2(ubuf.iResolution);
-    ivec2 clamped = clampCoord(coord, ivec2(0, 0), res - 1);
-    return texelFetch(tex, clamped, 0).rgb;
+// Sampling takes a UV, not texel coordinates.
+//
+// This used to texelFetch with ivec2(uv * iResolution), which mixes two
+// different ideas: texture() is resolution independent but texelFetch is not,
+// and iResolution carries the *effect's* logical size while the frame texture
+// is allocated in device pixels. Whenever those differ, the frame is read from
+// a sub-rectangle and stretched over the whole effect - a zoom, whose
+// magnitude is exactly the device pixel ratio.
+//
+// ShaderEffectSource.textureSize is not readable from QML here, so the size
+// cannot be recovered; sampling by UV sidesteps needing it. The block math
+// still uses iResolution, and a wrong value there only shifts which block a
+// pixel lands in - block boundaries soften, nothing scales.
+vec3 samplePixel(sampler2D tex, vec2 uv) {
+    return texture(tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
 }
 
 // -------------------------------------------------------------------
 // Optimized SAD using texelFetch (with manual unrolling for speed)
 // -------------------------------------------------------------------
-float blockSADFast(ivec2 centerCurr, ivec2 centerPrev, int bSize) {
+float blockSADFast(vec2 centerCurr, vec2 centerPrev, vec2 texel, int bSize) {
     float sad = 0.0;
     int h = bSize / 2;
-    ivec2 res = ivec2(ubuf.iResolution);
-    ivec2 minBound = ivec2(h, h);
-    ivec2 maxBound = res - h - 1;
 
     for (int y = -h; y < h; ++y) {
         for (int x = -h; x < h; ++x) {
-            ivec2 offset = ivec2(x, y);
-            ivec2 coord_curr = clampCoord(centerCurr + offset, minBound, maxBound);
-            ivec2 coord_prev = clampCoord(centerPrev + offset, minBound, maxBound);
-            vec3 c = texelFetch(currentFrame, coord_curr, 0).rgb;
-            vec3 p = texelFetch(previousFrame, coord_prev, 0).rgb;
+            vec2 offset = vec2(float(x), float(y)) * texel;
+            vec3 c = samplePixel(currentFrame, centerCurr + offset);
+            vec3 p = samplePixel(previousFrame, centerPrev + offset);
             sad += dot(abs(c - p), vec3(0.299, 0.587, 0.114));
         }
     }
@@ -77,78 +83,58 @@ float blockSADFast(ivec2 centerCurr, ivec2 centerPrev, int bSize) {
 
 void main() {
     vec2 uv = qt_TexCoord0;
-    ivec2 res = ivec2(ubuf.iResolution);
-    ivec2 texelCoord = ivec2(uv * vec2(res));
+    vec2 res = vec2(ubuf.iResolution);
+    vec2 texel = 1.0 / res;
 
     int bSize = ubuf.blockSize;
-    int h = bSize / 2;
-    ivec2 minBound = ivec2(h, h);
-    ivec2 maxBound = res - h - 1;
-    // Two different clamps, and conflating them is what put a hard border
-    // around the interpolated picture.
-    //
-    // `safeCoord` keeps the *search* inside the region where a whole block
-    // fits, which is what the block math needs. But it was also being used to
-    // sample the colour, so every pixel within h of the frame edge was read
-    // from h pixels further in: a 6 px ring of edge content replaced by
-    // interior content on every side. Visible as the frame appearing inset,
-    // and it ignored searchRadius entirely, which is why shrinking the search
-    // never changed it.
-    ivec2 safeCoord = clampCoord(texelCoord, minBound, maxBound);
-    // Colour is sampled at the true pixel, clamped only to the frame.
-    ivec2 colorCoord = clampCoord(texelCoord, ivec2(0), res - 1);
+    float bs = float(bSize);
+    vec2 uvPerBlock = texel * bs;
 
-    ivec2 blockIdx = safeCoord / bSize;
-    ivec2 blockCenter = blockIdx * bSize + h;
+    // Colour is sampled in UV, so this is exact at any texture size.
+    vec3 curr = samplePixel(currentFrame, uv);
+    vec3 prev = samplePixel(previousFrame, uv);
 
-    vec3 curr = samplePixel(currentFrame, colorCoord);
-    vec3 prev = samplePixel(previousFrame, colorCoord);
+    // Block bookkeeping stays in the effect's own units. A mismatch with the
+    // frame texture only moves block boundaries, it cannot scale the picture.
+    vec2 blockIdx = uv / uvPerBlock;
+    vec2 blockCenter = (blockIdx + 0.5) * uvPerBlock;
 
     vec2 motion = vec2(0.0);
     float bestCost = 1e10;
     bool motionValid = false;
 
-    // ---- Pyramid‑based motion search (only at block centers) ----
-    if (all(equal(safeCoord, blockCenter))) {
-        // Fast check: if block difference is low, skip expensive search
-        float coarseDiff = blockSADFast(blockCenter, blockCenter, bSize);
+    // Motion search only at block centres, as in the original.
+    if (abs(uv.x / uvPerBlock.x - floor(uv.x / uvPerBlock.x + 0.5)) < 0.001
+        && abs(uv.y / uvPerBlock.y - floor(uv.y / uvPerBlock.y + 0.5)) < 0.001) {
+
+        float coarseDiff = blockSADFast(blockCenter, blockCenter, texel, bSize);
         if (coarseDiff > ubuf.motionThreshold) {
             int sr = ubuf.searchRadius;
-            // Coarse search at 1/4 resolution for efficiency
-            vec2 coarseTexel = 4.0 / vec2(res);
-            vec2 coarseUV = uv * 0.25;
+            vec2 coarseTexel = 4.0 * texel;
             for (int dy = -sr; dy <= sr; ++dy) {
                 for (int dx = -sr; dx <= sr; ++dx) {
                     vec2 offset = vec2(float(dx), float(dy)) * coarseTexel;
-                    vec3 c = textureLod(currentFrame, coarseUV, 2.0).rgb;
-                    vec3 p = textureLod(previousFrame, coarseUV + offset, 2.0).rgb;
+                    vec3 c = textureLod(currentFrame, blockCenter, 2.0).rgb;
+                    vec3 p = textureLod(previousFrame, blockCenter + offset, 2.0).rgb;
                     float cost = dot(abs(c - p), vec3(0.299, 0.587, 0.114));
                     if (cost < bestCost) {
                         bestCost = cost;
-                        // `offset` is already a UV delta: coarseTexel is
-                        // 4/res, i.e. one coarse tap equals four full-res
-                        // pixels expressed in UV. Multiplying by 4 again
-                        // quadruples the displacement, the warp then pulls
-                        // pixels from far outside the block and the picture
-                        // reads as a zoom. Keep it in UV; the fine pass
-                        // converts to texels and back itself.
+                        // `offset` is already a UV delta: coarseTexel is 4/res,
+                        // one coarse tap equals four full-res pixels. Scaling
+                        // it again quadruples the displacement.
                         motion = offset;
                     }
                 }
             }
-            // Fine refinement at full resolution (only if coarse search found something)
             if (bestCost < 1e9) {
-                ivec2 coarseMotion = ivec2(motion * vec2(res));
+                // Refine at full resolution, +/- 2 texels around the coarse hit.
                 for (int dy = -2; dy <= 2; ++dy) {
                     for (int dx = -2; dx <= 2; ++dx) {
-                        ivec2 offset = coarseMotion + ivec2(dx, dy);
-                        ivec2 blockCenterPrev = blockCenter + offset;
-                        if (any(lessThan(blockCenterPrev, minBound)) || any(greaterThan(blockCenterPrev, maxBound)))
-                            continue;
-                        float sad = blockSADFast(blockCenter, blockCenterPrev, bSize);
+                        vec2 offset = motion + vec2(float(dx), float(dy)) * texel;
+                        float sad = blockSADFast(blockCenter, blockCenter + offset, texel, bSize);
                         if (sad < bestCost) {
                             bestCost = sad;
-                            motion = vec2(offset) / vec2(res);
+                            motion = offset;
                         }
                     }
                 }
@@ -157,39 +143,26 @@ void main() {
         }
     }
 
-    // ---- Warping & hole filling ----
-    vec2 texelSize = 1.0 / vec2(res);
-    vec2 motionUV = motion;
-    vec2 halfTexel = texelSize * 0.5;
-
-    vec2 warpedUV = uv - motionUV * ubuf.blendFactor;
-    vec2 warpedCurrUV = uv + motionUV * (1.0 - ubuf.blendFactor);
+    vec2 halfTexel = texel * 0.5;
+    vec2 warpedUV = uv - motion * ubuf.blendFactor;
+    vec2 warpedCurrUV = uv + motion * (1.0 - ubuf.blendFactor);
 
     // A warp that leaves the frame has nothing to sample. Clamping it to the
-    // edge instead - which is what this shader used to do - drags interior
-    // pixels outward, eating a band of the picture and reading as the frame
-    // being inset. It only shows on the side the motion points away from,
-    // which is why it looked like a single bad corner.
-    //
-    // Out of bounds means no motion compensation for this pixel; the plain
-    // cross-fade below is the correct fallback and is already computed.
-    bool warpedPrevInBounds = all(greaterThanEqual(warpedUV, vec2(0.0)))
-                           && all(lessThanEqual(warpedUV, vec2(1.0)));
-    bool warpedCurrInBounds = all(greaterThanEqual(warpedCurrUV, vec2(0.0)))
-                           && all(lessThanEqual(warpedCurrUV, vec2(1.0)));
+    // edge instead drags interior pixels outward and eats a band of the
+    // picture, which reads as the frame being inset.
+    bool prevIn = all(greaterThanEqual(warpedUV, vec2(0.0)))
+              && all(lessThanEqual(warpedUV, vec2(1.0)));
+    bool currIn = all(greaterThanEqual(warpedCurrUV, vec2(0.0)))
+              && all(lessThanEqual(warpedCurrUV, vec2(1.0)));
 
-    // Only now clamp to a half texel, to keep the filtered fetch in range.
-    warpedUV = clamp(warpedUV, halfTexel, 1.0 - halfTexel);
-    warpedCurrUV = clamp(warpedCurrUV, halfTexel, 1.0 - halfTexel);
-    vec3 warpedPrev = texture(previousFrame, warpedUV).rgb;
-    vec3 warpedCurr = texture(currentFrame, warpedCurrUV).rgb;
+    vec3 warpedPrev = samplePixel(previousFrame, clamp(warpedUV, halfTexel, 1.0 - halfTexel));
+    vec3 warpedCurr = samplePixel(currentFrame, clamp(warpedCurrUV, halfTexel, 1.0 - halfTexel));
 
     vec3 blended = mix(prev, curr, ubuf.blendFactor);
     vec3 finalColor;
 
-    if (motionValid && warpedPrevInBounds && warpedCurrInBounds) {
-        vec3 centerWarpedPrev = texture(previousFrame, warpedUV).rgb;
-        float holeWeight = clamp(dot(abs(curr - centerWarpedPrev), vec3(0.299, 0.587, 0.114)) / 0.3, 0.0, 1.0);
+    if (motionValid && prevIn && currIn) {
+        float holeWeight = clamp(dot(abs(curr - warpedPrev), vec3(0.299, 0.587, 0.114)) / 0.3, 0.0, 1.0);
         vec3 motionCompensated = mix(warpedPrev, warpedCurr, holeWeight);
         float confidence = 1.0 - clamp(bestCost / (ubuf.motionThreshold * 3.0), 0.0, 1.0);
         finalColor = mix(blended, motionCompensated, confidence * 0.9);
