@@ -11,7 +11,7 @@ index 3333506..bfc3b06 100644
      readonly property string gpu: ""
      readonly property string ram: ""
 diff --git a/modules/widgets/dashboard/Dashboard.qml b/modules/widgets/dashboard/Dashboard.qml
-index 6b60935..67e2b08 100644
+index 6b60935..2b9b5c2 100644
 --- a/modules/widgets/dashboard/Dashboard.qml
 +++ b/modules/widgets/dashboard/Dashboard.qml
 @@ -11,6 +11,7 @@ import qs.modules.widgets.dashboard.widgets
@@ -22,7 +22,7 @@ index 6b60935..67e2b08 100644
  import qs.config
  
  NotchAnimationBehavior {
-@@ -23,7 +24,7 @@ NotchAnimationBehavior {
+@@ -23,12 +24,15 @@ NotchAnimationBehavior {
          property int currentTab: GlobalStates.dashboardCurrentTab
      }
  
@@ -31,7 +31,47 @@ index 6b60935..67e2b08 100644
      readonly property int tabCount: tabModel.length
      readonly property int tabSpacing: 8
  
-@@ -461,6 +462,13 @@ NotchAnimationBehavior {
+     readonly property int tabWidth: 48
+-    readonly property real nonAnimWidth: (state.currentTab === 0 ? 600 : 400) + tabWidth + 16 // unified launcher tab is wider
++    // unified launcher (0) and the todo board (3) need more room than the
++    // wallpaper/metrics tabs; the todo board renders a 280 px calendar panel
++    // next to the task list.
++    readonly property real nonAnimWidth: (state.currentTab === 0 ? 600 : state.currentTab === 3 ? 640 : 400) + tabWidth + 16
+ 
+     implicitWidth: nonAnimWidth
+     implicitHeight: 430
+@@ -200,10 +204,14 @@ NotchAnimationBehavior {
+ 
+                 // Calcular posición Y para un índice dado
+                 function getYForIndex(idx) {
+-                    if (idx <= 2) {
+-                        return idx * (width + root.tabSpacing);
++                    if (idx < root.tabCount) {
++                        // Clamp: a tab that overflows the strip above the
++                        // controls button would paint the highlight exactly
++                        // over it, making settings look selected instead.
++                        return Math.min(idx * (width + root.tabSpacing),
++                                        controlsButtonContainer.y - root.tabSpacing - width);
+                     } else {
+-                        // Controls button at the bottom
++                        // Controls button at the bottom (for fallback)
+                         return controlsButtonContainer.y;
+                     }
+                 }
+@@ -262,6 +270,12 @@ NotchAnimationBehavior {
+                             radius: Styling.radius(4)
+                         }
+ 
++                        // The tab strip is anchored top and the controls
++                        // button sits at the bottom of the same container; a
++                        // button that would cross into it gets clipped under
++                        // the gear (z=1) and reads as "settings selected".
++                        visible: index * (height + root.tabSpacing) + height <= controlsButtonContainer.y
++
+                         contentItem: Text {
+                             text: parent.text
+                             textFormat: Text.RichText
+@@ -461,6 +475,13 @@ NotchAnimationBehavior {
                      sourceComponent: metricsComponent
                      z: visible ? 1 : 0
                  }
@@ -45,7 +85,7 @@ index 6b60935..67e2b08 100644
                  
                  // Helper to access current item for focus
                  property var currentItem: {
-@@ -468,6 +476,7 @@ NotchAnimationBehavior {
+@@ -468,6 +489,7 @@ NotchAnimationBehavior {
                          case 0: return children[0].item;
                          case 1: return children[1].item;
                          case 2: return children[2].item;
@@ -53,7 +93,7 @@ index 6b60935..67e2b08 100644
                          default: return null;
                      }
                  }
-@@ -593,4 +602,9 @@ NotchAnimationBehavior {
+@@ -593,4 +615,9 @@ NotchAnimationBehavior {
          id: wallpapersComponent
          WallpapersTab {}
      }

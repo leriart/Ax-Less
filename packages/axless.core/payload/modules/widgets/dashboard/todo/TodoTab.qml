@@ -23,8 +23,8 @@ import qs.config
 Rectangle {
     id: root
     color: "transparent"
-    implicitWidth: 800
-    implicitHeight: 600
+    implicitWidth: 640
+    implicitHeight: 430
 
     // New-task form
     property string newTaskText: ""
@@ -34,6 +34,7 @@ Rectangle {
     property int newTaskTimeM: 0
 
     // Calendar side-panel state
+    property bool showCalendar: true
     property int calYear: new Date().getFullYear()
     property int calMonth: new Date().getMonth()
     property var _filterDay: null
@@ -261,6 +262,27 @@ Rectangle {
                 font.family: Config.theme.font
                 font.pixelSize: Styling.fontSize(-1)
                 color: _overdueCount > 0 ? Colors.error : Colors.overBackground
+            }
+
+            // Calendar panel toggle
+            StyledRect {
+                Layout.preferredHeight: 24
+                Layout.preferredWidth: 28
+                radius: Styling.radius(-2)
+                variant: root.showCalendar ? "primary" : "common"
+                Text {
+                    anchors.centerIn: parent
+                    text: "Cal"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-3)
+                    font.weight: Font.Medium
+                    color: root.showCalendar ? Styling.srItem("onprimary") : Colors.overBackground
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showCalendar = !root.showCalendar
+                }
             }
 
             // Hide done toggle
@@ -551,7 +573,8 @@ Rectangle {
 
         // ── Calendar side panel (reuses dashboard Calendar) ──
         StyledRect {
-            Layout.preferredWidth: 280
+            visible: root.showCalendar
+            Layout.preferredWidth: 232
             Layout.fillHeight: true
             radius: Styling.radius(4)
             variant: "internalbg"
