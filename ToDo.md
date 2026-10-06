@@ -42,91 +42,37 @@ este hueco vertical, no de la fórmula del arrastre.
 
 ---
 
-## Motor de wallpapers — copiado literal de NothingLess (07-10)
+## Wallpapers — motor propio sobre Ambxst (07-10)
 
-`Wallpaper.qml` de NothingLess (1759 líneas) sustituye por completo al de
-Ambxst (1255). Traídos tal cual, sin adaptar:
+La copia literal del motor de NothingLess se **deshizo**: traía bugs suyos
+(`paletteCanvas2` en `visible: false`, que hace que la textura de paleta salga
+vacía) y se llevaba por delante integraciones de Ambxst. `Wallpaper.qml`
+vuelve a ser **byte-idéntico al original de Ambxst**.
 
-- `wallpapers/Wallpaper.qml` — el motor entero: crossfade de dos capas, `contentReady`, interpolación, tinte, debug overlay, teclado
-- `wallpapers/FilterBar.qml`, `wallpapers/SchemeSelector.qml`
-- `wallpapers/interpol.frag`, `interpol.vert` (los originales compilados aparte, con el factor ×4 y los clamps ya corregidos)
-- `services/VideoWallpaperService.qml`, `services/GpuDetector.qml`
+Lo que queda son tres parches insert-only sobre el árbol de Ambxst:
 
-**Por qué era viable:** el único servicio NL-only del que depende
-`Wallpaper.qml` es `VideoWallpaperService` (6 referencias), y se copiaría con
-él. El resto de `Config.*` que usa son el `JsonAdapter` y métodos de `FileView`.
+- `patches/video-interpolation.patch` — `VideoWallpaper.qml` delega en
+  `InterpolatedVideo.qml` (overlay propio) en vez de llevar su propio
+  `MediaPlayer`. Pasa `interpolate` y `multiplier`.
+- `patches/wallpaper-interpolation-ui.patch` — toggle y selector x2..x5 en la
+  barra de filtros, junto al botón de tinte.
+- `shaders/palette.frag` (overlay) — sin premultiplicar por el alfa del
+  origen, que es lo que hace que el tinte funcione en vídeo.
 
-**Cómo se aplica:** overlay con `replace: true` + `expectedSha256` del fichero
-base, porque un overlay normal no puede sobrescribir. El parche
-`wallpaper-interpolation.patch` se retiró: `Wallpaper.qml` llega literal, y
-`VideoWallpaper.qml` deja de usarse (NL gestiona el vídeo dentro de
-`Wallpaper.qml`).
+`InterpolatedVideo.qml` es el motor: reproduce con **`Video`**, no con
+`VideoOutput`. Es la diferencia que decide si el tinte funciona o no — un item
+layer renderiza por la ruta normal y esa ruta **no captura `QSGVideoNode`**,
+mientras que `Video` es un `QQuickItem` corriente. El shader de interpolación
+muestrea en UV (no en coordenadas de texel) para no depender del tamaño real de
+la textura, que en QML no es legible.
 
-**Regresiones introducidas por la copia y su estado (07-10):**
-1. **Multiplicador de interpolación — CORREGIDO.** El parche anterior
-   contenía también la UI de `WallpapersTab.qml`; al retirarlo se perdió el
-   toggle y el selector x2..x5. Restaurado en
-   `patches/wallpaper-interpolation-ui.patch`, verificado en la generación.
-2. **Tinte — corregidas dos causas, sin verificar de extremo a extremo.**
-   El `paletteCanvas2` de NL está en `visible: false`, y un
-   `ShaderEffectSource` sobre un item invisible captura textura vacía, así que
-   `palette.frag` pinta de negro. Puesto a `visible: true` (queda invisible por
-   `hideSource`). Además NL depende de `scripts/extract_palette.py`, que no
-   existe en Ambxst y por eso la paleta cae siempre al fallback del tema;
-   copiado al payload. **Pendiente:** `customPaletteSize` sigue a 0, o sea que
-   la extracción no está produciendo paleta todavía.
-3. **Crossfade con algunos wallpapers — SIN INVESTIGAR.** Probablemente
-  Related con el `contentReady` que NL espera de cada capa; si un formato no
-   lo emite, el crossfade no arranca. Sin看一下.
+**Verificado** con un wallpaper de vídeo real: normal 145 KB, **tinte 68 KB**
+(recolorea con la paleta), interpolación 145 KB. Shell sin errores.
 
-**Verificado:** `Wallpaper.qml` byte-idéntico a NothingLess, generación sin un
-solo ERROR, y sin `ReferenceError` ni `TypeError` de servicios.
-
-**Lo que deja de estar:** las数据中心 integraciones que Ambxst tenía en su
-`Wallpaper.qml` y NL no — blur del overview, `perScreenWallpapers`,
-integración con presets, y el_extract de scheme. También
-`payload/modules/widgets/dashboard/wallpapers/InterpolatedVideo.qml` queda sin
-uso: era mi reimplementación del motor y NL lo sustituye entero.
-
-## Tinte (palette) de wallpapers de vídeo — FUNCIONA (07-10)
-
-**La causa era `VideoOutput` frente a `Video`.** NothingLess usa:
-
-```qml
-Video {
-    id: videoPlayer
-    fillMode: VideoOutput.PreserveAspectCrop
-    ...
-}
-```
-
-`VideoOutput` es un `QQuickVideoOutput`: una salida sin ventana sostenida por
-un **nodo de scene graph propio**, y un item layer renderiza el item por la ruta
-normal, que **no incluye ese nodo**. `Video` es un `QQuickItem` normal y se
-captura con normalidad. Por eso a mí nunca funcionó y a NothingLess sí:
-Ambxst usa `VideoOutput`, y su tinte de vídeo **nunca funcionó tampoco**.
-
-**Cómo se notó:** sustituir `palette.frag` por un shader de rojo sólido y
-ponerlo como layer sobre el `VideoOutput` devolvía literalmente nada — ni el
-rojo. Ese era el dato que faltaba y que yo no había gathered.
-
-**Cambios:**
-1. `VideoOutput` → `Video`, como NothingLess. `Video` gestiona su propio
-   reproducción, así que el `MediaPlayer` externo sobra: `source`, `position`,
-   `play()`, `pause()` y `playbackState` van directos al elemento `Video`.
-2. El tinte vuelve a ser un **layer sobre el Item contenedor**, igual que
-   NothingLess (`layer.enabled`, `layer.smooth`, `layer.effect`), cubriendo
-   vídeo e interpolación.
-3. La tira de paleta es un `Canvas` que se pinta a sí mismo (como NL), con
-   `Connections` a `Colors` para repintar al cambiar el tema.
-4. `palette.frag` ya no premultiplica por el alfa del origen: un `VideoOutput`
-   (y también el FBO de `Video`) llega con alfa 0, y premultiplicar lo dejaba
-   totalmente transparente. Una imagen fija sí lleva alfa 1, por eso el tinte
-   de imágenes siempre funcionó.
-
-**Verificado** sobre un wallpaper de vídeo real: sin tinte la captura pesa
-145 KB, con tinte 67 KB, y la imagen muestra el vídeo **recoloreado con la
-paleta del tema**. Antes: 646 bytes (negro sólido).
+**Lo que no está:** transiciones entre wallpapers. El crossfade de NothingLess
+depende de un signal `contentReady` por capa y de su `extract_palette.py`;
+con el motor propio no hay crossfade, el cambio es instantáneo. Es lo
+pendiente si lo quieres.
 
 ## Sidebar de IA — animaciones alineadas con Ambxst (06-10)
 

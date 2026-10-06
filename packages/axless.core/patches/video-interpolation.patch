@@ -1,0 +1,146 @@
+diff --git a/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml b/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
+--- a/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
++++ b/modules/widgets/dashboard/wallpapers/VideoWallpaper.qml
+@@ -11,9 +11,16 @@
+     property string sourceFile
+     property string screenName: ""
+     property bool tint: false
++
++    // axless.core: frame interpolation. The multiplier is the declared output
++    // rate (a 30 fps clip at 2 is presented as 60 fps); it does not change the
++    // capture rate, because the shader always fills the gap between two
++    // consecutive source frames and the display refresh does the rest.
++    property bool interpolate: false
++    property int multiplier: 2
+     signal requestVideoSync
+ 
+-    readonly property real positionMs: player.position
++    readonly property real positionMs: video.positionMs
+     readonly property var screenMonitor: AxctlService.monitorFor(screenName)
+     readonly property bool screenHasFullscreen: {
+         if (!screenMonitor)
+@@ -36,8 +43,7 @@
+     function restartPlayback() {
+         if (!sourceFile)
+             return;
+-        player.stop();
+-        player.source = "file://" + sourceFile;
++        video.restart();
+         syncDebounce.restart();
+         updatePlayback();
+     }
+@@ -46,12 +52,10 @@
+         if (!sourceFile)
+             return;
+         if (shouldPausePlayback) {
+-            if (player.playbackState === MediaPlayer.PlayingState)
+-                player.pause();
++            video.pause();
+             return;
+         }
+-        if (player.playbackState !== MediaPlayer.PlayingState)
+-            player.play();
++        video.playIfNeeded();
+     }
+ 
+     Timer {
+@@ -60,66 +64,27 @@
+         onTriggered: videoWallpaper.requestVideoSync()
+     }
+ 
+-    MediaPlayer {
+-        id: player
+-        audioOutput: mutedAudio
+-        videoOutput: videoOut
+-        loops: MediaPlayer.Infinite
+-
+-        onErrorOccurred: (error, errorString) => {
+-            console.warn("VideoWallpaper playback error:", error, errorString, "source:", videoWallpaper.sourceFile);
+-        }
+-    }
+-
+-    AudioOutput {
+-        id: mutedAudio
+-        muted: true
+-        volume: 0
+-    }
+-
+-    Item {
+-        id: paletteSourceItem
+-        visible: true
+-        width: videoWallpaper.optimizedPalette.length
+-        height: 1
+-        opacity: 0
+-
+-        Row {
+-            anchors.fill: parent
+-            Repeater {
+-                model: videoWallpaper.optimizedPalette
+-                Rectangle {
+-                    width: 1
+-                    height: 1
+-                    color: Colors[modelData]
+-                }
+-            }
+-        }
+-    }
+-
+-    ShaderEffectSource {
+-        id: paletteTextureSource
+-        sourceItem: paletteSourceItem
+-        hideSource: true
+-        visible: false
+-        smooth: false
+-        recursive: false
+-    }
+-
+-    VideoOutput {
+-        id: videoOut
++    // axless.core: InterpolatedVideo owns playback. It renders with Video
++    // rather than VideoOutput, which matters for tinting: an item layer cannot
++    // capture QSGVideoNode, so with VideoOutput the palette shader saw nothing
++    // and the video rendered untinted (or black). Video is an ordinary item and
++    // the layer captures it, which is what NothingLess relies on too.
++    //
++    // It also carries the interpolation shader, so this file no longer needs a
++    // MediaPlayer of its own.
++    InterpolatedVideo {
++        id: video
+         anchors.fill: parent
+-        fillMode: VideoOutput.PreserveAspectCrop
+-        layer.enabled: videoWallpaper.tint
+-        layer.effect: ShaderEffect {
+-            property var paletteTexture: paletteTextureSource
+-            property real paletteSize: videoWallpaper.optimizedPalette.length
+-            property real texWidth: videoOut.width
+-            property real texHeight: videoOut.height
+-
+-            vertexShader: "palette.vert.qsb"
+-            fragmentShader: "palette.frag.qsb"
+-        }
++        sourceFile: videoWallpaper.sourceFile
++        tint: videoWallpaper.tint
++        interpolate: videoWallpaper.interpolate && videoWallpaper.multiplier > 1
++        multiplier: videoWallpaper.multiplier
++
++        // The decoder does not advertise a frame rate through Qt, so the
++        // capture cadence is assumed. 30 is the safe choice for wallpaper
++        // clips, and effectiveInputFps caps it against targetInputFps anyway.
++        originalFps: 30
++        targetInputFps: 60
+     }
+ 
+     Connections {
+@@ -127,9 +92,9 @@
+         function onVideoSyncTickChanged() {
+             if (videoWallpaper.shouldPausePlayback)
+                 return;
+-            player.seek(0);
+-            if (player.playbackState !== MediaPlayer.PlayingState)
+-                player.play();
++            // Keep every monitor on the same point of the clip.
++            video.seek(0);
++            video.playIfNeeded();
+         }
+     }
+ }

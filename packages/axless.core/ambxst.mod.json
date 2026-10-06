@@ -393,61 +393,12 @@
       "target": "shaders/palette.vert.qsb"
     },
     {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/FilterBar.qml",
-      "target": "modules/widgets/dashboard/wallpapers/FilterBar.qml",
-      "replace": true,
-      "expectedSha256": "3003f6fc885b9a98a35b3d76082023bfded28460c1e16cdb94d0d4dc4abe58a0"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/SchemeSelector.qml",
-      "target": "modules/widgets/dashboard/wallpapers/SchemeSelector.qml",
-      "replace": true,
-      "expectedSha256": "c9b2bee797f171687a75f54b0da3eb496c500449f730bbbeb7153d62575b5a85"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/interpol.frag",
-      "target": "modules/widgets/dashboard/wallpapers/interpol.frag"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/interpol.vert",
-      "target": "modules/widgets/dashboard/wallpapers/interpol.vert"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/GpuDetector.qml",
-      "target": "modules/services/GpuDetector.qml"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/VideoWallpaperService.qml",
-      "target": "modules/services/VideoWallpaperService.qml"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/Wallpaper.qml",
-      "target": "modules/widgets/dashboard/wallpapers/Wallpaper.qml",
-      "replace": true,
-      "expectedSha256": "3db6aa3618a1e848622f98418a4ce3afc3266a3e0226d50211ee5a92fd0cf971"
-    },
-    {
       "type": "patch",
       "source": "patches/wallpaper-interpolation-ui.patch"
     },
     {
-      "type": "overlay",
-      "source": "payload/modules/widgets/dashboard/wallpapers/palette.frag",
-      "target": "modules/widgets/dashboard/wallpapers/palette.frag",
-      "replace": true,
-      "expectedSha256": "f98c80d1b80122729e3adc5469c08f190db8bb07749af1e3887573fe03119277"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/scripts/extract_palette.py",
-      "target": "scripts/extract_palette.py"
+      "type": "patch",
+      "source": "patches/video-interpolation.patch"
     }
   ]
 }
