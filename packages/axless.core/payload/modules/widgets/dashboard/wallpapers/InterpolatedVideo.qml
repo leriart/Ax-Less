@@ -289,6 +289,9 @@ Item {
     ShaderEffect {
         id: effect
         anchors.fill: parent
+        // Above the VideoOutput: the node has to stay visible for the frame
+        // sources to keep updating, so the effect is what the user sees.
+        z: 1
         visible: root.interpolate && root.multiplier > 1
 
         property var currentFrame: liveSource
@@ -312,7 +315,13 @@ Item {
         id: videoNode
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectCrop
-        visible: !effect.visible
+        // Deliberately never hidden. Hiding it while interpolation is on
+        // leaves both ShaderEffectSources with an invisible sourceItem, which
+        // renders no texture at all, so interpol.frag samples nothing and the
+        // wallpaper goes black. The effect sits on top via z and covers it,
+        // so leaving the node visible costs one extra composite and buys a
+        // wallpaper that keeps decoding frames.
+        z: 0
     }
 
     // ── Palette (tint) ────────────────────────────────────────────

@@ -238,6 +238,17 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
   y el toggle + selector x2..x5 está en la barra de filtros justo junto al
   botón de tinte (mismo patrón que NL: la_tile que se marca y revela el
   selector solo cuando está activo). Traducciones en/es añadidas.
+  **Pantalla negra al activar (bug grave, ya corregido)**: la causa NO era la
+  lógica sino el `.qsb`. Compilado con `qsb` a secas, el archivo sale sin GLSL
+  embebido (solo la descripción del uniform block), Qt avisa
+  `No GLSL shader code found (versions tried: ... 440 ...)` y el `ShaderEffect`
+  no tiene código que ejecutar → negro. Compilado con `qsb --glsl 440` el
+  vídeo se ve correctamente a través del shader. `--qt6` no vale: implica las
+  versiones ES antiguas y `interpol.frag` usa `texelFetch`, que ES 100/120 no
+  soportan. Queda documentado en `shaders/build.sh`.
+  **Segundo arreglo**: el `VideoOutput` se ocultaba cuando la interpolación
+  estaba activa; con el `sourceItem` invisible los dos `ShaderEffectSource` no
+  generan textura. Ahora nunca se oculta y el efecto va encima con `z: 1`.
   **Arreglo de anidamiento**: la primera inserción del bloque quedó *dentro* de
   `tintCheckboxContainer` (el ancla era el `MouseArea` del tinte, no su cierre),
   así que se dibujaba encima de la casilla de tinte en una caja de 100 px y no
