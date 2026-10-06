@@ -342,8 +342,10 @@ Item {
         // Null when interpolation is off: pointing this at the VideoOutput
         // would force texture-capture mode and cost a full-screen copy for
         // every frame just to throw it away.
-        sourceItem: root.shaderActive ? videoNode : null
-        live: root.shaderActive
+        // Needed by both the interpolator and the tint, so it stays
+        // live whenever either is on.
+        sourceItem: (root.shaderActive || root.tint) ? videoNode : null
+        live: root.shaderActive || root.tint
         hideSource: true
         smooth: true
         visible: false
@@ -435,6 +437,42 @@ Item {
         fragmentShader: "../../../../shaders/interpol.frag.qsb"
     }
 
+    // ── Tint ──────────────────────────────────────────────────────
+    //
+    // Applied to a texture, not as an item layer. An item layer renders the
+    // item into an FBO through the normal path and that does NOT capture
+    // custom scene-graph nodes: putting palette.frag in a layer over the
+    // VideoOutput produced literally nothing (proved with a solid-red
+    // stand-in, which came back empty). This is why the tint never applied
+    // to video wallpapers while static images were fine - an Image renders
+    // normally, QSGVideoNode does not.
+    //
+    // liveSource is the same ShaderEffectSource the interpolator samples, and
+    // that path is proven to carry video. So the tint is just palette.frag
+    // fed with it. When interpolation is running the interpolator already
+    // covers the screen, so the tint sits underneath and the interpolator
+    // output is what shows - see ShaderEffect's own layering below.
+    ShaderEffect {
+        id: tintEffect
+        anchors.fill: parent
+        visible: root.tint && !root.shaderActive
+
+        // palette.frag samples the frame through `source`. ShaderEffect has a
+        // built-in `source` of type QUrl meant for image files, so it is
+        // shadowed here with the captured texture - the same thing
+        // UnifiedPanelEffect.qml does for its blur passes. Assigning to the
+        // built-in one is a type error ("Cannot assign to non-existent
+        // property source"), which is why this shadows rather than assigns.
+        property var source: liveSource
+        property var paletteTexture: paletteTextureSource
+        property real paletteSize: root.optimizedPalette.length
+        property real texWidth: width
+        property real texHeight: height
+
+        vertexShader: "../../../../shaders/palette.vert.qsb"
+        fragmentShader: "../../../../shaders/palette.frag.qsb"
+    }
+
     // Plain output when interpolation is off, so there is no capture cost.
     VideoOutput {
         id: videoNode
@@ -453,21 +491,6 @@ Item {
         // effect (seek both to one timestamp, or capture one instance twice).
         z: 0
         visible: !effect.visible
-
-        // Tint for video wallpapers, exactly where Ambxst had it. Kept on the
-        // VideoOutput rather than folded into the interpolation effect: that
-        // one already binds two samplers for the frame sources, and
-        // palette.frag needs its own palette texture alongside them.
-        layer.enabled: root.tint
-        layer.effect: ShaderEffect {
-            property var paletteTexture: paletteTextureSource
-            property real paletteSize: root.optimizedPalette.length
-            property real texWidth: width
-            property real texHeight: height
-
-            vertexShader: "../../../../shaders/palette.vert.qsb"
-            fragmentShader: "../../../../shaders/palette.frag.qsb"
-        }
     }
 
     // ── Palette (tint) ────────────────────────────────────────────
@@ -478,9 +501,18 @@ Item {
     // when the theme changes and the Row re-evaluates on its own.
     Item {
         id: paletteSourceItem
+        // Must be visible: ShaderEffectSource captures the item's rendering,
+        // and an item with opacity 0 renders nothing, so the palette texture
+        // would come out empty and palette.frag would paint the wallpaper
+        // black. Ambxst's static-image path spells this out too. It stays
+        // invisible because ShaderEffectSource uses hideSource, not opacity.
+        visible: true
         width: InterpolatedVideo.optimizedPalette.length
         height: 1
-        opacity: 0
+        // Parked far off-screen so it is never actually visible on the
+        // desktop while still being rendered into the texture.
+        x: -width - 10
+        y: -height - 10
 
         Row {
             anchors.fill: parent
