@@ -172,7 +172,7 @@ que lleva una ruta placeholder `/ruta/a/tu/repo` que hay que editar.
 | ~~F1~~ | ~~**Isla dinámica de la barra**~~ ❌ **cancelada** | `IslandContent.qml`, `BarContent.qml` (`barMode`), `defaults/bar.js` | **Cancelada por el usuario (06-10).** No portar. Ver README → "Plan a futuro". |
 | ~~F2~~ | ~~**Métricas en el notch/isla**~~ ❌ **descartada** | `MetricsGroup*.qml`, `DefaultView.qml`, `NotchMetrics.qml` | **Quitada por el usuario (06-10).** Recuperable del commit `0ab484d`. Ver README → "Plan a futuro". |
 | ~~F3~~ | ~~**Posiciones por monitor**~~ ✅ **portado** | `modules/services/PerMonitorConfig.qml` | Hecho: singleton + `patches/per-monitor-positions.patch` cablea bar/dock/notch. |
-| F4 | **Motor de wallpaper de vídeo + interpol + palette** | `VideoWallpaperService.qml`, `GpuDetector.qml`, shaders `interpol.*`, `palette.*`, `Wallpaper.qml` | FPS real: Ambxst **no tiene** fuente de FPS, solo `refreshRate` por monitor desde `axctl` (sin usar). Los `.qsb` se generan con `qsb` (incluido en el sistema), hay que compilarlos. No tocar `Wallpaper.qml` si F2 lo toca. |
+| F4 | **Wallpaper de vídeo + interpol + palette** | shaders `interpol.*` | **Interpolación HECHA**: shader de NL compilado + `InterpolatedVideo.qml` con el multiplicador. Falta: sustituirlo en `VideoWallpaper.qml`, `palette` y `GpuDetector`. |
 | ~~F5~~ | ~~**Tablero de tareas**~~ ✅ **portado** | `modules/widgets/dashboard/todo/TodoTab.qml`, `TodoBoard.qml`, `Dashboard.qml` (tab 4) | Hecho: ver sección "Ya portado". |
 | F6 | **Hax spotlight** | `modules/widgets/spotlight/*` (5227 líneas), `Calculator.qml`, `PluginManager.qml` | Proceso standalone (`qs -n -p spotlight_entry.qml`), apenas toca el árbol. Necesita subcomando `ambxst spotlight`. |
 | F7 | **Splash con el logo** | `shell.qml` (bloque splash) + `assets/ambxst/*.svg` | **Descartado por el usuario (06-10): no quiere splash.** Se implementó y se revirtió; los parches se pueden recuperar del commit `11cf152`. |
@@ -217,6 +217,22 @@ Solo se portea lo que Ambxst no tiene, ya sea en Go o pidiendo a axctl.
     selector de rango Cancel/Clear/Apply 36.0 px, popup de fecha 396 px y de
     rango 414 px — ambos dentro de los 430 px del tab, sin recorte.
 - [x] Traducciones completas (grep del payload, no batch suelto).
+- [x] **Interpolación de frames para wallpaper (F4, parte 1)**: shader
+  `interpol.frag`/`.vert` de NothingLess compilado con `qsb 6.11.2` y
+  `InterpolatedVideo.qml` con su técnica exacta: un `MediaPlayer` +
+  `VideoOutput`, dos `ShaderEffectSource` sobre el **mismo** VideoOutput
+  (una `live` y otra congelada con `scheduleUpdate()`), un `Timer` de captura
+  al intervalo del frame fuente y un `FrameAnimation` sincronizado a vsync que
+  avanza `blendFactor`. **No hace falta ningún backend Go ni IPC**: Qt ya
+  guarda el frame anterior como textura.
+  El multiplicador de NothingLess va incluido (`interpolationMultiplier`,
+  por defecto 2). Importante: **no cambia la cadencia de captura** — el
+  shader siempre rellena el hueco entre dos frames fuente consecutivos, y el
+  refresco de pantalla hace el resto; cambiar la cadencia desincroniza la
+  interpolación de la fuente.
+  Medido con un clip de 30 fps: **60.0 fps de salida** con multiplicador 2.
+  Los `.qsb` van en `shaders/`; desde el componente se resuelven con
+  `../../../../shaders/`.
 - [x] **Posiciones por monitor (F3)**: `services/PerMonitorConfig.qml` lee
   `~/.config/ambxst/config/monitors.json` y expone
   `resolve(screen, domain, key, default)`.
