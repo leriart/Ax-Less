@@ -239,6 +239,13 @@ Singleton {
     // thousands of characters, so once this much has arrived without the
     // provider reporting completion, the stream is runaway.
     readonly property int _runawayStreamChars: 40000
+
+    // A third shape, and the one DeepSeek flash hits most often: it starts a
+    // tool call whose `arguments` string keeps growing and never terminates.
+    // pendingToolCall is set from the first delta, so the guard above skips it
+    // exactly when it matters, and the wall-clock deadline is the only thing
+    // left to stop it. Arguments are JSON - nothing legitimate needs kilobytes.
+    readonly property int _runawayToolArgsChars: 6000
     property bool _runawayAbortReported: false
     // Saved state of the last successful move_windows call so the user
     // can say "regresalo" / "undo" / "return" to reverse it. Recorded
@@ -2572,6 +2579,29 @@ Singleton {
                         if (d.id && !acc._id) acc._id = d.id;
                     }
                     root.pendingToolCall = acc;
+
+                    // axless.core: stop a tool call whose arguments never
+                    // terminate. See _runawayToolArgsChars.
+                    if (!root._runawayAbortReported && acc && acc._calls) {
+                        let argLen = 0;
+                        for (let i = 0; i < acc._calls.length; i++) {
+                            const fn = acc._calls[i] && acc._calls[i].function;
+                            if (fn && fn.arguments)
+                                argLen += fn.arguments.length;
+                        }
+                        if (argLen > root._runawayToolArgsChars) {
+                            root._runawayAbortReported = true;
+                            console.warn("Ai.qml: runaway tool arguments ("
+                                + argLen + " chars), aborting the stream");
+                            root._enqueueSystemNote(
+                                "That request produced an endless tool call, "
+                                + "so I stopped it. Try rephrasing.");
+                            root.stopGeneration();
+                            root.requestInFlight = false;
+                            root.isLoading = false;
+                            return;
+                        }
+                    }
                 }
 
                 // Note: done is handled in onExited
