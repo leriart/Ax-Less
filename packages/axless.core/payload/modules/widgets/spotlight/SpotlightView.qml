@@ -1398,6 +1398,14 @@ PanelWindow {
                                     id: phosphorIcon
                                     anchors.centerIn: parent
                                     text: {
+                                        // axless.core: non-app results already
+                                        // carry their own phosphor glyph in
+                                        // `icon`, so use it instead of guessing
+                                        // from the type. Every help entry is
+                                        // type "info", which used to collapse
+                                        // them all onto the same generic icon.
+                                        if (modelData.type !== "app" && modelData.icon)
+                                            return modelData.icon;
                                         switch (modelData.type) {
                                             case "calc": return Icons.notepad;
                                             case "web":  return Icons.globe;
@@ -1451,6 +1459,12 @@ PanelWindow {
                                 Text {
                                     anchors.centerIn: parent
                                     text: {
+                                        // axless.core: help entries carry the
+                                        // command to type in `key`; without it
+                                        // they fell into the default branch and
+                                        // the chip rendered empty.
+                                        if (modelData.key)
+                                            return modelData.key;
                                         switch (modelData.type) {
                                             case "app": return "App";
                                             case "calc": return "=";
@@ -3445,35 +3459,35 @@ PanelWindow {
         var helpMatch = query.match(/^(ayuda|help|h|commands|comandos|\?)$/i);
         if (helpMatch) {
             newResults = [
-                { name: "Comandos disponibles", description: "Escribe lo que quieras hacer", icon: Icons.notepad, type: "info", exec: null },
-                { name: "Buscar aplicaciones", description: "Escribe el nombre de cualquier app (firefox, vscode, terminal...)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "install <package>", description: "Buscar en pacman + AUR + flatpak y mostrar dónde instalarlo", icon: Icons.notepad, type: "info", exec: null },
-                { name: "pacman <package>", description: "Instalar paquete directamente con pacman (sudo)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "yay <package>", description: "Instalar paquete del AUR con yay", icon: Icons.notepad, type: "info", exec: null },
-                { name: "flatpak install <package>", description: "Instalar paquete desde Flathub", icon: Icons.notepad, type: "info", exec: null },
-                { name: "remove <package>", description: "Desinstalar paquete con pacman", icon: Icons.notepad, type: "info", exec: null },
-                { name: "update", description: "Actualizar el sistema (pacman -Syu)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "timer <duration>", description: "Crear un temporizador (ej. timer 5m, timer pizza 10m, timer 30s)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "alarm <time>", description: "Crear una alarma (ej. alarm 8:00, alarm 7:30 mon-fri, alarm 14:30 lunch)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "weather", description: "Ver el clima (ej. weather, weather Madrid)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "Calculadora", description: "Escribe una expresión (ej. 2+2, 5*3, (10+5)/3)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "lock", description: "Bloquear la pantalla", icon: Icons.notepad, type: "info", exec: null },
-                { name: "suspend", description: "Suspender el sistema", icon: Icons.notepad, type: "info", exec: null },
-                { name: "poweroff", description: "Apagar el sistema", icon: Icons.notepad, type: "info", exec: null },
-                { name: "reboot", description: "Reiniciar el sistema", icon: Icons.notepad, type: "info", exec: null },
-                                { name: "Buscar archivos", description: "Escribe cualquier nombre de archivo (mín 2 caracteres)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "Vista rápida", description: "Previsualiza archivos dentro de Hax con las flechas — imágenes, texto, binarios. Esc para salir", icon: Icons.notepad, type: "info", exec: null },
-                { name: "Búsqueda web", description: "Cualquier texto que no sea un comando busca en Google", icon: Icons.notepad, type: "info", exec: null },
-                { name: "g / glo / glosario", description: "Abrir diccionario/glosario — escribe una palabra y pulsa Enter", icon: Icons.notepad, type: "info", exec: null },
-                { name: "history / clip / clipboard", description: "Mostrar historial completo del portapapeles", icon: Icons.notepad, type: "info", exec: null },
-                { name: "/", description: "Abrir terminal integrada (fish) dentro de Hax — totalmente funcional (vim, htop, sudo...)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "/stats", description: "Abrir monitor del sistema (CPU, RAM, disco, temp)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "d / dev / debug", description: "Abrir modo depuración con métricas en pantalla", icon: Icons.notepad, type: "info", exec: null },
-                { name: "config", description: "Abrir configuración de Hax: OCR, colores, acciones rápidas personalizadas", icon: Icons.notepad, type: "info", exec: null },
-                { name: "live / livetext / ocr / status", description: "Live Text (OCR) — busca texto DENTRO de imágenes", icon: Icons.notepad, type: "info", exec: null },
-                { name: "reindex", description: "Re-indexar todas las imágenes con OCR (Tesseract)", icon: Icons.notepad, type: "info", exec: null },
-                { name: "show", description: "Mostrar todas las ventanas abiertas agrupadas por espacio de trabajo", icon: Icons.notepad, type: "info", exec: null },
-                { name: "help / ?", description: "Mostrar esta ayuda", icon: Icons.notepad, type: "info", exec: null }
+                { name: "Comandos disponibles", description: "Escribe lo que quieras hacer", icon: Icons.help, key: "?", type: "info", exec: null },
+                { name: "Buscar aplicaciones", description: "Escribe el nombre de cualquier app (firefox, vscode, terminal...)", icon: Icons.apps, key: "app", type: "info", exec: null },
+                { name: "install <package>", description: "Buscar en pacman + AUR + flatpak y mostrar dónde instalarlo", icon: Icons.cube, key: "install", type: "info", exec: null },
+                { name: "pacman <package>", description: "Instalar paquete directamente con pacman (sudo)", icon: Icons.cube, key: "pacman", type: "info", exec: null },
+                { name: "yay <package>", description: "Instalar paquete del AUR con yay", icon: Icons.cube, key: "yay", type: "info", exec: null },
+                { name: "flatpak install <package>", description: "Instalar paquete desde Flathub", icon: Icons.cube, key: "flatpak", type: "info", exec: null },
+                { name: "remove <package>", description: "Desinstalar paquete con pacman", icon: Icons.trash, key: "remove", type: "info", exec: null },
+                { name: "update", description: "Actualizar el sistema (pacman -Syu)", icon: Icons.sync, key: "update", type: "info", exec: null },
+                { name: "timer <duration>", description: "Crear un temporizador (ej. timer 5m, timer pizza 10m, timer 30s)", icon: Icons.timer, key: "timer", type: "info", exec: null },
+                { name: "alarm <time>", description: "Crear una alarma (ej. alarm 8:00, alarm 7:30 mon-fri, alarm 14:30 lunch)", icon: Icons.alarm, key: "alarm", type: "info", exec: null },
+                { name: "weather", description: "Ver el clima (ej. weather, weather Madrid)", icon: Icons.sun, key: "weather", type: "info", exec: null },
+                { name: "Calculadora", description: "Escribe una expresión (ej. 2+2, 5*3, (10+5)/3)", icon: Icons.magicWand, key: "2+2", type: "info", exec: null },
+                { name: "lock", description: "Bloquear la pantalla", icon: Icons.lock, key: "lock", type: "info", exec: null },
+                { name: "suspend", description: "Suspender el sistema", icon: Icons.suspend, key: "suspend", type: "info", exec: null },
+                { name: "poweroff", description: "Apagar el sistema", icon: Icons.shutdown, key: "poweroff", type: "info", exec: null },
+                { name: "reboot", description: "Reiniciar el sistema", icon: Icons.reboot, key: "reboot", type: "info", exec: null },
+                                { name: "Buscar archivos", description: "Escribe cualquier nombre de archivo (mín 2 caracteres)", icon: Icons.file, key: "find", type: "info", exec: null },
+                { name: "Vista rápida", description: "Previsualiza archivos dentro de Hax con las flechas — imágenes, texto, binarios. Esc para salir", icon: Icons.image, key: "preview", type: "info", exec: null },
+                { name: "Búsqueda web", description: "Cualquier texto que no sea un comando busca en Google", icon: Icons.globe, key: "web", type: "info", exec: null },
+                { name: "g / glo / glosario", description: "Abrir diccionario/glosario — escribe una palabra y pulsa Enter", icon: Icons.note, key: "g", type: "info", exec: null },
+                { name: "history / clip / clipboard", description: "Mostrar historial completo del portapapeles", icon: Icons.clipboard, key: "cc", type: "info", exec: null },
+                { name: "/", description: "Abrir terminal integrada (fish) dentro de Hax — totalmente funcional (vim, htop, sudo...)", icon: Icons.terminal, key: "/", type: "info", exec: null },
+                { name: "/stats", description: "Abrir monitor del sistema (CPU, RAM, disco, temp)", icon: Icons.cpu, key: "/stats", type: "info", exec: null },
+                { name: "d / dev / debug", description: "Abrir modo depuración con métricas en pantalla", icon: Icons.heartbeat, key: "d", type: "info", exec: null },
+                { name: "config", description: "Abrir configuración de Hax: OCR, colores, acciones rápidas personalizadas", icon: Icons.gear, key: "config", type: "info", exec: null },
+                { name: "live / livetext / ocr / status", description: "Live Text (OCR) — busca texto DENTRO de imágenes", icon: Icons.textT, key: "live", type: "info", exec: null },
+                { name: "reindex", description: "Re-indexar todas las imágenes con OCR (Tesseract)", icon: Icons.sync, key: "reindex", type: "info", exec: null },
+                { name: "show", description: "Mostrar todas las ventanas abiertas agrupadas por espacio de trabajo", icon: Icons.squaresFour, key: "show", type: "info", exec: null },
+                { name: "help / ?", description: "Mostrar esta ayuda", icon: Icons.help, key: "?", type: "info", exec: null }
             ];
             results = newResults;
             return;
