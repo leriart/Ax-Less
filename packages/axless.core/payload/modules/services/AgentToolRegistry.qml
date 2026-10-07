@@ -55,16 +55,35 @@ QtObject {
             map[agentId].connection.statusMessage = message || "";
         }
         _agentMap = map;
+        // Rebuild: a status change decides whether the agent's tools are
+        // still advertised (see rebuildTools). Without this the list kept
+        // tools from an agent that had just dropped.
+        rebuildTools();
     }
 
     function rebuildTools() {
         let all = [];
         for (let id in _agentMap) {
             let entry = _agentMap[id];
-            if (entry && entry.tools) {
-                for (let i = 0; i < entry.tools.length; i++) {
-                    all.push(entry.tools[i]);
-                }
+            if (!entry || !entry.tools)
+                continue;
+
+            // Only advertise tools whose agent can actually be invoked.
+            //
+            // A connection that dropped or errored is marked with a status but
+            // keeps its entry, so its tools used to stay in the list forever:
+            // the model was told open_url existed, called it, and got back
+            // "no agent is currently exposing 'open_url'". Repeating that is
+            // exactly the loop that stalled the chat. The registry is the
+            // contract - if a tool is not in `tools`, the model is never
+            // told about it.
+            const conn = entry.connection;
+            const status = (conn && conn.status) ? String(conn.status).toLowerCase() : "";
+            if (status && status !== "connected" && status !== "ready")
+                continue;
+
+            for (let i = 0; i < entry.tools.length; i++) {
+                all.push(entry.tools[i]);
             }
         }
         tools = all;
