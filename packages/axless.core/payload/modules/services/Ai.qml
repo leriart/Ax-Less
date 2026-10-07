@@ -231,6 +231,14 @@ Singleton {
     // watchdog never fires. Once this much reasoning has accumulated with no
     // answer, the stream is treated as runaway.
     readonly property int _runawayReasoningChars: 120000
+
+    // The other shape the runaway takes, and the one DeepSeek flash actually
+    // produces: a single request whose stream never finishes. It is not a tool
+    // loop - makeRequest is entered once - so neither the step budget nor the
+    // reasoning guard above can see it. One answer does not need tens of
+    // thousands of characters, so once this much has arrived without the
+    // provider reporting completion, the stream is runaway.
+    readonly property int _runawayStreamChars: 40000
     property bool _runawayAbortReported: false
     // Saved state of the last successful move_windows call so the user
     // can say "regresalo" / "undo" / "return" to reverse it. Recorded
@@ -542,8 +550,8 @@ Singleton {
     // inactivity timeout, so a stuck stream is cut in minutes.
     readonly property int _requestWallClockDeadlineMs:
         Math.min(
-            Math.max(_requestInactivityTimeoutMs * 2, 240000),
-            600000)
+            Math.max(_requestInactivityTimeoutMs * 2, 90000),
+            180000)
     property Timer requestWatchdog: Timer {
         interval: root._requestInactivityTimeoutMs
         repeat: false
@@ -2502,6 +2510,33 @@ Singleton {
                     // stopGeneration() is the engine's own teardown: it kills
                     // curl, stops the timers and marks the request as killed so
                     // onExited does not resurrect the turn.
+                    root.stopGeneration();
+                    root.requestInFlight = false;
+                    root.isLoading = false;
+                    return;
+                }
+
+                // axless.core: runaway *content*. DeepSeek flash does not
+                // emit reasoning_content at all, so the guard above never
+                // sees it; what it does is keep one stream open indefinitely
+                // without ever signalling completion. Nothing else can catch
+                // that either: makeRequest is only entered once, so the step
+                // budget is untouched, and the deltas count as activity so
+                // the inactivity watchdog stays quiet. A single answer is
+                // nowhere near this size, so an unfinished stream this big is
+                // runaway by definition.
+                if (!root._runawayAbortReported
+                        && !result.done
+                        && !root.pendingToolCall
+                        && (root.responseBuffer.length + root.reasoningBuffer.length)
+                            > root._runawayStreamChars) {
+                    root._runawayAbortReported = true;
+                    console.warn("Ai.qml: runaway stream ("
+                        + root.responseBuffer.length
+                        + " chars, never finished), aborting");
+                    root._enqueueSystemNote(
+                        "That answer never finished generating, so I stopped "
+                        + "it. Try a shorter question, or another model.");
                     root.stopGeneration();
                     root.requestInFlight = false;
                     root.isLoading = false;
