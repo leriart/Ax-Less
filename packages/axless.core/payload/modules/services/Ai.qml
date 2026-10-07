@@ -246,6 +246,12 @@ Singleton {
     // exactly when it matters, and the wall-clock deadline is the only thing
     // left to stop it. Arguments are JSON - nothing legitimate needs kilobytes.
     readonly property int _runawayToolArgsChars: 6000
+
+    // axless.core: silent-retry budget for a stalled stream, and how much
+    // content counts as "actually answered" - below this, nothing reached the
+    // user, so a retry is invisible rather than a duplicated answer.
+    property int _turnStallRetries: 0
+    readonly property int _stallRetryMinChars: 80
     property bool _runawayAbortReported: false
     // Saved state of the last successful move_windows call so the user
     // can say "regresalo" / "undo" / "return" to reverse it. Recorded
@@ -1877,6 +1883,7 @@ Singleton {
         // axless.core: new user message, new turn budget.
         root._turnSteps = 0;
         root._runawayAbortReported = false;
+        root._turnStallRetries = 0;
         // Short undos: "regresalo", "return it", "undo" → reverse
         // the last successful move_windows call without bothering
         // the model. The user is explicitly asking for an undo, so
@@ -2463,6 +2470,47 @@ Singleton {
                     root.currentChat = errChat;
                     root.saveCurrentChat();
                     root._currentToolChoice = "";
+
+                    // axless.core: one silent retry before giving up.
+                    //
+                    // The wall-clock deadline fires when the stream keeps
+                    // trickling deltas but never signals completion. Nothing
+                    // in the content tells us why - it is under the runaway
+                    // thresholds, so it looks like a stream that simply never
+                    // ends. Empirically a retry of the exact same request
+                    // succeeds, so the first attempt is not a property of the
+                    // question but of that particular generation. Retrying
+                    // once turns an intermittent failure into a slightly
+                    // slower answer, which is a much better trade than
+                    // showing a raw provider error to the user.
+                    if (root._turnStallRetries < 1
+                            && root.responseBuffer.length
+                                < root._stallRetryMinChars) {
+                        root._turnStallRetries++;
+                        console.warn("Ai.qml: stream stalled with "
+                            + root.responseBuffer.length
+                            + " chars, retrying once");
+                        // Drop the empty assistant placeholder so the retry
+                        // starts from the same history the first attempt had.
+                        root.currentChat = Array.from(root.currentChat);
+                        for (let i = root.currentChat.length - 1; i >= 0; i--) {
+                            const m = root.currentChat[i];
+                            if (m.role === "assistant"
+                                    && !m.content && !m.functionCall) {
+                                root.currentChat.splice(i, 1);
+                            } else if (m.role === "system"
+                                       && typeof m.content === "string"
+                                       && m.content.startsWith("[Stream exceeded")) {
+                                root.currentChat.splice(i, 1);
+                            }
+                        }
+                        root.responseBuffer = "";
+                        root.requestQueued = false;
+                        root.requestStartMs = 0;
+                        Qt.callLater(root.makeRequest);
+                        return;
+                    }
+
                     if (root.requestQueued) {
                         root.requestQueued = false;
                         Qt.callLater(root.makeRequest);
