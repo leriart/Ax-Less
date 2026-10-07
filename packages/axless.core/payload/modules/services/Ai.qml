@@ -2448,6 +2448,51 @@ Singleton {
                     root.isLoading = false;
                     root.streamingElapsedTimer.stop();
                     root.requestStartMs = 0;
+// axless.core: one silent retry before giving up.
+                    //
+                    // The wall-clock deadline fires when the stream keeps
+                    // trickling deltas but never signals completion. Nothing
+                    // in the content tells us why - it is under the runaway
+                    // thresholds, so it looks like a stream that simply never
+                    // ends. Empirically a retry of the exact same request
+                    // succeeds, so the first attempt is not a property of the
+                    // question but of that particular generation. Retrying
+                    // once turns an intermittent failure into a slightly
+                    // slower answer, which is a much better trade than
+                    // showing a raw provider error to the user.
+                    //
+                    // This runs BEFORE the error note is committed to
+                    // currentChat, so the sidebar never renders it.
+                    if (root._turnStallRetries < 1) {
+                        root._turnStallRetries++;
+                        console.warn("Ai.qml: stream stalled after "
+                            + root.responseBuffer.length
+                            + " chars, retrying once");
+                        root._currentToolChoice = "";
+                        root.responseBuffer = "";
+                        root.reasoningBuffer = "";
+                        root.pendingToolCall = null;
+                        root.requestQueued = false;
+                        root.requestStartMs = 0;
+                        root._runawayAbortReported = false;
+                        // Discard any partial assistant text the stalled
+                        // attempt streamed, so the retry replaces it instead
+                        // of appearing after a fragment.
+                        root.currentChat = Array.from(root.currentChat);
+                        for (let i = root.currentChat.length - 1; i >= 0; i--) {
+                            const m = root.currentChat[i];
+                            if (m.role === "assistant"
+                                    && !m.functionCall
+                                    && !m.functionPending) {
+                                root.currentChat.splice(i, 1);
+                            } else {
+                                break;
+                            }
+                        }
+                        Qt.callLater(root.makeRequest);
+                        return;
+                    }
+
                     let errChat = Array.from(root.currentChat);
                     if (errChat.length > 0
                             && errChat[errChat.length - 1].role === "assistant"
@@ -2469,53 +2514,6 @@ Singleton {
                     root.currentChat = errChat;
                     root.saveCurrentChat();
                     root._currentToolChoice = "";
-
-                    // axless.core: one silent retry before giving up.
-                    //
-                    // The wall-clock deadline fires when the stream keeps
-                    // trickling deltas but never signals completion. Nothing
-                    // in the content tells us why - it is under the runaway
-                    // thresholds, so it looks like a stream that simply never
-                    // ends. Empirically a retry of the exact same request
-                    // succeeds, so the first attempt is not a property of the
-                    // question but of that particular generation. Retrying
-                    // once turns an intermittent failure into a slightly
-                    // slower answer, which is a much better trade than
-                    // showing a raw provider error to the user.
-                    if (root._turnStallRetries < 1) {
-                        root._turnStallRetries++;
-                        console.warn("Ai.qml: stream stalled after "
-                            + root.responseBuffer.length
-                            + " chars, retrying once");
-                        // Drop the aborted assistant message - including any
-                        // partial text it managed to stream, which the user
-                        // saw on screen but which is an unfinished answer -
-                        // so the retry replaces it instead of appearing
-                        // after a fragment.
-                        root.currentChat = Array.from(root.currentChat);
-                        for (let i = root.currentChat.length - 1; i >= 0; i--) {
-                            const m = root.currentChat[i];
-                            if (m.role === "system"
-                                    && typeof m.content === "string"
-                                    && m.content.startsWith("[Stream exceeded")) {
-                                root.currentChat.splice(i, 1);
-                            } else if (m.role === "assistant"
-                                       && !m.functionCall
-                                       && !m.functionPending) {
-                                root.currentChat.splice(i, 1);
-                            } else {
-                                break;
-                            }
-                        }
-                        root.responseBuffer = "";
-                        root.reasoningBuffer = "";
-                        root.pendingToolCall = null;
-                        root.requestQueued = false;
-                        root.requestStartMs = 0;
-                        root._runawayAbortReported = false;
-                        Qt.callLater(root.makeRequest);
-                        return;
-                    }
 
                     if (root.requestQueued) {
                         root.requestQueued = false;
