@@ -214,6 +214,24 @@ Singleton {
         (Config && Config.ai && Config.ai.nudgeBudget > 0)
             ? Config.ai.nudgeBudget : 3
     property int _nudgeCount: 0
+
+    // axless.core: hard cap on model round-trips for one user message.
+    //
+    // _maxToolCallsPerTurn limits a single tool *by name*, so a loop that
+    // alternates between tools (list_windows -> list_workspaces ->
+    // list_monitors -> ...) never reaches it and can run until the provider
+    // kills the stream. This counts every request made while serving one user
+    // message, whichever code path re-entered makeRequest, and force-finishes
+    // the turn with an explanation instead of hanging.
+    property int _turnSteps: 0
+    readonly property int _maxTurnSteps: 14
+
+    // Reasoning models that are looping emit reasoning_content forever while
+    // the visible answer stays empty. That is data, so the inactivity
+    // watchdog never fires. Once this much reasoning has accumulated with no
+    // answer, the stream is treated as runaway.
+    readonly property int _runawayReasoningChars: 120000
+    property bool _runawayAbortReported: false
     // Saved state of the last successful move_windows call so the user
     // can say "regresalo" / "undo" / "return" to reverse it. Recorded
     // from the natural tool flow (NOT from the bypass) so the chat
@@ -515,8 +533,17 @@ Singleton {
         Math.max(10000,
             Math.round((Config.ai.requestTimeoutSeconds || 240) * 1000
                 * root._tierTimeoutMultiplier))
+    // axless.core: this used to be Math.max(_requestInactivityTimeoutMs * 4,
+    // 1200000). The hardcoded floor meant the deadline was never below 20
+    // minutes no matter what requestTimeoutSeconds said, so a model stuck in
+    // a generation loop left the user waiting until the provider gave up with
+    // "Stream exceeded the 1200s wall-clock limit". The floor is now a
+    // sensible few minutes and the ceiling is the same order as the
+    // inactivity timeout, so a stuck stream is cut in minutes.
     readonly property int _requestWallClockDeadlineMs:
-        Math.max(_requestInactivityTimeoutMs * 4, 1200000)
+        Math.min(
+            Math.max(_requestInactivityTimeoutMs * 2, 240000),
+            600000)
     property Timer requestWatchdog: Timer {
         interval: root._requestInactivityTimeoutMs
         repeat: false
@@ -1832,6 +1859,9 @@ Singleton {
         // .onExited). When the user says something new, we reset
         // so they're never penalised for an earlier stalled chain.
         root._nudgeCount = 0;
+        // axless.core: new user message, new turn budget.
+        root._turnSteps = 0;
+        root._runawayAbortReported = false;
         // Short undos: "regresalo", "return it", "undo" → reverse
         // the last successful move_windows call without bothering
         // the model. The user is explicitly asking for an undo, so
@@ -1893,7 +1923,54 @@ Singleton {
         makeRequest();
     }
 
+    // axless.core: chat and agent get different prompts.
+    //
+    // Config.ai.systemPrompt is written for the agent: it mandates tool
+    // chains, forbids replying in prose between tool results and repeats
+    // "never end the turn silently". In chat mode no tools are sent at all,
+    // so those rules describe a machine the model is not driving — and a
+    // small model reacts by inventing tool calls or looping. Chat therefore
+    // gets a short prompt that matches what it can actually do.
+    readonly property string _chatSystemPrompt:
+        "You are the AI assistant of a Linux desktop, answering in the "
+        + "user's language. Be concise: a couple of sentences is usually "
+        + "enough. You can discuss and explain anything, and you have "
+        + "context about the desktop, its apps and its settings. Keep "
+        + "formatting light — short paragraphs and lists rather than "
+        + "headers for everything."
+
+    function _promptForMode() {
+        if (currentMode === "agent")
+            return Config.ai.systemPrompt;
+        return _chatSystemPrompt;
+    }
+
+    function _finishTurnWithNote(text) {
+        // axless.core: end the turn with a visible message instead of leaving
+        // the model free to keep calling tools. Any in-flight request is
+        // abandoned; there is nothing useful left to read from it.
+        root.requestInFlight = false;
+        root._nudgeCount = 0;
+        root._turnSteps = 0;
+        root.pushSystemMessage(text);
+        root.saveCurrentChat();
+    }
+
     function makeRequest(options) {
+        // axless.core: stop runaway chains before they reach the provider.
+        // Every path that continues a turn (tool result, nudge, agent
+        // completion, rejection) re-enters here, so this is the one place
+        // that can count them.
+        if (root._turnSteps >= root._maxTurnSteps) {
+            console.warn("Ai.qml: turn step limit reached ("
+                + root._maxTurnSteps + "), finishing the turn");
+            root._finishTurnWithNote(
+                "I stopped after " + root._maxTurnSteps
+                + " steps without reaching an answer. Try asking for one "
+                + "thing at a time.");
+            return;
+        }
+        root._turnSteps++;
         // options.toolChoice (optional) — override the strategy's
         // default for this request. Used by the nudge layer to force
         // the model to call a tool on its next response (tool_choice:
@@ -2074,7 +2151,7 @@ Singleton {
             // for the actual conversation. The full prompt stays for
             // medium/large tiers where the cost is negligible.
             let effectivePrompt = root._maybeCompactSystemPrompt(
-                Config.ai.systemPrompt);
+                root._promptForMode());
             if (effectivePrompt) {
                 messages.push({
                     role: "system",
@@ -2403,6 +2480,32 @@ Singleton {
                 // collapsible "Show thinking" card.
                 if (result.reasoningContent) {
                     root.reasoningBuffer += result.reasoningContent;
+                }
+
+                // axless.core: runaway-reasoning guard. A reasoning model
+                // that is looping keeps emitting reasoning deltas while the
+                // visible answer never grows. Those deltas are data, so the
+                // inactivity watchdog never fires and the only thing that
+                // eventually stopped it was the provider's own 20-minute
+                // ceiling. Once the reasoning has grown this much with
+                // nothing to show for it, cut the stream here.
+                if (!root._runawayAbortReported
+                        && root.reasoningBuffer.length > root._runawayReasoningChars
+                        && root.responseBuffer.length === 0) {
+                    root._runawayAbortReported = true;
+                    console.warn("Ai.qml: runaway reasoning ("
+                        + root.reasoningBuffer.length
+                        + " chars, no answer), aborting the stream");
+                    root._enqueueSystemNote(
+                        "I was stuck reasoning without producing an answer, "
+                        + "so I stopped. Try rephrasing or a shorter request.");
+                    // stopGeneration() is the engine's own teardown: it kills
+                    // curl, stops the timers and marks the request as killed so
+                    // onExited does not resurrect the turn.
+                    root.stopGeneration();
+                    root.requestInFlight = false;
+                    root.isLoading = false;
+                    return;
                 }
 
                 // Accumulate tool-call deltas. OpenAI-compatible APIs

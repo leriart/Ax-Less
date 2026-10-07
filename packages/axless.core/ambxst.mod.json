@@ -256,6 +256,10 @@
     },
     {
       "type": "patch",
+      "source": "patches/ai-prompt.patch"
+    },
+    {
+      "type": "patch",
       "source": "patches/settings-i18n.patch"
     },
     {
