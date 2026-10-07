@@ -32,6 +32,7 @@ Standard library only, like the rest of the agent payload.
 import base64
 import json
 import os
+import errno
 import sys
 import urllib.error
 import urllib.parse
@@ -354,8 +355,53 @@ class Handler(BaseHTTPRequestHandler):
                              "error": "%s: %s" % (type(exc).__name__, exc)})
 
 
+def _bridge_already_running():
+    """True when a healthy bridge already answers on the configured port.
+
+    The shell can spawn this script more than once - reconnecting, a second
+    agent preset pointing at the same adapter, or a reload that leaves the
+    previous process alive. Binding a fixed port a second time dies with
+    EADDRINUSE and the shell shows "Process: starting" followed by the
+    traceback, which reads like the adapter is broken when it is really
+    already running fine.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+                "http://%s:%d/health" % (LISTEN_HOST, LISTEN_PORT), timeout=2) as r:
+            return r.status == 200
+    except urllib.error.HTTPError:
+        # Something is on the port and answered, it is just not this bridge.
+        return False
+    except Exception:  # noqa: BLE001 - nothing listening, or not reachable
+        return False
+
+
+class _Server(ThreadingHTTPServer):
+    # Let a restarted bridge rebind a port still held in TIME_WAIT by its
+    # predecessor, instead of failing to start.
+    allow_reuse_address = True
+
+
 def main():
-    server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
+    if _bridge_already_running():
+        sys.stderr.write(
+            "[opencode-bridge] one is already listening on %s:%d, nothing to do\n"
+            % (LISTEN_HOST, LISTEN_PORT))
+        return
+
+    try:
+        server = _Server((LISTEN_HOST, LISTEN_PORT), Handler)
+    except OSError as exc:
+        # Lost the race against another instance starting at the same moment.
+        if exc.errno in (errno.EADDRINUSE, errno.EACCES) and _bridge_already_running():
+            sys.stderr.write(
+                "[opencode-bridge] another instance won the race on %s:%d\n"
+                % (LISTEN_HOST, LISTEN_PORT))
+            return
+        raise
+
     sys.stderr.write(
         "[opencode-bridge] %d tools -> %s on http://%s:%d\n"
         % (len(TOOLS), UPSTREAM, LISTEN_HOST, LISTEN_PORT))
@@ -363,6 +409,8 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
