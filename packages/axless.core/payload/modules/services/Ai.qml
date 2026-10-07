@@ -247,11 +247,10 @@ Singleton {
     // left to stop it. Arguments are JSON - nothing legitimate needs kilobytes.
     readonly property int _runawayToolArgsChars: 6000
 
-    // axless.core: silent-retry budget for a stalled stream, and how much
-    // content counts as "actually answered" - below this, nothing reached the
-    // user, so a retry is invisible rather than a duplicated answer.
+    // axless.core: silent-retry budget for a stalled stream. The aborted
+    // attempt's partial text is discarded, so the retry replaces it rather
+    // than landing after a fragment.
     property int _turnStallRetries: 0
-    readonly property int _stallRetryMinChars: 80
     property bool _runawayAbortReported: false
     // Saved state of the last successful move_windows call so the user
     // can say "regresalo" / "undo" / "return" to reverse it. Recorded
@@ -2483,30 +2482,37 @@ Singleton {
                     // once turns an intermittent failure into a slightly
                     // slower answer, which is a much better trade than
                     // showing a raw provider error to the user.
-                    if (root._turnStallRetries < 1
-                            && root.responseBuffer.length
-                                < root._stallRetryMinChars) {
+                    if (root._turnStallRetries < 1) {
                         root._turnStallRetries++;
-                        console.warn("Ai.qml: stream stalled with "
+                        console.warn("Ai.qml: stream stalled after "
                             + root.responseBuffer.length
                             + " chars, retrying once");
-                        // Drop the empty assistant placeholder so the retry
-                        // starts from the same history the first attempt had.
+                        // Drop the aborted assistant message - including any
+                        // partial text it managed to stream, which the user
+                        // saw on screen but which is an unfinished answer -
+                        // so the retry replaces it instead of appearing
+                        // after a fragment.
                         root.currentChat = Array.from(root.currentChat);
                         for (let i = root.currentChat.length - 1; i >= 0; i--) {
                             const m = root.currentChat[i];
-                            if (m.role === "assistant"
-                                    && !m.content && !m.functionCall) {
+                            if (m.role === "system"
+                                    && typeof m.content === "string"
+                                    && m.content.startsWith("[Stream exceeded")) {
                                 root.currentChat.splice(i, 1);
-                            } else if (m.role === "system"
-                                       && typeof m.content === "string"
-                                       && m.content.startsWith("[Stream exceeded")) {
+                            } else if (m.role === "assistant"
+                                       && !m.functionCall
+                                       && !m.functionPending) {
                                 root.currentChat.splice(i, 1);
+                            } else {
+                                break;
                             }
                         }
                         root.responseBuffer = "";
+                        root.reasoningBuffer = "";
+                        root.pendingToolCall = null;
                         root.requestQueued = false;
                         root.requestStartMs = 0;
+                        root._runawayAbortReported = false;
                         Qt.callLater(root.makeRequest);
                         return;
                     }
