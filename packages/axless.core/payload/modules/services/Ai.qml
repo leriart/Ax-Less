@@ -757,7 +757,57 @@ Singleton {
         }
     }
 
+    // axless.core: can `name` actually be invoked right now?
+    //
+    // Three sources, in the same order the request body uses: the system
+    // tools (run_shell_command), the agent registry (filtered to agents that
+    // are actually connected), and the text-detected tool list. Checking the
+    // same set that was advertised to the model is the point - if a tool was
+    // not offered, a mention of it is not a request.
+    function _toolAvailable(name) {
+        if (!name)
+            return false;
+        if (Array.isArray(root.activeTools) && root.activeTools.length > 0) {
+            for (let i = 0; i < root.activeTools.length; i++) {
+                if (root.activeTools[i] && root.activeTools[i].name === name)
+                    return true;
+            }
+            return false;
+        }
+        // activeTools is only filled in agent mode; in chat mode fall back to
+        // the system tools so run_shell_command is still recognised.
+        if (Array.isArray(root.systemTools)) {
+            for (let i = 0; i < root.systemTools.length; i++) {
+                if (root.systemTools[i] && root.systemTools[i].name === name)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    // axless.core: every detected call goes through this gate.
+    //
+    // _detectTextToolCallRaw recognises six different notations, plus a URL
+    // sniffer that fires on any http link in the prose. Checking each of them
+    // separately is how open_url kept leaking through, so the availability
+    // test lives here instead: once, over whatever shape was recognised.
+    //
+    // A small model with no tools available still writes "open_url(...)" in
+    // the body of its answer, because the prompt names the tools. Turning
+    // that into a real invocation produced "Tool unavailable: no agent is
+    // currently exposing 'open_url'", the model saw the failure, tried
+    // again, and the turn ran to the wall-clock deadline every time. Text
+    // that merely mentions a tool stays text.
     function _detectTextToolCall(text) {
+        const detected = _detectTextToolCallRaw(text);
+        if (!detected)
+            return null;
+        if (!_toolAvailable(detected.name))
+            return null;
+        return detected;
+    }
+
+    function _detectTextToolCallRaw(text) {
         if (!text) return null
 
         // Pattern 1: JSON block with "name" and "arguments"
