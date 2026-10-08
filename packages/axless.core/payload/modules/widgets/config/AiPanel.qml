@@ -35,7 +35,7 @@ Item {
     // The stdio<->FIFO bridge ships inside the mod package, so resolve it
     // relative to this file rather than to a hardcoded checkout path.
     readonly property string _mcpBridgePath:
-        Qt.resolvedUrl("../../../scripts/mcp_stdio_bridge.py")
+        Qt.resolvedUrl("../../../scripts/mcp_stdio_bridge")
             .toString().replace("file://", "")
     // Adapter that republishes `opencode serve` (which speaks its own API)
     // as bridge tools the shell understands.

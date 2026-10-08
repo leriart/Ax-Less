@@ -125,8 +125,8 @@
     },
     {
       "type": "overlay",
-      "source": "payload/scripts/mcp_stdio_bridge.py",
-      "target": "scripts/mcp_stdio_bridge.py"
+      "source": "payload/scripts/mcp_stdio_bridge",
+      "target": "scripts/mcp_stdio_bridge"
     },
     {
       "type": "overlay",
@@ -387,6 +387,16 @@
     {
       "type": "patch",
       "source": "patches/aipanel-agents.patch"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/bridge/main.go",
+      "target": "mcp/bridge/main.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/bridge/go.mod",
+      "target": "mcp/bridge/go.mod"
     }
   ]
 }

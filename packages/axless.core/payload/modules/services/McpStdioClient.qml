@@ -57,7 +57,9 @@ QtObject {
     // discovery quickly; a hung server otherwise freezes the AI pipeline.
     property int requestTimeoutMs: 15000
 
-    readonly property string _bridgePath: Qt.resolvedUrl("../../scripts/mcp_stdio_bridge.py").toString().replace("file://", "")
+    // axless.core: the bridge is a Go binary now (scripts/mcp_stdio_bridge),
+    // not a Python script that has to be spawned through an interpreter.
+    readonly property string _bridgePath: Qt.resolvedUrl("../../scripts/mcp_stdio_bridge").toString().replace("file://", "")
 
     function start(command, args) {
         if (!command) {
@@ -67,7 +69,7 @@ QtObject {
         // Build the bridge invocation. The double-dash separator is
         // required so the bridge can split its own argv from the
         // user-configured MCP command.
-        let invocation = ["python3", "-u", _bridgePath, "--", command];
+        let invocation = [_bridgePath, "--", command];
         if (args && args.length > 0) {
             for (let i = 0; i < args.length; i++) invocation.push(String(args[i]));
         }
