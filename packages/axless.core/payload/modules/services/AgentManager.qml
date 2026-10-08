@@ -141,6 +141,23 @@ QtObject {
                 a.push(root._resolveModPath(out.args[i]));
             out.args = a;
         }
+
+        // axless.core: bridge scripts are Go binaries now, not Python files
+        // spawned through an interpreter. A profile saved before the port
+        // still says `python3 .../server.py`; rewrite it to run the compiled
+        // bridge directly so existing profiles keep working.
+        const bridged = ["/mcp/opencode/server.py", "/mcp/nothingclaw/server.py"];
+        if ((out.command === "python3" || out.command === "python")
+                && out.args.length > 0 && typeof out.args[0] === "string") {
+            const script = out.args[0];
+            for (let i = 0; i < bridged.length; i++) {
+                if (script.endsWith(bridged[i])) {
+                    out.command = script.substring(0, script.length - 3);
+                    out.args = out.args.slice(1);
+                    break;
+                }
+            }
+        }
         return out;
     }
 

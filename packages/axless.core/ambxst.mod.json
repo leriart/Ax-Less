@@ -165,8 +165,8 @@
     },
     {
       "type": "overlay",
-      "source": "payload/mcp/opencode/server.py",
-      "target": "mcp/opencode/server.py"
+      "source": "payload/mcp/opencode/server",
+      "target": "mcp/opencode/server"
     },
     {
       "type": "overlay",
@@ -397,6 +397,16 @@
       "type": "overlay",
       "source": "payload/mcp/bridge/go.mod",
       "target": "mcp/bridge/go.mod"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/opencode-bridge/main.go",
+      "target": "mcp/opencode-bridge/main.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/opencode-bridge/go.mod",
+      "target": "mcp/opencode-bridge/go.mod"
     }
   ]
 }
