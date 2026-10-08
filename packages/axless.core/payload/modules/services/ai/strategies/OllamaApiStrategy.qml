@@ -77,12 +77,44 @@ ApiStrategy {
                 type: "function",
                 function: {
                     name: t.name,
-                    description: t.description,
-                    parameters: t.parameters
+                    description: _brief(t.description),
+                    parameters: _slim(t.parameters)
                 }
             }));
         }
         return body;
+    }
+
+    // Small local models pay for every prompt token and the bridge tool
+    // descriptions are long, so the prefill dominates latency. Collapse
+    // whitespace and keep a short prefix - enough for tool selection - to keep
+    // the prompt small.
+    function _brief(s) {
+        s = (s || "").replace(/\s+/g, " ").trim();
+        return s.length > 160 ? s.substring(0, 159) + "…" : s;
+    }
+
+    // Drop every nested "description" from a JSON schema. The parameter names
+    // (app_name, workspace_id, ...) are self-describing and the schema keeps
+    // its type/required/enum structure, so tool calls stay valid while the
+    // prompt - and therefore the prefill - shrinks a lot.
+    function _slim(v) {
+        if (Array.isArray(v)) {
+            let a = [];
+            for (let i = 0; i < v.length; i++)
+                a.push(_slim(v[i]));
+            return a;
+        }
+        if (v && typeof v === "object") {
+            let out = {};
+            for (let k in v) {
+                if (k === "description")
+                    continue;
+                out[k] = _slim(v[k]);
+            }
+            return out;
+        }
+        return v;
     }
 
     function getBody(messages, model, tools) {

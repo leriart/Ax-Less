@@ -568,7 +568,8 @@ func filterToolsForCapability(tier string) []map[string]any {
 	}
 	out := []map[string]any{}
 	for _, t := range toolsList() {
-		if set[t["name"].(string)] {
+		name, _ := t["name"].(string)
+		if set[name] {
 			out = append(out, t)
 		}
 	}

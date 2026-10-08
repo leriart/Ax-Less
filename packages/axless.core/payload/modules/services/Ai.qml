@@ -87,6 +87,12 @@ Singleton {
         if (StateService.initialized && !root._restored) {
             root._restored = true;
             restoreModel();
+            // axless.core: remember the last mode and agent so the sidebar
+            // comes back the way the user left it.
+            let savedMode = StateService.get("lastAiMode", "");
+            if (savedMode === "chat" || savedMode === "agent")
+                root.currentMode = savedMode;
+            root.currentAgentId = StateService.get("lastAiAgent", "");
         }
     }
 
@@ -194,6 +200,8 @@ Singleton {
         if (currentMode === mode)
             return;
         currentMode = mode;
+        if (StateService.initialized)
+            StateService.set("lastAiMode", mode);
         modeChanged();
     }
 
@@ -202,6 +210,8 @@ Singleton {
         if (currentAgentId === next)
             return;
         currentAgentId = next;
+        if (StateService.initialized)
+            StateService.set("lastAiAgent", next);
         agentChanged();
     }
 
@@ -291,6 +301,17 @@ Singleton {
             }
         }
         ];
+        // axless.core: de-duplicate by name. Several agents advertise the same
+        // tool (run_shell_command, list_* ...), and shipping duplicates bloats
+        // the prompt - which matters a lot for small local models.
+        let seen = {};
+        let out = [];
+        for (let i = 0; i < t.length; i++) {
+            if (t[i] && !seen[t[i].name]) {
+                seen[t[i].name] = true;
+                out.push(t[i]);
+            }
+        }
         let reg = root.agentToolRegistry;
         if (reg && reg.tools) {
             for (let i = 0; i < reg.tools.length; i++) {
@@ -300,10 +321,13 @@ Singleton {
                 if (root.currentAgentId !== ""
                         && tool._agentId !== root.currentAgentId)
                     continue;
-                t.push(tool);
+                if (seen[tool.name])
+                    continue;
+                seen[tool.name] = true;
+                out.push(tool);
             }
         }
-        return t;
+        return out;
     }
 
     // ============================================
@@ -516,10 +540,22 @@ Singleton {
 
         // Build messages array
         let messages = [];
-        if (Config.ai.systemPrompt) {
+        let systemPrompt = Config.ai.systemPrompt || "";
+        // axless.core: nudge models - especially small local ones - to actually
+        // call the tools instead of narrating the action, and to pass a proper
+        // arguments object. Kept short so it doesn't crowd a small context.
+        if (systemTools && systemTools.length > 0) {
+            let toolHint = "You can control this Linux desktop with the provided tools. "
+                + "When the user asks you to do something (open or close apps, move or focus windows, "
+                + "search the web, run a command), call the correct tool instead of describing it. "
+                + "Pass arguments as a JSON object that matches the tool schema. "
+                + "After a tool runs, read its result and reply to the user in plain language.";
+            systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + toolHint) : toolHint;
+        }
+        if (systemPrompt) {
             messages.push({
                 role: "system",
-                content: Config.ai.systemPrompt
+                content: systemPrompt
             });
         }
 
@@ -701,7 +737,6 @@ Singleton {
 
         onExited: exitCode => {
             root.isLoading = false;
-                + " buf=" + root.responseBuffer.length);
 
             if (root.stoppedByUser) {
                 // The user aborted. Keep whatever streamed so far and record

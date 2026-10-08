@@ -122,9 +122,15 @@ func parseDesktop(path string) map[string]any {
 	if t, ok := entry["Type"].(string); ok && t != "Application" {
 		return nil
 	}
-	if strings.EqualFold(entry["Hidden"].(string), "true") ||
-		strings.EqualFold(entry["NoDisplay"].(string), "true") ||
-		strings.EqualFold(entry["Terminal"].(string), "true") {
+	strAt := func(k string) string {
+		if v, ok := entry[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	if strings.EqualFold(strAt("Hidden"), "true") ||
+		strings.EqualFold(strAt("NoDisplay"), "true") ||
+		strings.EqualFold(strAt("Terminal"), "true") {
 		return nil
 	}
 

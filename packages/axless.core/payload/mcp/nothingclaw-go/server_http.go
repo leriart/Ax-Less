@@ -62,7 +62,8 @@ func handleGetTools(w http.ResponseWriter, r *http.Request) {
 		}
 		payload := []map[string]any{}
 		for _, t := range toolsList() {
-			if set[t["name"].(string)] {
+			name, _ := t["name"].(string)
+			if set[name] {
 				payload = append(payload, t)
 			}
 		}

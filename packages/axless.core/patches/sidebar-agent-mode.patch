@@ -1,8 +1,30 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..502097b 100644
+index 292f58c..05345e1 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
-@@ -98,6 +98,23 @@ Item {
+@@ -24,6 +24,7 @@ Item {
+     readonly property bool frameWrapped: frameEnabled && GlobalStates.assistantPinned
+     readonly property int sidebarMargin: frameWrapped ? 0 : 4
+     property bool wantsFocus: false
++    property bool releasedFocus: false
+     property bool menuExpanded: false
+     property real menuWidth: 250
+     property var slashCommands: [
+@@ -79,11 +80,13 @@ Item {
+     onActiveChanged: {
+         if (active) {
+             root.wantsFocus = true;
++            root.releasedFocus = false;
+             Qt.callLater(() => {
+                 focusSearchInput();
+             });
+         } else {
+             root.wantsFocus = false;
++            root.releasedFocus = false;
+         }
+     }
+ 
+@@ -98,6 +101,23 @@ Item {
          }
      }
  
@@ -26,7 +48,7 @@ index 292f58c..502097b 100644
      MouseArea {
          id: resizeHandle
          width: 8
-@@ -278,6 +295,101 @@ Item {
+@@ -278,6 +298,101 @@ Item {
                              }
                          }
  
@@ -128,7 +150,7 @@ index 292f58c..502097b 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +425,90 @@ Item {
+@@ -313,6 +428,90 @@ Item {
                          }
                      }
  
@@ -219,7 +241,7 @@ index 292f58c..502097b 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -685,7 +881,7 @@ Item {
+@@ -685,7 +884,7 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -228,7 +250,7 @@ index 292f58c..502097b 100644
                                      property bool isEditing: false
                                      property bool retryMode: false
  
-@@ -969,7 +1165,9 @@ Item {
+@@ -969,7 +1168,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -239,7 +261,7 @@ index 292f58c..502097b 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1183,11 @@ Item {
+@@ -985,7 +1186,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -252,7 +274,7 @@ index 292f58c..502097b 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1305,25 @@ Item {
+@@ -1103,6 +1308,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  

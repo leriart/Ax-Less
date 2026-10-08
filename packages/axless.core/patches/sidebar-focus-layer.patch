@@ -1,22 +1,31 @@
 diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
-index 786c98e..64d081a 100644
+index 786c98e..aa69bcc 100644
 --- a/modules/shell/UnifiedShellPanel.qml
 +++ b/modules/shell/UnifiedShellPanel.qml
-@@ -34,8 +34,15 @@ PanelWindow {
+@@ -34,8 +34,16 @@ PanelWindow {
          if (notchContent.screenNotchOpen) {
              return WlrKeyboardFocus.Exclusive;
          }
 -        if (assistantSidebar.active && assistantSidebar.wantsFocus) {
 -            return WlrKeyboardFocus.Exclusive;
 +        // axless.core: while the assistant is open keep the surface keyboard
-+        // interactive. Exclusive when it actively wants focus (so it can be
-+        // typed into immediately); OnDemand otherwise so that clicking it
-+        // re-focuses it instead of the keyboard staying with whatever app was
-+        // clicked before. With None, a click could never hand keyboard back.
++        // interactive. On the very first open it takes Exclusive so it can be
++        // typed into immediately; once the user clicks away it drops to
++        // OnDemand and STAYS there, so a later click hands keyboard back
++        // instead of the surface re-configuring (Exclusive) and losing the
++        // focus it was just granted. With None a click could never return focus.
 +        if (assistantSidebar.active) {
-+            return assistantSidebar.wantsFocus
++            return (assistantSidebar.wantsFocus && !assistantSidebar.releasedFocus)
 +                ? WlrKeyboardFocus.Exclusive
 +                : WlrKeyboardFocus.OnDemand;
          }
          return WlrKeyboardFocus.None;
+     }
+@@ -175,6 +183,7 @@ PanelWindow {
+             FocusGrabManager.clearTopGrab();
+             if (assistantSidebar.active && assistantSidebar.wantsFocus) {
+                 assistantSidebar.wantsFocus = false;
++                assistantSidebar.releasedFocus = true;
+             }
+         }
      }

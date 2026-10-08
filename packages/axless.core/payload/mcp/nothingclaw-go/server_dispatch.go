@@ -12,6 +12,42 @@ import (
 	"time"
 )
 
+// normalizeArgs makes tool calls forgiving for small/minimal models, which
+// frequently (a) echo the function-call envelope, wrapping the real payload in
+// a nested "parameters"/"arguments" object, or (b) use a generic key such as
+// "name"/"app" instead of the schema's "app_name".
+func normalizeArgs(name string, in map[string]any) map[string]any {
+	args := map[string]any{}
+	for k, v := range in {
+		args[k] = v
+	}
+	// (a) unwrap a single nested payload object.
+	for _, wrap := range []string{"parameters", "arguments", "args", "input"} {
+		inner, ok := args[wrap].(map[string]any)
+		if !ok {
+			continue
+		}
+		for k, v := range inner {
+			if _, exists := args[k]; !exists {
+				args[k] = v
+			}
+		}
+		delete(args, wrap)
+	}
+	// (b) app-name aliases for the app tools.
+	if name == "open_app" || name == "close_app" {
+		if strArg(args, "app_name", "") == "" {
+			for _, k := range []string{"name", "app", "application", "appname", "query"} {
+				if s := strArg(args, k, ""); s != "" {
+					args["app_name"] = s
+					break
+				}
+			}
+		}
+	}
+	return args
+}
+
 func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[string]any {
 	if arguments == nil {
 		arguments = map[string]any{}
@@ -19,7 +55,7 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 	if ctx == nil {
 		ctx = resolveRequestContext("small", "", "")
 	}
-	args := arguments
+	args := normalizeArgs(name, arguments)
 
 	// Filesystem tools.
 	if h, ok := fsHandlers[name]; ok {
