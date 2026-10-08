@@ -1,0 +1,22 @@
+diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
+index 786c98e..64d081a 100644
+--- a/modules/shell/UnifiedShellPanel.qml
++++ b/modules/shell/UnifiedShellPanel.qml
+@@ -34,8 +34,15 @@ PanelWindow {
+         if (notchContent.screenNotchOpen) {
+             return WlrKeyboardFocus.Exclusive;
+         }
+-        if (assistantSidebar.active && assistantSidebar.wantsFocus) {
+-            return WlrKeyboardFocus.Exclusive;
++        // axless.core: while the assistant is open keep the surface keyboard
++        // interactive. Exclusive when it actively wants focus (so it can be
++        // typed into immediately); OnDemand otherwise so that clicking it
++        // re-focuses it instead of the keyboard staying with whatever app was
++        // clicked before. With None, a click could never hand keyboard back.
++        if (assistantSidebar.active) {
++            return assistantSidebar.wantsFocus
++                ? WlrKeyboardFocus.Exclusive
++                : WlrKeyboardFocus.OnDemand;
+         }
+         return WlrKeyboardFocus.None;
+     }

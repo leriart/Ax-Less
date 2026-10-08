@@ -442,6 +442,10 @@
     },
     {
       "type": "patch",
+      "source": "patches/sidebar-focus-layer.patch"
+    },
+    {
+      "type": "patch",
       "source": "patches/aipanel-agents.patch"
     },
     {
