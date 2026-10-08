@@ -1,16 +1,62 @@
 diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
-index c6f4df7..88e4b56 100644
+index c6f4df7..6c113f9 100644
 --- a/modules/widgets/config/AiPanel.qml
 +++ b/modules/widgets/config/AiPanel.qml
-@@ -37,9 +37,77 @@ Item {
+@@ -14,6 +14,44 @@ Item {
+     readonly property int contentWidth: Math.min(width, maxContentWidth)
+     readonly property real sideMargin: Math.max(0, (width - contentWidth) / 2)
+ 
++    // axless.core: the bundled bridges ship with the mod, so their paths are
++    // resolved relative to this file rather than hardcoded.
++    readonly property string _ncBin: Qt.resolvedUrl("../../../mcp/nothingclaw/server").toString().replace("file://", "")
++    readonly property string _ocBin: Qt.resolvedUrl("../../../mcp/opencode/server").toString().replace("file://", "")
++
++    function _addBundled(name, endpoint, binPath) {
++        const existing = AgentStore.listProfiles();
++        for (let i = 0; i < existing.length; i++) {
++            if (existing[i].name === name) {
++                Ai.agentManager.reconnectAgent(existing[i].id);
++                return;
++            }
++        }
++        const p = AgentStore.createBlankProfile(name);
++        p.type = "http-bridge";
++        p.endpoint = endpoint;
++        p.toolsPath = "/tools";
++        p.invokePath = "/tools";
++        p.process = { command: binPath, args: [], cwd: "", env: {} };
++        Ai.agentManager.addConnection(p);
++    }
++
++    function _liveFor(id) {
++        const conns = Ai.agentManager.connections || [];
++        for (let i = 0; i < conns.length; i++)
++            if (conns[i].id === id)
++                return conns[i];
++        return null;
++    }
++
++    function _toggleAgent(id) {
++        const live = root._liveFor(id);
++        if (live && (live.status === "connected" || live.status === "connecting"))
++            Ai.agentManager.disconnectAgent(id);
++        else
++            Ai.agentManager.reconnectAgent(id);
++    }
++
+     Flickable {
+         anchors.fill: parent
+         contentHeight: contentColumn.implicitHeight + 40
+@@ -37,9 +75,136 @@ Item {
                  Layout.bottomMargin: 8
              }
  
-+            // axless.core: connected agents. Their tools are merged into the
-+            // request in agent mode; in chat mode none are offered.
++            // axless.core: agent profiles. The two bundled bridges can be
++            // created here; each profile can be connected, disconnected or
++            // removed. Connected agents' tools are offered in agent mode.
 +            ColumnLayout {
 +                Layout.fillWidth: true
-+                spacing: 6
++                spacing: 8
 +
 +                Text {
 +                    text: "Agents"
@@ -23,52 +69,110 @@ index c6f4df7..88e4b56 100644
 +                Text {
 +                    Layout.fillWidth: true
 +                    wrapMode: Text.WordWrap
-+                    text: Ai.connectedAgents > 0
-+                        ? Ai.connectedAgents + " connected \u2014 their tools are offered to the model in agent mode."
-+                        : "No agents connected. Profiles live in ~/.local/share/ambxst/agents/."
++                    text: "Connect an agent to give the model its tools in agent mode."
 +                    font.family: Config.theme.font
 +                    font.pixelSize: Config.theme.fontSize - 2
 +                    color: Colors.outline
 +                }
 +
-+                Repeater {
-+                    model: {
-+                        let names = {};
-+                        let reg = Ai.agentToolRegistry;
-+                        if (reg && reg.tools) {
-+                            for (let i = 0; i < reg.tools.length; i++) {
-+                                let a = reg.tools[i] && reg.tools[i]._agentId;
-+                                if (a) names[a] = true;
-+                            }
++                RowLayout {
++                    spacing: 8
++
++                    StyledRect {
++                        variant: "primary"
++                        implicitWidth: ncTxt.implicitWidth + 24
++                        implicitHeight: 34
++                        radius: Styling.radius(4)
++                        Text {
++                            id: ncTxt
++                            anchors.centerIn: parent
++                            text: "+ NothingClaw"
++                            font.family: Config.theme.font
++                            font.pixelSize: Config.theme.fontSize - 1
++                            color: Styling.srItem("primary")
 +                        }
-+                        return Object.keys(names);
++                        MouseArea {
++                            anchors.fill: parent
++                            cursorShape: Qt.PointingHandCursor
++                            onClicked: root._addBundled("NothingClaw", "http://127.0.0.1:8000", root._ncBin)
++                        }
 +                    }
 +
++                    StyledRect {
++                        variant: "internalbg"
++                        implicitWidth: ocTxt.implicitWidth + 24
++                        implicitHeight: 34
++                        radius: Styling.radius(4)
++                        Text {
++                            id: ocTxt
++                            anchors.centerIn: parent
++                            text: "+ OpenCode"
++                            font.family: Config.theme.font
++                            font.pixelSize: Config.theme.fontSize - 1
++                            color: Colors.overSurface
++                        }
++                        MouseArea {
++                            anchors.fill: parent
++                            cursorShape: Qt.PointingHandCursor
++                            onClicked: root._addBundled("OpenCode", "http://127.0.0.1:8791", root._ocBin)
++                        }
++                    }
++                }
++
++                Repeater {
++                    model: AgentStore.listProfiles()
 +                    delegate: StyledRect {
-+                        required property string modelData
++                        required property var modelData
 +                        Layout.fillWidth: true
 +                        variant: "internalbg"
 +                        radius: Styling.radius(4)
-+                        implicitHeight: 40
++                        implicitHeight: 44
 +
 +                        Text {
 +                            anchors.left: parent.left
 +                            anchors.leftMargin: 12
 +                            anchors.verticalCenter: parent.verticalCenter
-+                            text: modelData
++                            text: {
++                                const l = root._liveFor(modelData.id);
++                                return modelData.name + "  ·  " + (l ? l.status : "disconnected");
++                            }
 +                            font.family: Config.theme.font
 +                            font.pixelSize: Config.theme.fontSize - 1
 +                            color: Colors.overSurface
 +                        }
 +
-+                        Text {
++                        Row {
 +                            anchors.right: parent.right
 +                            anchors.rightMargin: 12
 +                            anchors.verticalCenter: parent.verticalCenter
-+                            text: "connected"
-+                            font.family: Config.theme.font
-+                            font.pixelSize: Config.theme.fontSize - 3
-+                            color: Colors.success
++                            spacing: 14
++
++                            Text {
++                                text: {
++                                    const l = root._liveFor(modelData.id);
++                                    return (l && (l.status === "connected" || l.status === "connecting")) ? "Disconnect" : "Connect";
++                                }
++                                font.family: Config.theme.font
++                                font.pixelSize: Config.theme.fontSize - 2
++                                color: Styling.srItem("primary")
++                                MouseArea {
++                                    anchors.fill: parent
++                                    cursorShape: Qt.PointingHandCursor
++                                    onClicked: root._toggleAgent(modelData.id)
++                                }
++                            }
++
++                            Text {
++                                text: "Remove"
++                                font.family: Config.theme.font
++                                font.pixelSize: Config.theme.fontSize - 2
++                                color: Colors.error
++                                MouseArea {
++                                    anchors.fill: parent
++                                    cursorShape: Qt.PointingHandCursor
++                                    onClicked: Ai.agentManager.removeConnection(modelData.id)
++                                }
++                            }
 +                        }
 +                    }
 +                }
