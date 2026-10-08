@@ -3,8 +3,8 @@
   "manifestVersion": 1,
   "id": "axless.core",
   "name": "Ax-Less Core",
-  "version": "1.0.0",
-  "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support), an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
+  "version": "1.1.0",
+  "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support, including native tool calling on local models such as Ollama, a sidebar agent picker that remembers the last agent and mode, and a stop button), a hardened NothingClaw bridge (Go) with tolerant tool arguments and stale-process cleanup, an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
@@ -19,6 +19,7 @@
     ]
   },
   "commands": [
+    "bash",
     "curl",
     "ollama",
     "axctl",
@@ -27,6 +28,8 @@
   "permissions": [
     "Replaces the AI engine (Ai.qml) and the assistant sidebar with the agent-capable versions",
     "Spawns MCP servers, HTTP agent processes and command agents as child processes",
+    "Kills stale bridge processes left behind by a previous shell so the newest agent binaries are always the ones serving tool calls",
+    "Advertises the tool schema to local models (e.g. Ollama) and parses their native tool calls so they can use tools too",
     "Executes shell commands and approved tools on the user's system",
     "Reads and writes the system prompt, tool allowlist and agent profile files",
     "Reads provider API keys from the Ambxst keystore",

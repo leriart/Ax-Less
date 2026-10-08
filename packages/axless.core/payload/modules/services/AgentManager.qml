@@ -60,9 +60,30 @@ QtObject {
         McpStdioClient {}
     }
 
-    Component.onCompleted: {
-        reloadFromStore();
+    // axless.core: a shell that was killed (crash, `ambxst reload`, a timeout)
+    // can leave its bridge processes alive and still bound to their ports. A
+    // new shell would then connect to that stale build instead of the one it
+    // just deployed - an old NothingClaw answered a tool call with a panic that
+    // was already fixed, for instance. Sweep any bridge process out of the
+    // mods tree before spawning ours. `[m]cp` keeps the pattern from matching
+    // this very command line.
+    property Process orphanCleanup: Process {
+        // Match on the real executable (/proc/<pid>/exe), never on the command
+        // line: a `pkill -f` with the bridge path would also kill any shell,
+        // editor or script that merely mentions that path.
+        command: ["/usr/bin/bash", "-c",
+            "for d in /proc/[0-9]*; do x=$(readlink -f \"$d/exe\" 2>/dev/null) || continue; " +
+            "case \"$x\" in */mods/generations/*/mcp/*/server*) kill \"${d#/proc/}\" 2>/dev/null;; esac; done; true"]
+        onExited: root.reloadFromStore()
     }
+
+    Component.onCompleted: {
+        orphanCleanup.running = true;
+    }
+
+    // Stop the managed bridge processes on a clean exit so they do not linger
+    // and hold their ports for the next shell.
+    Component.onDestruction: _teardownAll()
 
     // Tear down all live clients + shell-managed processes. Called
     // before a full rebuild and on shell shutdown.
