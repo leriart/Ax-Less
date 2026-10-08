@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..82b0a16 100644
+index 292f58c..0005c27 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -241,7 +241,7 @@ index 292f58c..82b0a16 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -685,10 +884,19 @@ Item {
+@@ -685,10 +884,31 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -256,13 +256,25 @@ index 292f58c..82b0a16 100644
 +                                    property bool isStreaming: !isUser && !isSystem
 +                                        && !modelData.functionCall && Ai.isLoading
 +                                        && index === chatView.count - 1
-+                                    property string displayContent: isStreaming
-+                                        ? Ai.responseBuffer : (modelData.content || "")
++                                    property string displayContent: {
++                                        let txt = isStreaming ? Ai.responseBuffer : (modelData.content || "");
++                                        // axless.core: a tool result (e.g. list_workspaces
++                                        // JSON on one line) can be huge; laying all of it
++                                        // out as text is what locked the shell.
++                                        if (isSystem && txt.length > 1500)
++                                            txt = txt.substring(0, 1500) + "\n… +" + (txt.length - 1500) + " chars";
++                                        // Bound the live text too: relaying out an
++                                        // ever-growing buffer on every token is what
++                                        // can hang the shell if a model rambles.
++                                        if (isStreaming && txt.length > 8000)
++                                            txt = txt.substring(0, 8000) + "…";
++                                        return txt;
++                                    }
 +
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
  
-@@ -877,7 +1085,7 @@ Item {
+@@ -877,7 +1097,7 @@ Item {
  
                                                          Repeater {
                                                              model: {
@@ -271,7 +283,29 @@ index 292f58c..82b0a16 100644
                                                                  let parts = [];
                                                                  let regex = /```(\w*)\n([\s\S]*?)```/g;
                                                                  let lastIndex = 0;
-@@ -969,7 +1177,9 @@ Item {
+@@ -918,7 +1138,7 @@ Item {
+                                                                     TextEdit {
+                                                                         width: bubbleContent.width
+                                                                         text: segment.content
+-                                                                        textFormat: Text.MarkdownText
++                                                                        textFormat: isSystem ? Text.PlainText : Text.MarkdownText
+                                                                         color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                         font.family: Config.theme.font
+                                                                         font.pixelSize: 14
+@@ -945,7 +1165,11 @@ Item {
+                                                     TextEdit {
+                                                         id: bubbleContentText
+                                                         Layout.fillWidth: true
+-                                                        text: modelData.content || ""
++                                                        // Only build the editable full text while
++                                                        // actually editing; otherwise a huge tool
++                                                        // result would still be laid out here even
++                                                        // though the view is hidden.
++                                                        text: messageDelegate.isEditing ? (modelData.content || "") : ""
+                                                         textFormat: Text.PlainText
+                                                         color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                         font.family: Config.theme.font
+@@ -969,7 +1193,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -282,7 +316,7 @@ index 292f58c..82b0a16 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1195,11 @@ Item {
+@@ -985,7 +1211,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -295,7 +329,7 @@ index 292f58c..82b0a16 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1317,25 @@ Item {
+@@ -1103,6 +1333,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
