@@ -13,7 +13,9 @@
     "api": 1,
     "ambxst": ">=1.3.10 <1.4.0",
     "testedBaseCommits": [
-      "bc60230283a3822eec2e23c949f44990480d0f43"
+      "bc60230283a3822eec2e23c949f44990480d0f43",
+      "9a9fb6886138",
+      "4a8517b3"
     ]
   },
   "commands": [
