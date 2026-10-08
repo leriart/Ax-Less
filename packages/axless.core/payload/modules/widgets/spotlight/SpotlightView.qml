@@ -159,8 +159,8 @@ PanelWindow {
             target: spotlight
             property: "animProgress"
             to: 1.0
-            duration: 600
-            easing.type: Easing.InOutCubic
+            duration: Config.animDuration
+            easing.type: Easing.OutQuart
         }
     }
 
@@ -183,8 +183,8 @@ PanelWindow {
             target: spotlight
             property: "animProgress"
             to: 0.0
-            duration: 600
-            easing.type: Easing.InOutCubic
+            duration: Config.animDuration
+            easing.type: Easing.InQuad
         }
         PropertyAction {
             target: spotlight
@@ -612,8 +612,8 @@ PanelWindow {
         Behavior on height {
             enabled: Config.animDuration > 0 && animProgress >= 1 && cmdProcess === null
             NumberAnimation {
-                duration: Config.animDuration * 3
-                easing.type: Easing.OutQuint
+                duration: Config.animDuration
+                easing.type: Easing.OutQuart
             }
         }
 
@@ -924,7 +924,7 @@ PanelWindow {
                         color: "#4ade80"
                         font.bold: true
                         opacity: _copyFeedbackTimer.running ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                        Behavior on opacity { NumberAnimation { duration: Config.animDuration / 2 } }
                     }
 
                     Timer {
@@ -956,7 +956,7 @@ PanelWindow {
                 opacity: spotlight.showTerminal ? 1 : 0
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
 
                 Column {
@@ -1024,15 +1024,15 @@ PanelWindow {
                 Behavior on height {
                     enabled: Config.animDuration > 0 && cmdProcess === null
                     NumberAnimation {
-                        duration: Config.animDuration * 3
-                        easing.type: Easing.OutQuint
+                        duration: Config.animDuration
+                        easing.type: Easing.OutQuart
                     }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
                     NumberAnimation {
-                        duration: Config.animDuration * 2
-                        easing.type: Easing.OutQuint
+                        duration: Config.animDuration
+                        easing.type: Easing.OutQuart
                     }
                 }
 
@@ -1152,11 +1152,11 @@ PanelWindow {
                 clip: true
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 3; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Column {
@@ -1261,16 +1261,16 @@ PanelWindow {
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
                     NumberAnimation {
-                        duration: Config.animDuration * 2
-                        easing.type: Easing.OutQuint
+                        duration: Config.animDuration
+                        easing.type: Easing.OutQuart
                     }
                 }
 
                 Behavior on height {
                     enabled: Config.animDuration > 0
                     NumberAnimation {
-                        duration: Config.animDuration * 3
-                        easing.type: Easing.OutQuint
+                        duration: Config.animDuration
+                        easing.type: Easing.OutQuart
                     }
                 }
 
@@ -1491,7 +1491,7 @@ PanelWindow {
                                 opacity: mouseArea.containsMouse ? 1 : 0
                                 visible: modelData.type !== "calc" && modelData.type !== "info"
 
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                                Behavior on opacity { NumberAnimation { duration: Config.animDuration / 3 } }
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1521,7 +1521,7 @@ PanelWindow {
                                 opacity: (mouseArea.containsMouse && modelData.type === "history") ? 1 : 0
                                 visible: modelData.type === "history"
 
-                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                                Behavior on opacity { NumberAnimation { duration: Config.animDuration / 3 } }
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1569,11 +1569,11 @@ PanelWindow {
                 clip: true
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 3; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Column {
@@ -1685,7 +1685,7 @@ PanelWindow {
                                                         opacity: isSelected ? 0.15 : 0
                                                         border.color: isSelected ? Styling.srItem("overprimary") : "transparent"
                                                         border.width: isSelected ? 2 : 0
-                                                        Behavior on opacity { NumberAnimation { duration: 100 } }
+                                                        Behavior on opacity { NumberAnimation { duration: Config.animDuration / 3 } }
                                                     }
 
                                                     ClippingRectangle {
@@ -1791,11 +1791,11 @@ PanelWindow {
                 clip: true
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 3; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Column {
@@ -1891,11 +1891,11 @@ PanelWindow {
 
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 3; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Column {
@@ -2006,7 +2006,7 @@ PanelWindow {
                 height: spotlight.showDebug ? Math.max(debugContent.implicitHeight + 20, 120) : 0
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
 
                 Column {
@@ -2150,11 +2150,11 @@ PanelWindow {
 
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 3; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2; easing.type: Easing.OutQuint }
+                    NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart }
                 }
 
                 Column {
@@ -2328,11 +2328,11 @@ PanelWindow {
                 height: spotlight.showConfig ? configContent.implicitHeight + 20 : 0
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
 
                 Column {
@@ -2771,11 +2771,11 @@ PanelWindow {
 
                 Behavior on opacity {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
                 Behavior on height {
                     enabled: Config.animDuration > 0
-                    NumberAnimation { duration: Config.animDuration * 2 }
+                    NumberAnimation { duration: Config.animDuration }
                 }
 
                 Column {
@@ -2947,7 +2947,7 @@ PanelWindow {
         z: 100
 
         Behavior on opacity {
-            NumberAnimation { duration: 80 }
+            NumberAnimation { duration: Config.animDuration / 3 }
         }
 
         Column {
@@ -3046,7 +3046,7 @@ PanelWindow {
         clip: true
 
         Behavior on opacity {
-            NumberAnimation { duration: 80 }
+            NumberAnimation { duration: Config.animDuration / 3 }
         }
 
         Flickable {
