@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..5b09c70 100644
+index 292f58c..b8e7c94 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -278,6 +278,101 @@ Item {
@@ -195,7 +195,15 @@ index 292f58c..5b09c70 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -969,7 +1148,9 @@ Item {
+@@ -674,6 +853,7 @@ Item {
+                                 bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
+ 
+                                 onCountChanged: {
++                                    Ai._log("sidebar", "count=" + count);
+                                     Qt.callLater(() => {
+                                         positionViewAtEnd();
+                                     });
+@@ -969,7 +1149,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -206,7 +214,7 @@ index 292f58c..5b09c70 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1166,11 @@ Item {
+@@ -985,7 +1167,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -219,7 +227,7 @@ index 292f58c..5b09c70 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1288,25 @@ Item {
+@@ -1103,6 +1289,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  

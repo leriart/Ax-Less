@@ -111,15 +111,6 @@ Singleton {
         }
     }
 
-    // axless.core: saving or removing an API key re-queries that provider so
-    // its model list appears (or disappears) without a restart.
-    Connections {
-        target: KeyStore
-        function onKeysChanged() {
-            root.fetchAvailableModels();
-        }
-    }
-
     // ============================================
     // STRATEGIES
     // ============================================
@@ -247,6 +238,47 @@ Singleton {
     FileView {
         id: bodyFileView
         printErrors: false
+    }
+
+    // ==== axless.debug (TEMPORAL): deja un rastro en archivo para localizar
+    // el cuelgue de la UI. Se escribe solo; quitar cuando se arregle. ====
+    readonly property string _dbgPath: Quickshell.env("HOME") + "/.cache/ambxst/axless-debug.log"
+    property string _dbgBuf: ""
+    property bool _dbgInit: false
+    property int _streamChunks: 0
+
+    function _log(tag, msg) {
+        let line = (new Date()).toISOString() + " [" + tag + "] " + msg;
+        console.log("[axless] " + line);
+        if (!root._dbgInit) {
+            root._dbgInit = true;
+            _dbgTrunc.command = ["bash", "-c", "mkdir -p " + Quickshell.env("HOME") + "/.cache/ambxst; : > " + root._dbgPath];
+            _dbgTrunc.running = true;
+        }
+        root._dbgBuf += line + "\n";
+        _dbgFlush.restart();
+    }
+
+    Timer {
+        id: _dbgFlush
+        interval: 60
+        onTriggered: {
+            if (root._dbgBuf.length === 0)
+                return;
+            _dbgApp.environment = ({ AXLESS_LINE: root._dbgBuf });
+            _dbgApp.command = ["bash", "-c", "printf '%s' \"$AXLESS_LINE\" >> " + root._dbgPath];
+            root._dbgBuf = "";
+            _dbgApp.running = true;
+        }
+    }
+    Process { id: _dbgApp }
+    Process { id: _dbgTrunc }
+
+    Timer {
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: root._log("hb", "tick loading=" + root.isLoading + " n=" + root.currentChat.length)
     }
 
     // ============================================
@@ -403,6 +435,7 @@ Singleton {
 
     // Function Call Handling
     function approveCommand(index) {
+        root._log("approveCommand", "index=" + index);
         let msg = currentChat[index];
         if (!msg.functionCall)
             return;
@@ -446,6 +479,7 @@ Singleton {
     // Push a tool result and let the model continue. Uses the current OpenAI
     // shape (role "tool" + tool_call_id) so the request is valid.
     function _finishToolCall(index, name, output) {
+        root._log("_finishToolCall", "name=" + name);
         let msg = currentChat[index];
         let newChat = Array.from(currentChat);
         newChat.push({
@@ -477,6 +511,7 @@ Singleton {
     }
 
     function sendMessage(text, attachments) {
+        root._log("sendMessage", "textlen=" + (text ? text.length : 0));
         if (text.trim() === "" && (!attachments || attachments.length === 0))
             return;
         if (processCommand(text))
@@ -497,6 +532,7 @@ Singleton {
     }
 
     function makeRequest() {
+        root._log("makeRequest", "n=" + currentChat.length + " tools=" + (systemTools ? systemTools.length : -1));
         let apiKey = getApiKey(currentModel);
         if (!apiKey && currentModel.requires_key) {
             lastError = I18n.t("ai.api_key_missing").replace("%1", currentModel.name).replace("%2", currentModel.key_id || I18n.t("ai.env_variable"));
@@ -549,11 +585,14 @@ Singleton {
         }
 
         // Build body — always use streaming
+        root._log("makeRequest", "msgs=" + messages.length + " -> getStreamBody");
         let body = currentStrategy.getStreamBody(messages, currentModel, systemTools);
+        root._log("makeRequest", "getStreamBody ok");
 
         // Reset streaming buffer
         responseBuffer = "";
         _pendingToolCalls = [];
+        _streamChunks = 0;
 
         // Add placeholder assistant message for streaming
         let streamChat = Array.from(currentChat);
@@ -564,10 +603,12 @@ Singleton {
         });
         currentChat = streamChat;
 
+        root._log("makeRequest", "stringify body");
         writeTempBody(JSON.stringify(body), headers, endpoint);
     }
 
     function writeTempBody(jsonBody, headers, endpoint) {
+        root._log("writeTempBody", "len=" + (jsonBody ? jsonBody.length : 0));
         requestProcess.command = ["/usr/bin/mkdir", "-p", tmpDir];
         requestProcess.step = "mkdir";
         requestProcess.payload = {
@@ -579,6 +620,7 @@ Singleton {
     }
 
     function executeRequest(payload) {
+        root._log("executeRequest", "endpoint set");
         let bodyPath = tmpDir + "/body.json";
         bodyFileView.path = bodyPath;
         bodyFileView.setText(payload.body);
@@ -586,6 +628,7 @@ Singleton {
     }
 
     function runCurl(payload) {
+        root._log("runCurl", "endpoint=" + (payload ? payload.endpoint : "?"));
         let bodyPath = tmpDir + "/body.json";
         let headerArgs = payload.headers.map(h => "-H \"" + h + "\"").join(" ");
 
@@ -655,6 +698,9 @@ Singleton {
         stdout: SplitParser {
             onRead: data => {
                 let result = root.currentStrategy.parseStreamChunk(data);
+                root._streamChunks++;
+                if (root._streamChunks === 1 || root._streamChunks % 40 === 0)
+                    root._log("onRead", "chunk=" + root._streamChunks);
 
                 if (result.error) {
                     root.lastError = result.error;
@@ -681,7 +727,8 @@ Singleton {
                         let d = result.toolCallDelta[k];
                         if (!d)
                             continue;
-                        let idx = (d.index !== undefined) ? d.index : 0;
+                        let idx = (typeof d.index === "number" && isFinite(d.index)
+                                   && d.index >= 0 && d.index < 64) ? Math.floor(d.index) : 0;
                         let calls = root._pendingToolCalls.slice();
                         while (calls.length <= idx)
                             calls.push({ id: "", name: "", args: "" });
@@ -708,6 +755,8 @@ Singleton {
 
         onExited: exitCode => {
             root.isLoading = false;
+            root._log("onExited", "code=" + exitCode + " pending=" + root._pendingToolCalls.length
+                + " buf=" + root.responseBuffer.length);
 
             if (root.stoppedByUser) {
                 // The user aborted. Keep whatever streamed so far and record
@@ -756,6 +805,7 @@ Singleton {
                 }
 
                 root.saveCurrentChat();
+                root._log("onExited", "done ok");
             } else {
                 root.lastError = I18n.t("ai.network_failed").replace("%1", curlStderr.text);
 
@@ -814,6 +864,7 @@ Singleton {
     }
 
     function saveCurrentChat() {
+        root._log("saveCurrentChat", "n=" + currentChat.length);
         if (currentChat.length === 0)
             return;
 
