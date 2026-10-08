@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..30bd672 100644
+index 292f58c..3e6130e 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -335,20 +335,40 @@ index 292f58c..30bd672 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1221,11 @@ Item {
+@@ -977,16 +1213,29 @@ Item {
+                                                         }
+ 
+                                                         StyledRect {
++                                                            id: argsBox
+                                                             Layout.fillWidth: true
++                                                            // axless.core: the box had no height, so the
++                                                            // command / arguments never showed. Size it
++                                                            // to the wrapped text.
++                                                            Layout.preferredHeight: argsText.contentHeight + 16
+                                                             variant: "surface"
+                                                             color: Colors.surface
+                                                             radius: Styling.radius(4)
+ 
                                                              TextEdit {
-                                                                 padding: 8
-                                                                 width: parent.width
+-                                                                padding: 8
+-                                                                width: parent.width
 -                                                                text: modelData.functionCall ? modelData.functionCall.args.command : ""
++                                                                id: argsText
++                                                                anchors.left: parent.left
++                                                                anchors.right: parent.right
++                                                                anchors.top: parent.top
++                                                                anchors.margins: 8
 +                                                                text: modelData.functionCall
 +                                                                    ? (modelData.functionCall.args && modelData.functionCall.args.command !== undefined
 +                                                                        ? modelData.functionCall.args.command
 +                                                                        : JSON.stringify(modelData.functionCall.args || {}, null, 2))
 +                                                                    : ""
                                                                  font.family: "Monospace"
++                                                                font.pixelSize: 12
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1343,25 @@ Item {
+                                                                 wrapMode: Text.WrapAnywhere
+@@ -1103,6 +1352,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
