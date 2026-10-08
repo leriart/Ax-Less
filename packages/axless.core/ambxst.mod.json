@@ -135,28 +135,63 @@
     },
     {
       "type": "overlay",
-      "source": "payload/mcp/nothingclaw/server.py",
-      "target": "mcp/nothingclaw/server.py"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/mcp/nothingclaw/context_budget.py",
-      "target": "mcp/nothingclaw/context_budget.py"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/mcp/nothingclaw/agent_loop.py",
-      "target": "mcp/nothingclaw/agent_loop.py"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/mcp/nothingclaw/fs_tools.py",
-      "target": "mcp/nothingclaw/fs_tools.py"
-    },
-    {
-      "type": "overlay",
       "source": "payload/mcp/nothingclaw/requirements.txt",
       "target": "mcp/nothingclaw/requirements.txt"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw/server",
+      "target": "mcp/nothingclaw/server"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/agent_loop.go",
+      "target": "mcp/nothingclaw-go/agent_loop.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/context_budget.go",
+      "target": "mcp/nothingclaw-go/context_budget.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/fs.go",
+      "target": "mcp/nothingclaw-go/fs.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/go.mod",
+      "target": "mcp/nothingclaw-go/go.mod"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server.go",
+      "target": "mcp/nothingclaw-go/server.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_apps.go",
+      "target": "mcp/nothingclaw-go/server_apps.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_dispatch.go",
+      "target": "mcp/nothingclaw-go/server_dispatch.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_http.go",
+      "target": "mcp/nothingclaw-go/server_http.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_tools.go",
+      "target": "mcp/nothingclaw-go/server_tools.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_web.go",
+      "target": "mcp/nothingclaw-go/server_web.go"
     },
     {
       "type": "overlay",
