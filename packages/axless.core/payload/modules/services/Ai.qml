@@ -165,6 +165,21 @@ Singleton {
     // ============================================
 
     property bool isLoading: false
+
+    // axless.core: set while stopping so onExited keeps the partial answer and
+    // does not overwrite it with a network error.
+    property bool stoppedByUser: false
+
+    // Abort the in-flight request. The streamed text stays in the message.
+    function stopGeneration() {
+        if (!root.isLoading && !curlProcess.running)
+            return;
+        root.stoppedByUser = true;
+        if (curlProcess.running)
+            curlProcess.running = false;
+        root.isLoading = false;
+        root.responseBuffer = "";
+    }
     property string lastError: ""
     property string responseBuffer: ""
 
@@ -693,6 +708,15 @@ Singleton {
 
         onExited: exitCode => {
             root.isLoading = false;
+
+            if (root.stoppedByUser) {
+                // The user aborted. Keep whatever streamed so far and record
+                // it without treating the killed process as a failure.
+                root.stoppedByUser = false;
+                root.responseBuffer = "";
+                root.saveCurrentChat();
+                return;
+            }
 
             if (exitCode === 0) {
                 // axless.core: a completed tool call becomes the assistant

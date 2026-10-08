@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..0517ed1 100644
+index 292f58c..3ac33d6 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -278,6 +278,47 @@ Item {
@@ -50,3 +50,53 @@ index 292f58c..0517ed1 100644
                          Item {
                              Layout.fillWidth: true
                          }
+@@ -969,7 +1010,9 @@ Item {
+                                                         }
+ 
+                                                         Text {
+-                                                            text: I18n.t("ai.run_command")
++                                                            text: modelData.functionCall && modelData.functionCall.name
++                                                                ? modelData.functionCall.name
++                                                                : I18n.t("ai.run_command")
+                                                             color: Styling.srItem("overprimary")
+                                                             font.family: Config.theme.font
+                                                             font.weight: Font.Bold
+@@ -985,7 +1028,11 @@ Item {
+                                                             TextEdit {
+                                                                 padding: 8
+                                                                 width: parent.width
+-                                                                text: modelData.functionCall ? modelData.functionCall.args.command : ""
++                                                                text: modelData.functionCall
++                                                                    ? (modelData.functionCall.args && modelData.functionCall.args.command !== undefined
++                                                                        ? modelData.functionCall.args.command
++                                                                        : JSON.stringify(modelData.functionCall.args || {}, null, 2))
++                                                                    : ""
+                                                                 font.family: "Monospace"
+                                                                 color: Colors.overSurface
+                                                                 readOnly: true
+@@ -1103,6 +1150,25 @@ Item {
+                                     height: 40
+                                     visible: Ai.isLoading
+ 
++                                    // axless.core: abort the in-flight request.
++                                    MouseArea {
++                                        width: 28
++                                        height: 28
++                                        anchors.right: parent.right
++                                        anchors.rightMargin: 12
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        cursorShape: Qt.PointingHandCursor
++                                        onClicked: Ai.stopGeneration()
++
++                                        Text {
++                                            anchors.centerIn: parent
++                                            text: Icons.stop
++                                            font.family: Icons.font
++                                            font.pixelSize: 16
++                                            color: Styling.srItem("overprimary")
++                                        }
++                                    }
++
+                                     Row {
+                                         anchors.centerIn: parent
+                                         spacing: 4
