@@ -1,8 +1,32 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..b8e7c94 100644
+index 292f58c..502097b 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
-@@ -278,6 +278,101 @@ Item {
+@@ -98,6 +98,23 @@ Item {
+         }
+     }
+ 
++    // axless.core: clicking anywhere in the sidebar must re-request keyboard
++    // interactivity. An outside click sets wantsFocus=false (the layer surface
++    // drops to keyboardFocus None) while the input can keep activeFocus, so a
++    // plain click never restored typing. A tap re-arms wantsFocus and the
++    // input's focus change does the same.
++    TapHandler {
++        onTapped: root.wantsFocus = true
++    }
++
++    Connections {
++        target: inputField
++        function onActiveFocusChanged() {
++            if (inputField.activeFocus)
++                root.wantsFocus = true;
++        }
++    }
++
+     MouseArea {
+         id: resizeHandle
+         width: 8
+@@ -278,6 +295,101 @@ Item {
                              }
                          }
  
@@ -104,7 +128,7 @@ index 292f58c..b8e7c94 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +408,90 @@ Item {
+@@ -313,6 +425,90 @@ Item {
                          }
                      }
  
@@ -195,15 +219,16 @@ index 292f58c..b8e7c94 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -674,6 +853,7 @@ Item {
-                                 bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
+@@ -685,7 +881,7 @@ Item {
+                                     required property int index
  
-                                 onCountChanged: {
-+                                    Ai._log("sidebar", "count=" + count);
-                                     Qt.callLater(() => {
-                                         positionViewAtEnd();
-                                     });
-@@ -969,7 +1149,9 @@ Item {
+                                     property bool isUser: modelData.role === "user"
+-                                    property bool isSystem: modelData.role === "system" || modelData.role === "function"
++                                    property bool isSystem: modelData.role === "system" || modelData.role === "function" || modelData.role === "tool"
+                                     property bool isEditing: false
+                                     property bool retryMode: false
+ 
+@@ -969,7 +1165,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -214,7 +239,7 @@ index 292f58c..b8e7c94 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1167,11 @@ Item {
+@@ -985,7 +1183,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -227,7 +252,7 @@ index 292f58c..b8e7c94 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1289,25 @@ Item {
+@@ -1103,6 +1305,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
