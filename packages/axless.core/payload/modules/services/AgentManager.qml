@@ -96,6 +96,54 @@ QtObject {
     // thread busy and cause the "se queda trabado" (stuck/frozen)
     // user experience.
     property bool _storeReloading: false
+    // ── Mod paths ────────────────────────────────────────────────────────
+    //
+    // Profiles may reference files the mod ships - a Python bridge, a
+    // helper script - and those live inside the shell's own generation:
+    //   .../mods/generations/<id>/mcp/nothingclaw/server.py
+    //
+    // That <id> is not stable. Every `ambxst mods update` builds a new
+    // generation and removes the previous one, so a stored absolute path
+    // points at a directory that no longer exists and the agent fails to
+    // spawn from then on. This has been the cause of the "Spawning
+    // python3 ..." failures: the path in the profile was simply dead.
+    //
+    // Rather than store relative paths (which old profiles would not have),
+    // any path that points inside a generation is repointed at the live one.
+    // A file the user keeps outside the mods tree is left untouched.
+    readonly property string _generationRoot: {
+        // .../generations/<id>/modules/services/AgentManager.qml  →  .../generations/<id>/
+        let u = Qt.resolvedUrl(".").toString();      // file:///.../modules/services/
+        u = u.replace(/modules\/services\/?$/, "");  // file:///.../generations/<id>/
+        return u.replace(/^file:\/\//, "");
+    }
+
+    function _resolveModPath(p) {
+        if (typeof p !== "string" || p.length === 0)
+            return p;
+        const m = p.match(/^.*\/mods\/generations\/[^/]+\/(.*)$/);
+        if (!m)
+            return p;                // not a mod file, leave it alone
+        return root._generationRoot + m[1];
+    }
+
+    function _resolveProcess(proc) {
+        if (!proc || typeof proc !== "object")
+            return proc;
+        const out = Object.assign({}, proc);
+        if (typeof out.command === "string")
+            out.command = root._resolveModPath(out.command);
+        if (typeof out.cwd === "string")
+            out.cwd = root._resolveModPath(out.cwd);
+        if (out.args && out.args.length !== undefined) {
+            const a = [];
+            for (let i = 0; i < out.args.length; i++)
+                a.push(root._resolveModPath(out.args[i]));
+            out.args = a;
+        }
+        return out;
+    }
+
     function reloadFromStore() {
         if (_storeReloading) {
             Qt.callLater(root.reloadFromStore);
@@ -120,7 +168,8 @@ QtObject {
                 headers: c.headers || {},
                 toolsPath: c.toolsPath || "/tools",
                 invokePath: c.invokePath || "/invoke",
-                process: (c.process && typeof c.process === "object") ? c.process : ({})
+                process: root._resolveProcess(
+                    (c.process && typeof c.process === "object") ? c.process : ({}))
             });
             if (!conn) {
                 console.warn("AgentManager: failed to create AgentConnection for", c.id,
@@ -302,7 +351,7 @@ QtObject {
         // Don't double-spawn.
         if (_processes[conn.id]) return true;
 
-        const proc = conn.process;
+        const proc = root._resolveProcess(conn.process);
         // Cross-realm Array quirk: JSON-parsed arrays flow through
         // the QML engine's own V4 context and end up as Arrays with
         // our context's `Array` constructor, but `Array.isArray`

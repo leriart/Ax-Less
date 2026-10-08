@@ -3484,6 +3484,110 @@ class NothingClawHTTPServer(ThreadingHTTPServer):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _bridge_already_running(host, port):
+    # True when a healthy NothingClaw bridge already answers on the port.
+    #
+    # The shell spawns this bridge on connect, but a previous shell can leave
+    # one alive (a restart that did not reap it, a second profile pointing at
+    # the same endpoint). Binding a fixed port a second time dies with
+    # EADDRINUSE, and the shell surfaces the whole traceback - which reads as
+    # "the agent is broken" when in fact an identical bridge is already
+    # serving. Asking it instead of fighting it makes the spawn idempotent.
+    import urllib.request
+    import urllib.error
+    try:
+        with urllib.request.urlopen(
+                "http://%s:%d/tools" % (host, port), timeout=2) as r:
+            return r.status == 200
+    except urllib.error.HTTPError:
+        # Something answers on the port, but it is not this bridge.
+        return False
+    except Exception:
+        return False
+
+
+def _pid_holding_port(port):
+    # Find the pid listening on a TCP port, using /proc only.
+    #
+    # Needed to clear an orphaned bridge from a previous shell: when the shell
+    # is restarted it can be killed before its QML teardown runs, leaving the
+    # old bridge alive. That process holds the port but may already be wedged,
+    # so the health check cannot see it and the new spawn dies on EADDRINUSE.
+    import glob
+    inode = None
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path) as fh:
+                next(fh)
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) < 10:
+                        continue
+                    local = parts[1]           # ADDR:PORT in hex
+                    state = parts[3]           # 0A = LISTEN
+                    if state != "0A":
+                        continue
+                    try:
+                        lport = int(local.rsplit(":", 1)[1], 16)
+                    except (ValueError, IndexError):
+                        continue
+                    if lport == port:
+                        inode = parts[9]
+                        break
+        except OSError:
+            continue
+        if inode:
+            break
+    if not inode:
+        return None
+    # Map the socket inode back to a pid.
+    target = "socket:[" + inode + "]"
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            if os.readlink(fd) == target:
+                return int(fd.split("/")[2])
+        except OSError:
+            continue
+    return None
+
+
+def _clear_orphan(host, port):
+    # Free the port if it is held by something that is not answering.
+    # Only ever kills a python process, so a different service on the same
+    # port is left alone and reported instead.
+    pid = _pid_holding_port(port)
+    if pid is None or pid == os.getpid():
+        return False
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as fh:
+            cmdline = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    if "nothingclaw" not in cmdline and "server.py" not in cmdline:
+        sys.stderr.write(
+            "NothingClaw bridge: port " + str(port)
+            + " is held by pid " + str(pid) + " (" + cmdline.strip("\\x00")
+            + "), not touching it. Stop it or pick another port.\n")
+        return False
+    sys.stderr.write("NothingClaw bridge: clearing orphaned instance pid "
+                     + str(pid) + " holding port " + str(port) + "\n")
+    try:
+        os.kill(pid, 15)
+    except OSError:
+        return False
+    # Give it a moment to release the socket.
+    for _ in range(20):
+        time.sleep(0.1)
+        if not _pid_holding_port(port):
+            return True
+    try:
+        os.kill(pid, 9)
+    except OSError:
+        pass
+    time.sleep(0.2)
+    return not _pid_holding_port(port)
+
+
 def main():
     host = os.environ.get("NOTHINGCLAW_HOST", "127.0.0.1")
     try:
@@ -3491,7 +3595,28 @@ def main():
     except ValueError:
         port = 8000
 
-    server = NothingClawHTTPServer((host, port), NothingClawHandler)
+    if _bridge_already_running(host, port):
+        print("NothingClaw bridge already listening on http://"
+              + host + ":" + str(port) + ", nothing to do", flush=True)
+        return
+
+    try:
+        server = NothingClawHTTPServer((host, port), NothingClawHandler)
+    except OSError:
+        # The port is taken by something that did not answer the health
+        # check: almost always a bridge left behind by the previous shell.
+        if _clear_orphan(host, port):
+            try:
+                server = NothingClawHTTPServer((host, port), NothingClawHandler)
+            except OSError:
+                raise
+        elif _bridge_already_running(host, port):
+            print("NothingClaw bridge: another instance won the race on "
+                  + host + ":" + str(port), flush=True)
+            return
+        else:
+            raise
+
     print("NothingClaw bridge listening on http://" + host + ":" + str(port), flush=True)
     try:
         server.serve_forever()
