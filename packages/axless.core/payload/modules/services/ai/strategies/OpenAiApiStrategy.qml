@@ -129,6 +129,25 @@ ApiStrategy {
         if (trimmed === "" || trimmed.startsWith("event:"))
             return { content: "", done: false, error: null };
 
+        // axless.core: some OpenAI-compatible endpoints (and gateways) ignore
+        // stream:true and return one full chat-completion object instead of SSE.
+        // Accept it so a non-streaming reply is not dropped as "no response".
+        if (trimmed.startsWith("{")) {
+            try {
+                let full = JSON.parse(trimmed);
+                if (full.error)
+                    return { content: "", done: true, error: (full.error.message || JSON.stringify(full.error)) };
+                if (full.choices && full.choices.length > 0) {
+                    let msg = full.choices[0].message || {};
+                    let out = { content: msg.content || "", done: true, error: null };
+                    if (msg.tool_calls && msg.tool_calls.length > 0)
+                        out.toolCallDelta = msg.tool_calls;
+                    return out;
+                }
+            } catch (e) {}
+            return { content: "", done: false, error: null };
+        }
+
         if (trimmed === "data: [DONE]")
             return { content: "", done: true, error: null };
 
