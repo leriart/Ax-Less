@@ -549,7 +549,8 @@ Singleton {
                 + "When the user asks you to do something (open or close apps, move or focus windows, "
                 + "search the web, run a command), call the correct tool instead of describing it. "
                 + "Pass arguments as a JSON object that matches the tool schema. "
-                + "After a tool runs, read its result and reply to the user in plain language.";
+                + "Do NOT call a tool to answer a question or for casual chat - just reply. "
+                + "After a tool runs, read its real result and answer briefly.";
             systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + toolHint) : toolHint;
         }
         if (systemPrompt) {
