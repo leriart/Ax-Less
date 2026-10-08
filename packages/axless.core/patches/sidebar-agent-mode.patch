@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..4226a34 100644
+index 292f58c..b2ce66a 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -10,7 +10,26 @@ index 292f58c..4226a34 100644
      property bool menuExpanded: false
      property real menuWidth: 250
      property var slashCommands: [
-@@ -79,11 +80,13 @@ Item {
+@@ -59,13 +60,11 @@ Item {
+             if (targetScreen.name === GlobalStates.assistantScreenName) {
+                 Qt.callLater(() => {
+                     if (wasAlreadyOpen) {
+-                        // It was already open. If it currently has focus, close it. Otherwise, regain focus.
+-                        if (root.active && root.wantsFocus && inputField.activeFocus) {
+-                            GlobalStates.hideAssistant();
+-                        } else {
+-                            root.wantsFocus = true;
+-                            focusSearchInput();
+-                        }
++                        // axless.core: the toggle key must always hide it when
++                        // it is visible. The old branch only closed when it
++                        // held focus, so after clicking another app SUPER+A
++                        // did nothing.
++                        GlobalStates.hideAssistant();
+                     } else {
+                         // It just opened. Just ensure it has focus.
+                         root.wantsFocus = true;
+@@ -79,11 +78,13 @@ Item {
      onActiveChanged: {
          if (active) {
              root.wantsFocus = true;
@@ -24,7 +43,7 @@ index 292f58c..4226a34 100644
          }
      }
  
-@@ -98,6 +101,23 @@ Item {
+@@ -98,6 +99,23 @@ Item {
          }
      }
  
@@ -48,7 +67,7 @@ index 292f58c..4226a34 100644
      MouseArea {
          id: resizeHandle
          width: 8
-@@ -278,6 +298,143 @@ Item {
+@@ -278,6 +296,143 @@ Item {
                              }
                          }
  
@@ -192,7 +211,7 @@ index 292f58c..4226a34 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +470,90 @@ Item {
+@@ -313,6 +468,90 @@ Item {
                          }
                      }
  
@@ -283,7 +302,7 @@ index 292f58c..4226a34 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -685,10 +926,31 @@ Item {
+@@ -685,10 +924,31 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -316,7 +335,7 @@ index 292f58c..4226a34 100644
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
  
-@@ -877,7 +1139,12 @@ Item {
+@@ -877,7 +1137,12 @@ Item {
  
                                                          Repeater {
                                                              model: {
@@ -330,7 +349,7 @@ index 292f58c..4226a34 100644
                                                                  let parts = [];
                                                                  let regex = /```(\w*)\n([\s\S]*?)```/g;
                                                                  let lastIndex = 0;
-@@ -918,7 +1185,7 @@ Item {
+@@ -918,7 +1183,7 @@ Item {
                                                                      TextEdit {
                                                                          width: bubbleContent.width
                                                                          text: segment.content
@@ -339,7 +358,7 @@ index 292f58c..4226a34 100644
                                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                                          font.family: Config.theme.font
                                                                          font.pixelSize: 14
-@@ -945,7 +1212,16 @@ Item {
+@@ -945,7 +1210,16 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -357,7 +376,7 @@ index 292f58c..4226a34 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1229,7 @@ Item {
+@@ -953,7 +1227,7 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -366,7 +385,7 @@ index 292f58c..4226a34 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1245,9 @@ Item {
+@@ -969,7 +1243,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -377,7 +396,7 @@ index 292f58c..4226a34 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1255,29 @@ Item {
+@@ -977,16 +1253,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -410,7 +429,7 @@ index 292f58c..4226a34 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1330,25 @@ Item {
+@@ -1039,6 +1328,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -436,7 +455,7 @@ index 292f58c..4226a34 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1413,25 @@ Item {
+@@ -1103,6 +1411,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -462,3 +481,39 @@ index 292f58c..4226a34 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
+@@ -1166,6 +1493,35 @@ Item {
+                             }
+                         }
+ 
++                        // axless.core: jump to the newest message when scrolled up.
++                        Button {
++                            id: scrollToBottomBtn
++                            visible: !mainChatArea.isWelcome && !chatView.atYEnd
++                            width: 34
++                            height: 34
++                            anchors.right: parent.right
++                            anchors.rightMargin: 16
++                            anchors.bottom: inputContainer.top
++                            anchors.bottomMargin: 12
++                            flat: true
++                            padding: 0
++                            onClicked: chatView.positionViewAtEnd()
++                            contentItem: Text {
++                                text: Icons.caretDown
++                                font.family: Icons.font
++                                font.pixelSize: 18
++                                color: Styling.srItem("overprimary")
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                            }
++                            background: StyledRect {
++                                variant: parent.hovered ? "focus" : "primary"
++                                radius: Styling.radius(17)
++                            }
++                            ToolTip.visible: hovered
++                            ToolTip.text: "Ir al final"
++                        }
++
+                         Item {
+                             id: inputContainer
+                             property int attachmentPreviewHeight: attachmentPreview.visible ? Math.min(attachmentPreview.contentHeight, 120) + 8 : 0
