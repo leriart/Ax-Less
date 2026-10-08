@@ -30,7 +30,11 @@ func envDefault(key, def string) string {
 }
 
 var (
-	defaultOllamaHost = envDefault("NOTHINGCLAW_OLLAMA", "http://127.0.0.1:11434")
+	// axless.core: OpenAI-compatible transport. Ollama, LM Studio, vLLM and
+	// every cloud API speak the same /v1/chat/completions surface, so the
+	// loop drives any model - local or remote - not just Ollama.
+	apiBase           = envDefault("NOTHINGCLAW_API_BASE", "http://127.0.0.1:11434/v1")
+	apiKey            = envDefault("NOTHINGCLAW_API_KEY", "")
 	defaultAgentModel = envDefault("NOTHINGCLAW_MODEL", "llama3.2:latest")
 )
 
@@ -44,13 +48,27 @@ type AgentError struct{ msg string }
 
 func (e *AgentError) Error() string { return e.msg }
 
-func postJSON(url string, payload any, timeout time.Duration) (map[string]any, error) {
-	data, err := json.Marshal(payload)
+// doJSON performs a request against the model backend, adding the bearer
+// token when one is configured.
+func doJSON(method, url string, payload any, timeout time.Duration) ([]byte, error) {
+	var reader io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, &AgentError{err.Error()}
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		return nil, &AgentError{err.Error()}
 	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	client := &http.Client{Timeout: timeout}
-	resp, err := client.Post(url, "application/json", bytes.NewReader(data))
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, &AgentError{fmt.Sprintf("Cannot reach %s: %v", url, err)}
 	}
@@ -63,52 +81,78 @@ func postJSON(url string, payload any, timeout time.Duration) (map[string]any, e
 		}
 		return nil, &AgentError{fmt.Sprintf("HTTP %d from %s: %s", resp.StatusCode, url, detail)}
 	}
-	var out map[string]any
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, &AgentError{fmt.Sprintf("bad JSON from %s: %v", url, err)}
-	}
-	return out, nil
+	return body, nil
 }
 
-func listModels(host string) map[string]any {
-	if host == "" {
-		host = defaultOllamaHost
+// listModels returns the names the backend advertises. Reads the OpenAI
+// {data:[{id}]} shape, falling back to Ollama's {models:[{name}]}.
+func listModels(base string) map[string]any {
+	if base == "" {
+		base = apiBase
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(strings.TrimRight(host, "/") + "/api/tags")
+	body, err := doJSON("GET", strings.TrimRight(base, "/")+"/models", nil, 10*time.Second)
 	if err != nil {
 		return map[string]any{"error": err.Error(), "models": []string{}}
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var payload struct {
+	var openai struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &openai) == nil && len(openai.Data) > 0 {
+		names := []string{}
+		for _, m := range openai.Data {
+			if m.ID != "" {
+				names = append(names, m.ID)
+			}
+		}
+		return map[string]any{"error": nil, "models": names}
+	}
+	var ollama struct {
 		Models []struct {
 			Name string `json:"name"`
 		} `json:"models"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return map[string]any{"error": err.Error(), "models": []string{}}
-	}
-	names := []string{}
-	for _, m := range payload.Models {
-		if m.Name != "" {
-			names = append(names, m.Name)
+	if json.Unmarshal(body, &ollama) == nil {
+		names := []string{}
+		for _, m := range ollama.Models {
+			if m.Name != "" {
+				names = append(names, m.Name)
+			}
 		}
+		return map[string]any{"error": nil, "models": names}
 	}
-	return map[string]any{"error": nil, "models": names}
+	return map[string]any{"error": "could not parse the model list", "models": []string{}}
 }
 
-func chat(host, model string, messages []map[string]any, tools []map[string]any, timeout time.Duration) (map[string]any, error) {
+// chat sends one turn and returns the assistant message object
+// ({content, tool_calls}).
+func chat(base, model string, messages []map[string]any, tools []map[string]any, timeout time.Duration) (map[string]any, error) {
 	payload := map[string]any{
-		"model":    model,
-		"messages": messages,
-		"stream":   false,
-		"options":  map[string]any{"temperature": 0.1},
+		"model":       model,
+		"messages":    messages,
+		"stream":      false,
+		"temperature": 0.1,
 	}
 	if len(tools) > 0 {
 		payload["tools"] = tools
 	}
-	return postJSON(strings.TrimRight(host, "/")+"/api/chat", payload, timeout)
+	body, err := doJSON("POST", strings.TrimRight(base, "/")+"/chat/completions", payload, timeout)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Choices []struct {
+			Message map[string]any `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, &AgentError{fmt.Sprintf("bad JSON from %s: %v", base, err)}
+	}
+	if len(out.Choices) == 0 || out.Choices[0].Message == nil {
+		return map[string]any{}, nil
+	}
+	return out.Choices[0].Message, nil
 }
 
 func clip(text string, budget int) string {
@@ -428,7 +472,7 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 		model = defaultAgentModel
 	}
 	if host == "" {
-		host = defaultOllamaHost
+		host = apiBase
 	}
 	if maxSteps == 0 {
 		maxSteps = 12
@@ -478,7 +522,7 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 		}
 		steps++
 
-		reply, err := chat(host, model, messages, catalogue, time.Duration(maxSeconds)*time.Second)
+		message, err := chat(host, model, messages, catalogue, time.Duration(maxSeconds)*time.Second)
 		if err != nil {
 			note("error", map[string]any{"message": err.Error()})
 			stopped = "model_error"
@@ -486,7 +530,6 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 			break
 		}
 
-		message, _ := reply["message"].(map[string]any)
 		toolCalls := []map[string]any{}
 		if tc, ok := message["tool_calls"].([]any); ok {
 			for _, c := range tc {
@@ -500,6 +543,18 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 
 		if len(toolCalls) == 0 && text != "" {
 			if recovered := extractToolCalls(text); len(recovered) > 0 {
+				// OpenAI-compatible turns need an id and a JSON-string
+				// argument payload; the text extractor produces neither.
+				for i := range recovered {
+					recovered[i]["id"] = fmt.Sprintf("call_auto_%d", i)
+					recovered[i]["type"] = "function"
+					if fn, ok := recovered[i]["function"].(map[string]any); ok {
+						if _, isStr := fn["arguments"].(string); !isStr {
+							enc, _ := json.Marshal(fn["arguments"])
+							fn["arguments"] = string(enc)
+						}
+					}
+				}
 				toolCalls = recovered
 				names := []string{}
 				for _, c := range toolCalls {
@@ -528,6 +583,7 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 		note("thought", map[string]any{"content": text, "tool_calls": len(toolCalls)})
 
 		for _, call := range toolCalls {
+			callID, _ := call["id"].(string)
 			fn, _ := call["function"].(map[string]any)
 			name, _ := fn["name"].(string)
 			args := normaliseArguments(fn["arguments"])
@@ -555,7 +611,7 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 			note("observation", map[string]any{
 				"tool": name, "arguments": args, "content": content, "error": errStr})
 			messages = append(messages, map[string]any{
-				"role": "tool", "name": name, "content": content})
+				"role": "tool", "tool_call_id": callID, "name": name, "content": content})
 		}
 	}
 
