@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..9fba227 100644
+index 292f58c..f8cb4a3 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -424,7 +424,7 @@ index 292f58c..9fba227 100644
  
                          ColumnLayout {
                              anchors.bottom: inputContainer.top
-@@ -685,9 +1039,32 @@ Item {
+@@ -685,9 +1039,36 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -445,9 +445,13 @@ index 292f58c..9fba227 100644
 +                                        // axless.core: a tool result (e.g. list_workspaces
 +                                        // JSON on one line) can be huge; laying all of it
 +                                        // out as text is what locked the shell.
-+                                        let limit = messageDelegate.showFull ? 1500 : 350;
-+                                        if (isSystem && txt.length > limit)
-+                                            txt = txt.substring(0, limit) + "\n… +" + (txt.length - limit) + " chars";
++                                        if (isSystem) {
++                                            let limit = messageDelegate.showFull ? 1500 : 350;
++                                            if (txt.length > limit)
++                                                txt = txt.substring(0, limit) + "\n… +" + (txt.length - limit) + " chars";
++                                        } else if (txt.length > 20000) {
++                                            txt = txt.substring(0, 20000) + "\n…";
++                                        }
 +                                        // Bound the live text too: relaying out an
 +                                        // ever-growing buffer on every token is what
 +                                        // can hang the shell if a model rambles.
@@ -458,7 +462,7 @@ index 292f58c..9fba227 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -853,7 +1230,11 @@ Item {
+@@ -853,7 +1234,11 @@ Item {
  
                                              StyledRect {
                                                  id: bubble
@@ -471,30 +475,91 @@ index 292f58c..9fba227 100644
                                                  height: bubbleContent.implicitHeight + 24
  
                                                  anchors.right: isUser ? parent.right : undefined
-@@ -877,7 +1258,12 @@ Item {
+@@ -875,77 +1260,36 @@ Item {
+                                                         visible: !messageDelegate.isEditing && !bubbleContentText.visible
+                                                         spacing: 8
  
-                                                         Repeater {
-                                                             model: {
+-                                                        Repeater {
+-                                                            model: {
 -                                                                let txt = modelData.content || "";
-+                                                                // axless.core: build no Markdown segments while the
-+                                                                // turn streams - the plain-text view shows it live - so
-+                                                                // the Repeater creates nothing per token.
-+                                                                if (messageDelegate.isStreaming)
-+                                                                    return [];
-+                                                                let txt = messageDelegate.displayContent;
-                                                                 let parts = [];
-                                                                 let regex = /```(\w*)\n([\s\S]*?)```/g;
-                                                                 let lastIndex = 0;
-@@ -918,7 +1304,7 @@ Item {
-                                                                     TextEdit {
-                                                                         width: bubbleContent.width
-                                                                         text: segment.content
+-                                                                let parts = [];
+-                                                                let regex = /```(\w*)\n([\s\S]*?)```/g;
+-                                                                let lastIndex = 0;
+-                                                                let match;
+-                                                                while ((match = regex.exec(txt)) !== null) {
+-                                                                    if (match.index > lastIndex) {
+-                                                                        parts.push({
+-                                                                            type: "text",
+-                                                                            content: txt.substring(lastIndex, match.index),
+-                                                                            language: ""
+-                                                                        });
+-                                                                    }
+-                                                                    parts.push({
+-                                                                        type: "code",
+-                                                                        content: match[2].trim(),
+-                                                                        language: match[1] || "text"
+-                                                                    });
+-                                                                    lastIndex = regex.lastIndex;
+-                                                                }
+-                                                                if (lastIndex < txt.length) {
+-                                                                    parts.push({
+-                                                                        type: "text",
+-                                                                        content: txt.substring(lastIndex),
+-                                                                        language: ""
+-                                                                    });
+-                                                                }
+-                                                                return parts;
+-                                                            }
+-
+-                                                            delegate: Loader {
+-                                                                Layout.fillWidth: true
+-                                                                sourceComponent: modelData.type === 'code' ? codeComponent : textComponent
+-
+-                                                                property var segment: modelData
+-
+-                                                                Component {
+-                                                                    id: textComponent
+-                                                                    TextEdit {
+-                                                                        width: bubbleContent.width
+-                                                                        text: segment.content
 -                                                                        textFormat: Text.MarkdownText
-+                                                                        textFormat: isSystem ? Text.PlainText : Text.MarkdownText
-                                                                         color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
-                                                                         font.family: Config.theme.font
-                                                                         font.pixelSize: 14
-@@ -945,7 +1331,16 @@ Item {
+-                                                                        color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+-                                                                        font.family: Config.theme.font
+-                                                                        font.pixelSize: 14
+-                                                                        wrapMode: Text.Wrap
+-                                                                        readOnly: true
+-                                                                        selectByMouse: true
+-
+-                                                                        onLinkActivated: link => Qt.openUrlExternally(link)
+-                                                                    }
+-                                                                }
+-
+-                                                                Component {
+-                                                                    id: codeComponent
+-                                                                    CodeBlock {
+-                                                                        width: bubbleContent.width
+-                                                                        code: segment.content
+-                                                                        language: segment.language
+-                                                                    }
+-                                                                }
+-                                                            }
++                                                        // axless.core: a single lightweight Text instead of
++                                                        // the markdown Repeater + per-fence TextEdit. That
++                                                        // path repeatedly pegged the main thread in text
++                                                        // layout (two core dumps). Markdown is still applied,
++                                                        // just without per-code-block widgets.
++                                                        Text {
++                                                            Layout.fillWidth: true
++                                                            text: messageDelegate.displayContent
++                                                            textFormat: Text.MarkdownText
++                                                            color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
++                                                            font.family: Config.theme.font
++                                                            font.pixelSize: 14
++                                                            wrapMode: Text.Wrap
++                                                            onLinkActivated: link => Qt.openUrlExternally(link)
+                                                         }
+                                                     }
+ 
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -512,7 +577,7 @@ index 292f58c..9fba227 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1348,28 @@ Item {
+@@ -953,7 +1297,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -542,7 +607,7 @@ index 292f58c..9fba227 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1385,9 @@ Item {
+@@ -969,7 +1334,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -553,7 +618,7 @@ index 292f58c..9fba227 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1395,29 @@ Item {
+@@ -977,16 +1344,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -586,7 +651,7 @@ index 292f58c..9fba227 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1470,25 @@ Item {
+@@ -1039,6 +1419,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -612,7 +677,7 @@ index 292f58c..9fba227 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1553,25 @@ Item {
+@@ -1103,6 +1502,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -638,7 +703,7 @@ index 292f58c..9fba227 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1635,120 @@ Item {
+@@ -1166,6 +1584,120 @@ Item {
                              }
                          }
  
