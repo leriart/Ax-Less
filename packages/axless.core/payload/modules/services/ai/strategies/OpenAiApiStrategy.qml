@@ -20,18 +20,17 @@ ApiStrategy {
 
     function _formatMessages(messages) {
         let formatted = [];
+        // axless.core: remember the id of the last assistant tool_calls so a
+        // following tool result can be paired even when the stored message has
+        // no id of its own (older chats). Some gateways reject the request with
+        // "missing field `tool_call_id`" rather than tolerate it.
+        let lastToolCallId = "";
         for (let i = 0; i < messages.length; i++) {
             let msg = messages[i];
 
-            // axless.core: tool results. OpenAI's current API wants
-            // {role:"tool", tool_call_id, content}; the legacy {role:"function",
-            // name} shape is rejected by every modern provider. Ai.qml stores
-            // the id alongside the result so this can pair them up.
             if (msg.role === "tool") {
-                let toolMsg = { role: "tool", content: msg.content || "" };
-                if (msg.toolCallId)
-                    toolMsg.tool_call_id = msg.toolCallId;
-                formatted.push(toolMsg);
+                let id = msg.toolCallId || lastToolCallId || ("call_" + i);
+                formatted.push({ role: "tool", tool_call_id: id, content: msg.content || "" });
                 continue;
             }
 
@@ -40,21 +39,24 @@ ApiStrategy {
             // it entirely, so the model saw a conversation where its own request
             // had vanished and answered as if it had never been made.
             if (msg.functionCall) {
-                let call = {
-                    id: msg.toolCallId || ("call_" + i),
-                    type: "function",
-                    function: {
-                        name: msg.functionCall.name,
-                        arguments: JSON.stringify(msg.functionCall.args || {})
-                    }
-                };
+                let id = msg.toolCallId || ("call_" + i);
+                lastToolCallId = id;
                 formatted.push({
                     role: "assistant",
                     content: msg.content || null,
-                    tool_calls: [call]
+                    tool_calls: [{
+                        id: id,
+                        type: "function",
+                        function: {
+                            name: msg.functionCall.name,
+                            arguments: JSON.stringify(msg.functionCall.args || {})
+                        }
+                    }]
                 });
                 continue;
             }
+
+            lastToolCallId = "";
 
             if (msg.attachments && msg.attachments.length > 0) {
                 let contentParts = [{type: "text", text: msg.content}];
