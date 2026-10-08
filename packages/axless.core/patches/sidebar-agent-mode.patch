@@ -1,8 +1,8 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..3ac33d6 100644
+index 292f58c..868f3f7 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
-@@ -278,6 +278,47 @@ Item {
+@@ -278,6 +278,101 @@ Item {
                              }
                          }
  
@@ -47,10 +47,93 @@ index 292f58c..3ac33d6 100644
 +                                : "Chat mode · no tools"
 +                        }
 +
++                        // axless.core: pick which connected agent's tools to
++                        // offer the model. Visible only in agent mode.
++                        Button {
++                            id: agentPicker
++                            visible: Ai.currentMode === "agent"
++                            Layout.preferredWidth: 32
++                            Layout.preferredHeight: 32
++                            flat: true
++                            padding: 0
++
++                            readonly property var agents: {
++                                const out = [];
++                                const conns = Ai.agentManager ? (Ai.agentManager.connections || []) : [];
++                                for (let i = 0; i < conns.length; i++) {
++                                    const c = conns[i];
++                                    if (c && (c.status === "connected" || c.status === "ready"))
++                                        out.push({ id: c.id, name: c.name });
++                                }
++                                return out;
++                            }
++
++                            contentItem: Text {
++                                text: Icons.apps
++                                font.family: Icons.font
++                                font.pixelSize: 16
++                                color: Ai.currentAgentId === "" ? Colors.overSurface : Styling.srItem("overprimary")
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                            }
++
++                            background: StyledRect {
++                                variant: parent.hovered ? "focus" : "common"
++                                radius: Styling.radius(4)
++                                opacity: parent.hovered ? 1 : 0
++                                Behavior on opacity {
++                                    NumberAnimation {
++                                        duration: Config.animDuration / 4
++                                    }
++                                }
++                            }
++
++                            onClicked: agentMenu.open()
++
++                            ToolTip.visible: hovered
++                            ToolTip.text: {
++                                if (Ai.currentAgentId === "")
++                                    return "All agents";
++                                for (let i = 0; i < agentPicker.agents.length; i++)
++                                    if (agentPicker.agents[i].id === Ai.currentAgentId)
++                                        return agentPicker.agents[i].name;
++                                return "All agents";
++                            }
++                        }
++
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -969,7 +1010,9 @@ Item {
+@@ -313,6 +408,28 @@ Item {
+                         }
+                     }
+ 
++                    Menu {
++                        id: agentMenu
++                        y: agentPicker.y + agentPicker.height
++
++                        MenuItem {
++                            text: "All agents"
++                            checkable: true
++                            checked: Ai.currentAgentId === ""
++                            onTriggered: Ai.setAgent("")
++                        }
++                        Repeater {
++                            model: agentPicker.agents
++                            MenuItem {
++                                required property var modelData
++                                text: modelData.name
++                                checkable: true
++                                checked: Ai.currentAgentId === modelData.id
++                                onTriggered: Ai.setAgent(modelData.id)
++                            }
++                        }
++                    }
++
+                     Rectangle {
+                         anchors.bottom: parent.bottom
+                         width: parent.width
+@@ -969,7 +1086,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -61,7 +144,7 @@ index 292f58c..3ac33d6 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1028,11 @@ Item {
+@@ -985,7 +1104,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -74,7 +157,7 @@ index 292f58c..3ac33d6 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1150,25 @@ Item {
+@@ -1103,6 +1226,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
