@@ -45,6 +45,21 @@
   "operations": [
     {
       "type": "overlay",
+      "source": "payload/mcp/openclaw/server",
+      "target": "mcp/openclaw/server"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/openclaw/go.mod",
+      "target": "mcp/openclaw/go.mod"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/openclaw/main.go",
+      "target": "mcp/openclaw/main.go"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/Ai.qml",
       "target": "modules/services/Ai.qml",
       "replace": true,

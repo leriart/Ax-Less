@@ -1,8 +1,8 @@
 diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
-index c6f4df7..31cc859 100644
+index c6f4df7..fe7eccd 100644
 --- a/modules/widgets/config/AiPanel.qml
 +++ b/modules/widgets/config/AiPanel.qml
-@@ -14,6 +14,94 @@ Item {
+@@ -14,6 +14,117 @@ Item {
      readonly property int contentWidth: Math.min(width, maxContentWidth)
      readonly property real sideMargin: Math.max(0, (width - contentWidth) / 2)
  
@@ -10,21 +10,44 @@ index c6f4df7..31cc859 100644
 +    // resolved relative to this file.
 +    readonly property string _ncBin: Qt.resolvedUrl("../../../mcp/nothingclaw/server").toString().replace("file://", "")
 +    readonly property string _ocBin: Qt.resolvedUrl("../../../mcp/opencode/server").toString().replace("file://", "")
++    readonly property string _openclawBin: Qt.resolvedUrl("../../../mcp/openclaw/server").toString().replace("file://", "")
 +
-+    function _addBundled(name, endpoint, binPath) {
++    // One entry per preset; the chips below are generated from this list and
++    // adding a provider is one object. "bundled" swaps in the path of a bridge
++    // that ships with the mod.
++    readonly property var agentPresets: [
++        { name: "NothingClaw", type: "http-bridge", endpoint: "http://127.0.0.1:8000", bundled: "nothingclaw" },
++        { name: "OpenCode",    type: "http-bridge", endpoint: "http://127.0.0.1:8791", bundled: "opencode" },
++        { name: "Odysseus",    type: "http-bridge", endpoint: "http://localhost:7000" },
++        { name: "OpenClaw",    type: "http-bridge", endpoint: "http://127.0.0.1:8792", bundled: "openclaw" },
++        { name: "Hermes",      type: "mcp-stdio",   command: "hermes-agent-mcp", args: [] },
++        { name: "MCP stdio",   type: "mcp-stdio",   command: "uvx", args: [] },
++        { name: "MCP SSE",     type: "mcp-sse",     endpoint: "http://localhost:9000" },
++        { name: "Webhook",     type: "http-bridge", endpoint: "http://localhost:8000" },
++        { name: "Command",     type: "command",     command: "" }
++    ]
++
++    function _addPreset(preset) {
 +        const existing = AgentStore.listProfiles();
 +        for (let i = 0; i < existing.length; i++) {
-+            if (existing[i].name === name) {
++            if (existing[i].name === preset.name) {
 +                Ai.agentManager.reconnectAgent(existing[i].id);
 +                return;
 +            }
 +        }
-+        const p = AgentStore.createBlankProfile(name);
-+        p.type = "http-bridge";
-+        p.endpoint = endpoint;
-+        p.toolsPath = "/tools";
-+        p.invokePath = "/tools";
-+        p.process = { command: binPath, args: [], cwd: "", env: {} };
++        let command = preset.command || "";
++        if (preset.bundled === "nothingclaw") command = root._ncBin;
++        else if (preset.bundled === "opencode") command = root._ocBin;
++        else if (preset.bundled === "openclaw") command = root._openclawBin;
++        const args = preset.args || [];
++        const p = AgentStore.createBlankProfile(preset.name);
++        p.type = preset.type || "http-bridge";
++        p.endpoint = preset.endpoint || "";
++        p.toolsPath = preset.toolsPath || "/tools";
++        p.invokePath = preset.invokePath || "/tools";
++        p.command = command;
++        p.args = args;
++        p.process = { command: command, args: args, cwd: "", env: preset.env || {} };
 +        Ai.agentManager.addConnection(p);
 +    }
 +
@@ -97,12 +120,12 @@ index c6f4df7..31cc859 100644
      Flickable {
          anchors.fill: parent
          contentHeight: contentColumn.implicitHeight + 40
-@@ -37,9 +125,173 @@ Item {
+@@ -37,9 +148,159 @@ Item {
                  Layout.bottomMargin: 8
              }
  
-+            // axless.core: agent profiles - the two bundled bridges, the live
-+            // list with connect/disconnect, and a form for any other agent.
++            // axless.core: agent profiles - preset chips, the live list with
++            // connect/disconnect, and a form for anything else.
 +            ColumnLayout {
 +                Layout.fillWidth: true
 +                spacing: 8
@@ -124,46 +147,32 @@ index c6f4df7..31cc859 100644
 +                    color: Colors.outline
 +                }
 +
-+                RowLayout {
-+                    spacing: 8
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
 +
-+                    StyledRect {
-+                        variant: "primary"
-+                        implicitWidth: ncTxt.implicitWidth + 24
-+                        implicitHeight: 34
-+                        radius: Styling.radius(4)
-+                        Text {
-+                            id: ncTxt
-+                            anchors.centerIn: parent
-+                            text: "+ NothingClaw"
-+                            font.family: Config.theme.font
-+                            font.pixelSize: Config.theme.fontSize - 1
-+                            color: Styling.srItem("primary")
-+                        }
-+                        MouseArea {
-+                            anchors.fill: parent
-+                            cursorShape: Qt.PointingHandCursor
-+                            onClicked: root._addBundled("NothingClaw", "http://127.0.0.1:8000", root._ncBin)
-+                        }
-+                    }
++                    Repeater {
++                        model: root.agentPresets
++                        delegate: StyledRect {
++                            required property var modelData
++                            variant: "internalbg"
++                            width: presetTxt.implicitWidth + 22
++                            height: 32
++                            radius: Styling.radius(4)
 +
-+                    StyledRect {
-+                        variant: "internalbg"
-+                        implicitWidth: ocTxt.implicitWidth + 24
-+                        implicitHeight: 34
-+                        radius: Styling.radius(4)
-+                        Text {
-+                            id: ocTxt
-+                            anchors.centerIn: parent
-+                            text: "+ OpenCode"
-+                            font.family: Config.theme.font
-+                            font.pixelSize: Config.theme.fontSize - 1
-+                            color: Colors.overSurface
-+                        }
-+                        MouseArea {
-+                            anchors.fill: parent
-+                            cursorShape: Qt.PointingHandCursor
-+                            onClicked: root._addBundled("OpenCode", "http://127.0.0.1:8791", root._ocBin)
++                            Text {
++                                id: presetTxt
++                                anchors.centerIn: parent
++                                text: "+ " + modelData.name
++                                font.family: Config.theme.font
++                                font.pixelSize: Config.theme.fontSize - 1
++                                color: Colors.overSurface
++                            }
++                            MouseArea {
++                                anchors.fill: parent
++                                cursorShape: Qt.PointingHandCursor
++                                onClicked: root._addPreset(modelData)
++                            }
 +                        }
 +                    }
 +                }
@@ -236,9 +245,9 @@ index c6f4df7..31cc859 100644
 +                }
 +
 +                AgentField { id: agName; placeholderText: "Name" }
-+                AgentField { id: agType; placeholderText: "Type: http-bridge | mcp-stdio | command (auto if blank)" }
-+                AgentField { id: agEndpoint; placeholderText: "Endpoint (http-bridge), e.g. http://127.0.0.1:9000" }
-+                AgentField { id: agCommand; placeholderText: "Command (mcp-stdio / command), e.g. npx" }
++                AgentField { id: agType; placeholderText: "Type: http-bridge | mcp-stdio | mcp-sse | command (auto if blank)" }
++                AgentField { id: agEndpoint; placeholderText: "Endpoint (http-bridge / mcp-sse)" }
++                AgentField { id: agCommand; placeholderText: "Command (mcp-stdio / command), e.g. uvx" }
 +                AgentField { id: agArgs; placeholderText: "Args, space separated" }
 +                AgentField { id: agTools; placeholderText: "Tools path (default /tools)" }
 +                AgentField { id: agInvoke; placeholderText: "Invoke path (default /tools)" }

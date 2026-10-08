@@ -56,9 +56,10 @@ discovered from every connected agent are merged into the request the model
 sees.
 
 - **Three transports** — MCP over stdio, an HTTP bridge, and command agents.
-- **Two reference servers ship in the mod** — **NothingClaw**, a self-driving
-  agent loop over Ollama with sandboxed filesystem and shell tools, and an
-  OpenCode adapter for the `opencode serve` API.
+- **Three adapters ship in the mod** — **NothingClaw**, a self-driving
+  agent loop that drives any OpenAI-compatible model; an **OpenCode** adapter
+  for the `opencode serve` API; and an **OpenClaw** adapter that calls the
+  official `openclaw agent` CLI.
 - **A reworked engine** — correct OpenAI `tool_calls` / `role: "tool"` shaping,
   a capability probe that asks the model what it can do instead of guessing
   from its name, chain nudge and step budgets, a text tool-call fallback for
