@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..868f3f7 100644
+index 292f58c..5b09c70 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -278,6 +278,101 @@ Item {
@@ -104,28 +104,90 @@ index 292f58c..868f3f7 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +408,28 @@ Item {
+@@ -313,6 +408,90 @@ Item {
                          }
                      }
  
-+                    Menu {
++                    // axless.core: agent picker in Ambxst's own popup style
++                    // (StyledRect "popup" + pane/focus/primary rows), not
++                    // QtQuick Controls' Menu.
++                    Popup {
 +                        id: agentMenu
-+                        y: agentPicker.y + agentPicker.height
++                        width: 220
++                        padding: 8
++                        modal: true
++                        focus: true
++                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 +
-+                        MenuItem {
-+                            text: "All agents"
-+                            checkable: true
-+                            checked: Ai.currentAgentId === ""
-+                            onTriggered: Ai.setAgent("")
++                        x: Math.max(4, agentPicker.mapToItem(agentMenu.parent, 0, 0).x)
++                        y: agentPicker.mapToItem(agentMenu.parent, 0, agentPicker.height).y + 4
++
++                        readonly property var items: [{ id: "", name: "All agents" }].concat(agentPicker.agents)
++
++                        background: StyledRect {
++                            variant: "popup"
++                            radius: Styling.radius(16)
 +                        }
-+                        Repeater {
-+                            model: agentPicker.agents
-+                            MenuItem {
-+                                required property var modelData
-+                                text: modelData.name
-+                                checkable: true
-+                                checked: Ai.currentAgentId === modelData.id
-+                                onTriggered: Ai.setAgent(modelData.id)
++
++                        contentItem: ColumnLayout {
++                            spacing: 2
++
++                            Text {
++                                Layout.leftMargin: 6
++                                Layout.bottomMargin: 4
++                                text: "Agent"
++                                font.family: Config.theme.font
++                                font.pixelSize: 13
++                                font.weight: Font.Bold
++                                color: Colors.overSurfaceVariant
++                            }
++
++                            Repeater {
++                                model: agentMenu.items
++
++                                delegate: StyledRect {
++                                    required property var modelData
++                                    Layout.fillWidth: true
++                                    implicitHeight: 36
++                                    radius: Styling.radius(4)
++                                    variant: Ai.currentAgentId === modelData.id
++                                        ? "primary"
++                                        : (rowHover.hovered ? "focus" : "pane")
++
++                                    Text {
++                                        anchors.left: parent.left
++                                        anchors.leftMargin: 10
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        text: modelData.name
++                                        font.family: Config.theme.font
++                                        font.pixelSize: Config.theme.fontSize - 1
++                                        color: Ai.currentAgentId === modelData.id
++                                            ? Styling.srItem("primary")
++                                            : Styling.srItem("overprimary")
++                                    }
++
++                                    Text {
++                                        anchors.right: parent.right
++                                        anchors.rightMargin: 10
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        visible: Ai.currentAgentId === modelData.id
++                                        text: Icons.accept
++                                        font.family: Icons.font
++                                        font.pixelSize: 14
++                                        color: Styling.srItem("primary")
++                                    }
++
++                                    MouseArea {
++                                        id: rowHover
++                                        anchors.fill: parent
++                                        hoverEnabled: true
++                                        cursorShape: Qt.PointingHandCursor
++                                        onClicked: {
++                                            Ai.setAgent(modelData.id);
++                                            agentMenu.close();
++                                        }
++                                    }
++                                }
 +                            }
 +                        }
 +                    }
@@ -133,7 +195,7 @@ index 292f58c..868f3f7 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -969,7 +1086,9 @@ Item {
+@@ -969,7 +1148,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -144,7 +206,7 @@ index 292f58c..868f3f7 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -985,7 +1104,11 @@ Item {
+@@ -985,7 +1166,11 @@ Item {
                                                              TextEdit {
                                                                  padding: 8
                                                                  width: parent.width
@@ -157,7 +219,7 @@ index 292f58c..868f3f7 100644
                                                                  font.family: "Monospace"
                                                                  color: Colors.overSurface
                                                                  readOnly: true
-@@ -1103,6 +1226,25 @@ Item {
+@@ -1103,6 +1288,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
