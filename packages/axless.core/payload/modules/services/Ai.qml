@@ -95,6 +95,10 @@ Singleton {
             root.currentAgentId = StateService.get("lastAiAgent", "");
             root.autoApprove = StateService.get("aiAutoApprove", "0") === "1";
             try {
+                let re = JSON.parse(StateService.get("aiReasoningEffort", "{}"));
+                if (re && typeof re === "object") root.reasoningEffortMap = re;
+            } catch (e) {}
+            try {
                 let at = StateService.get("aiAllowedTools", "[]");
                 let parsed = JSON.parse(at);
                 if (Array.isArray(parsed)) root.allowedTools = parsed;
@@ -268,6 +272,28 @@ Singleton {
         root.autoApprove = v === true;
         if (StateService.initialized)
             StateService.set("aiAutoApprove", root.autoApprove ? "1" : "0");
+    }
+
+    // axless.core: reasoning effort per model (auto/off/low/medium/high).
+    property var reasoningEffortMap: ({})
+
+    readonly property string reasoningEffort: {
+        let m = root.currentModel ? root.currentModel.model : "";
+        let v = root.reasoningEffortMap ? root.reasoningEffortMap[m] : undefined;
+        return v ? v : "auto";
+    }
+
+    function setReasoningEffort(level) {
+        let m = root.currentModel ? root.currentModel.model : "";
+        if (!m)
+            return;
+        let map = {};
+        for (let k in root.reasoningEffortMap)
+            map[k] = root.reasoningEffortMap[k];
+        map[m] = level;
+        root.reasoningEffortMap = map;
+        if (StateService.initialized)
+            StateService.set("aiReasoningEffort", JSON.stringify(map));
     }
 
     function _persistAllowed() {
@@ -717,6 +743,10 @@ Singleton {
 
         // Build body — always use streaming
         let body = currentStrategy.getStreamBody(messages, currentModel, systemTools);
+        // axless.core: reasoning effort per model. Only sent when the user picks
+        // a level (strict gateways reject unknown fields).
+        if (root.reasoningEffort && root.reasoningEffort !== "auto")
+            body.reasoning_effort = (root.reasoningEffort === "off") ? "minimal" : root.reasoningEffort;
 
         // Reset streaming buffer
         responseBuffer = "";

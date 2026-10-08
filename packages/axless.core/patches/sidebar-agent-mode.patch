@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..f8cb4a3 100644
+index 292f58c..73c51db 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -67,7 +67,7 @@ index 292f58c..f8cb4a3 100644
      MouseArea {
          id: resizeHandle
          width: 8
-@@ -278,6 +296,166 @@ Item {
+@@ -278,6 +296,191 @@ Item {
                              }
                          }
  
@@ -208,6 +208,31 @@ index 292f58c..f8cb4a3 100644
 +                                : "Ask before each command (click to auto-approve)"
 +                        }
 +
++                        // axless.core: reasoning effort per model.
++                        Button {
++                            id: reasoningBtn
++                            Layout.preferredWidth: 32
++                            Layout.preferredHeight: 32
++                            flat: true
++                            padding: 0
++                            contentItem: Text {
++                                text: Icons.lightning
++                                font.family: Icons.font
++                                font.pixelSize: 16
++                                color: Ai.reasoningEffort !== "auto" ? Styling.srItem("primary") : Colors.overSurface
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                            }
++                            background: StyledRect {
++                                variant: parent.hovered ? "focus" : "common"
++                                radius: Styling.radius(4)
++                                opacity: (parent.hovered || Ai.reasoningEffort !== "auto") ? 1 : 0
++                            }
++                            onClicked: reasoningMenu.open()
++                            ToolTip.visible: hovered
++                            ToolTip.text: "Razonamiento: " + Ai.reasoningEffort
++                        }
++
 +                        // axless.core: chat actions (search, copy, export, clear).
 +                        Button {
 +                            id: kebabBtn
@@ -234,7 +259,7 @@ index 292f58c..f8cb4a3 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +491,142 @@ Item {
+@@ -313,6 +516,218 @@ Item {
                          }
                      }
  
@@ -322,6 +347,82 @@ index 292f58c..f8cb4a3 100644
 +                        }
 +                    }
 +
++                    // axless.core: reasoning effort menu.
++                    Popup {
++                        id: reasoningMenu
++                        width: 200
++                        padding: 8
++                        modal: true
++                        focus: true
++                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
++                        x: Math.max(4, reasoningBtn.mapToItem(reasoningMenu.parent, 0, 0).x - 150)
++                        y: reasoningBtn.mapToItem(reasoningMenu.parent, 0, reasoningBtn.height).y + 4
++                        background: StyledRect {
++                            variant: "popup"
++                            radius: Styling.radius(16)
++                        }
++                        contentItem: ColumnLayout {
++                            spacing: 2
++                            Text {
++                                Layout.leftMargin: 6
++                                Layout.bottomMargin: 4
++                                text: "Razonamiento"
++                                color: Colors.overSurfaceVariant
++                                font.family: Config.theme.font
++                                font.pixelSize: 13
++                                font.weight: Font.Bold
++                            }
++                            Repeater {
++                                model: [
++                                    { label: "Auto", v: "auto" },
++                                    { label: "Apagado", v: "off" },
++                                    { label: "Bajo", v: "low" },
++                                    { label: "Medio", v: "medium" },
++                                    { label: "Alto", v: "high" }
++                                ]
++                                delegate: StyledRect {
++                                    required property var modelData
++                                    Layout.fillWidth: true
++                                    implicitHeight: 34
++                                    radius: Styling.radius(4)
++                                    variant: Ai.reasoningEffort === modelData.v
++                                        ? "primary"
++                                        : (rHover.hovered ? "focus" : "pane")
++                                    Text {
++                                        anchors.left: parent.left
++                                        anchors.leftMargin: 10
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        text: modelData.label
++                                        color: Ai.reasoningEffort === modelData.v
++                                            ? Styling.srItem("primary") : Styling.srItem("overprimary")
++                                        font.family: Config.theme.font
++                                        font.pixelSize: 13
++                                    }
++                                    Text {
++                                        anchors.right: parent.right
++                                        anchors.rightMargin: 10
++                                        anchors.verticalCenter: parent.verticalCenter
++                                        visible: Ai.reasoningEffort === modelData.v
++                                        text: Icons.accept
++                                        font.family: Icons.font
++                                        font.pixelSize: 14
++                                        color: Styling.srItem("primary")
++                                    }
++                                    MouseArea {
++                                        id: rHover
++                                        anchors.fill: parent
++                                        hoverEnabled: true
++                                        cursorShape: Qt.PointingHandCursor
++                                        onClicked: {
++                                            Ai.setReasoningEffort(modelData.v);
++                                            reasoningMenu.close();
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++
 +                    // axless.core: chat actions menu.
 +                    Popup {
 +                        id: chatMenu
@@ -377,7 +478,7 @@ index 292f58c..f8cb4a3 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -617,6 +931,46 @@ Item {
+@@ -617,6 +1032,46 @@ Item {
                              }
                          }
                          property bool isWelcome: Ai.currentChat.length === 0
@@ -424,7 +525,7 @@ index 292f58c..f8cb4a3 100644
  
                          ColumnLayout {
                              anchors.bottom: inputContainer.top
-@@ -685,9 +1039,36 @@ Item {
+@@ -685,9 +1140,36 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -462,7 +563,7 @@ index 292f58c..f8cb4a3 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -853,7 +1234,11 @@ Item {
+@@ -853,7 +1335,11 @@ Item {
  
                                              StyledRect {
                                                  id: bubble
@@ -475,7 +576,7 @@ index 292f58c..f8cb4a3 100644
                                                  height: bubbleContent.implicitHeight + 24
  
                                                  anchors.right: isUser ? parent.right : undefined
-@@ -875,77 +1260,36 @@ Item {
+@@ -875,68 +1361,44 @@ Item {
                                                          visible: !messageDelegate.isEditing && !bubbleContentText.visible
                                                          spacing: 8
  
@@ -533,16 +634,6 @@ index 292f58c..f8cb4a3 100644
 -                                                                        onLinkActivated: link => Qt.openUrlExternally(link)
 -                                                                    }
 -                                                                }
--
--                                                                Component {
--                                                                    id: codeComponent
--                                                                    CodeBlock {
--                                                                        width: bubbleContent.width
--                                                                        code: segment.content
--                                                                        language: segment.language
--                                                                    }
--                                                                }
--                                                            }
 +                                                        // axless.core: a single lightweight Text instead of
 +                                                        // the markdown Repeater + per-fence TextEdit. That
 +                                                        // path repeatedly pegged the main thread in text
@@ -557,9 +648,41 @@ index 292f58c..f8cb4a3 100644
 +                                                            font.pixelSize: 14
 +                                                            wrapMode: Text.Wrap
 +                                                            onLinkActivated: link => Qt.openUrlExternally(link)
-                                                         }
-                                                     }
++                                                        }
++                                                    }
  
+-                                                                Component {
+-                                                                    id: codeComponent
+-                                                                    CodeBlock {
+-                                                                        width: bubbleContent.width
+-                                                                        code: segment.content
+-                                                                        language: segment.language
+-                                                                    }
++                                                    // axless.core: typing indicator while the turn
++                                                    // streams with no text yet. Just dots + opacity
++                                                    // animation - no text layout, so it cannot hang.
++                                                    Row {
++                                                        visible: messageDelegate.isStreaming && Ai.responseBuffer === ""
++                                                        Layout.alignment: Qt.AlignLeft
++                                                        spacing: 4
++                                                        Repeater {
++                                                            model: 3
++                                                            Rectangle {
++                                                                width: 7
++                                                                height: 7
++                                                                radius: 3.5
++                                                                color: Styling.srItem("overprimary")
++                                                                opacity: 0.4
++                                                                SequentialAnimation on opacity {
++                                                                    loops: Animation.Infinite
++                                                                    PauseAnimation { duration: index * 150 }
++                                                                    NumberAnimation { to: 1.0; duration: 350 }
++                                                                    NumberAnimation { to: 0.4; duration: 350 }
++                                                                    PauseAnimation { duration: 450 - (index * 150) }
+                                                                 }
+                                                             }
+                                                         }
+@@ -945,7 +1407,16 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -577,7 +700,7 @@ index 292f58c..f8cb4a3 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1297,28 @@ Item {
+@@ -953,7 +1424,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -607,7 +730,7 @@ index 292f58c..f8cb4a3 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1334,9 @@ Item {
+@@ -969,7 +1461,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -618,7 +741,7 @@ index 292f58c..f8cb4a3 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1344,29 @@ Item {
+@@ -977,16 +1471,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -651,7 +774,7 @@ index 292f58c..f8cb4a3 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1419,25 @@ Item {
+@@ -1039,6 +1546,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -677,7 +800,7 @@ index 292f58c..f8cb4a3 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1502,25 @@ Item {
+@@ -1103,6 +1629,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -703,7 +826,7 @@ index 292f58c..f8cb4a3 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1584,120 @@ Item {
+@@ -1166,6 +1711,120 @@ Item {
                              }
                          }
  
