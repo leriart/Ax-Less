@@ -64,6 +64,8 @@ var toolTiers = map[string][]string{
 		"move_window_to_workspace", "open_url", "execute_command",
 		"run_shell_command", "context_info",
 		"capabilities", "clipboard", "notify", "volume", "media",
+		"brightness", "power", "notifications", "system_info", "timer",
+		"wallpaper", "recommend_model",
 	},
 	"small": {
 		"list_workspaces", "move_windows", "open_app", "close_app",
@@ -264,6 +266,43 @@ func allTools() []map[string]any {
 			"description": "Take a screenshot of the whole screen with grim (Wayland) or maim/scrot (X11) and save it to a file. Returns the path.",
 			"parameters": tObj(map[string]any{
 				"path": tStr("Output file path (default /tmp/nothingclaw-screenshot.png)."),
+			})},
+		{"name": "brightness",
+			"description": "Get or set screen brightness (brightnessctl, or /sys/class/backlight + /sys/class/leds).",
+			"parameters": tObj(map[string]any{
+				"action": tStrEnum([]string{"get", "set", "up", "down"}, "Action."),
+				"value":  tInt("Percent for 'set' (0-100)."),
+			}, "action")},
+		{"name": "power",
+			"description": "Session/power actions: lock, suspend, hibernate, logout, reboot, poweroff. reboot and poweroff require confirm=true.",
+			"parameters": tObj(map[string]any{
+				"action":  tStrEnum([]string{"lock", "suspend", "hibernate", "logout", "reboot", "poweroff"}, "Action."),
+				"confirm": tBool("Must be true for reboot/poweroff."),
+			}, "action")},
+		{"name": "notifications",
+			"description": "List or dismiss desktop notifications (makoctl or dunstctl).",
+			"parameters": tObj(map[string]any{
+				"action": tStrEnum([]string{"list", "dismiss", "dismiss_all"}, "Action."),
+			}, "action")},
+		{"name": "system_info",
+			"description": "Report CPU load, memory, root disk usage, battery and uptime for this machine.",
+			"parameters":  tObj(map[string]any{})},
+		{"name": "timer",
+			"description": "Show a desktop notification after a delay (a reminder). Runs in the background.",
+			"parameters": tObj(map[string]any{
+				"seconds": tInt("Delay in seconds."),
+				"message": tStr("Reminder text."),
+				"title":   tStr("Title (default 'Reminder')."),
+			}, "seconds", "message")},
+		{"name": "wallpaper",
+			"description": "Set the desktop wallpaper to an image file (ambxst wallpaper, or swww / hyprpaper / swaybg).",
+			"parameters": tObj(map[string]any{
+				"path": tStr("Absolute path to the image file."),
+			}, "path")},
+		{"name": "recommend_model",
+			"description": "Recommend a local model size that fits this machine's RAM and GPU. Reads memory and (if present) the GPU.",
+			"parameters": tObj(map[string]any{
+				"task": tStrEnum([]string{"chat", "coding", "tools"}, "Intended use (default chat)."),
 			})},
 	}
 	return append(tools, fsTools()...)

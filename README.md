@@ -197,6 +197,10 @@ runs on.
 - **outfoxxed** — creator of
   [Quickshell](https://git.outfoxxed.me/outfoxxed/quickshell), the toolkit both
   Ambxst and NothingLess are written against.
+- **Odysseus** ([odysseus-dev](https://github.com/odysseus-dev/odysseus), AGPL-3.0)
+  — the agent "skills" concept (tool-discovery, verified-state-change,
+  web-research-fallback and friends) and several desktop tool ideas in
+  NothingClaw are adapted from it.
 
 NothingLess reimplements a number of services Ambxst provides natively; those
 are deliberately **not** ported here, and their credit belongs to whoever wrote

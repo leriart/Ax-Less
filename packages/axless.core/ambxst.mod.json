@@ -99,6 +99,11 @@
     },
     {
       "type": "overlay",
+      "source": "payload/skills/research.md",
+      "target": "skills/research.md"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/PerMonitorConfig.qml",
       "target": "modules/services/PerMonitorConfig.qml"
     },

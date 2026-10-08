@@ -349,6 +349,27 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 
 	case "screenshot":
 		return screenshotTool(args)
+
+	case "brightness":
+		return brightnessTool(args)
+
+	case "power":
+		return powerTool(args)
+
+	case "notifications":
+		return notificationsTool(args)
+
+	case "system_info":
+		return systemInfo()
+
+	case "timer":
+		return timerTool(args)
+
+	case "wallpaper":
+		return wallpaperTool(args)
+
+	case "recommend_model":
+		return recommendModel(args)
 	}
 
 	return errContent("Tool '" + name + "' not found")
@@ -366,9 +387,10 @@ func capabilities() map[string]any {
 		{"monitors", "list_monitors, focus_monitor, move_window_to_monitor"},
 		{"apps", "list_installed_apps, open_app, close_app, launch_program, check_program_installed, install_package"},
 		{"web", "open_url, web_search, fetch_url, manage_rag"},
-		{"system", "execute_command, run_shell_command, clipboard, notify, volume, media, screenshot"},
+		{"system", "execute_command, run_shell_command, clipboard, notify, volume, media, screenshot, brightness, power, notifications, timer, wallpaper"},
 		{"files", "list_dir, read_file, write_file, search_files"},
-		{"memory", "manage_memory, context_info"},
+		{"info", "system_info, recommend_model, context_info, capabilities"},
+		{"memory", "manage_memory"},
 	}
 	var sb strings.Builder
 	sb.WriteString("NothingClaw can control this Linux desktop and the machine behind it.\nCapability groups:\n")
