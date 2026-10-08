@@ -1,31 +1,32 @@
 diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
-index 786c98e..aa69bcc 100644
+index 786c98e..12c7d54 100644
 --- a/modules/shell/UnifiedShellPanel.qml
 +++ b/modules/shell/UnifiedShellPanel.qml
-@@ -34,8 +34,16 @@ PanelWindow {
+@@ -34,8 +34,13 @@ PanelWindow {
          if (notchContent.screenNotchOpen) {
              return WlrKeyboardFocus.Exclusive;
          }
 -        if (assistantSidebar.active && assistantSidebar.wantsFocus) {
 -            return WlrKeyboardFocus.Exclusive;
-+        // axless.core: while the assistant is open keep the surface keyboard
-+        // interactive. On the very first open it takes Exclusive so it can be
-+        // typed into immediately; once the user clicks away it drops to
-+        // OnDemand and STAYS there, so a later click hands keyboard back
-+        // instead of the surface re-configuring (Exclusive) and losing the
-+        // focus it was just granted. With None a click could never return focus.
++        // axless.core: OnDemand while the assistant is open. The compositor
++        // gives keyboard to whichever surface is clicked - the sidebar or any
++        // other app - so the user can move back and forth freely. Exclusive
++        // would trap the keyboard inside the shell (apps could not be typed
++        // into); None could never return it on click.
 +        if (assistantSidebar.active) {
-+            return (assistantSidebar.wantsFocus && !assistantSidebar.releasedFocus)
-+                ? WlrKeyboardFocus.Exclusive
-+                : WlrKeyboardFocus.OnDemand;
++            return WlrKeyboardFocus.OnDemand;
          }
          return WlrKeyboardFocus.None;
      }
-@@ -175,6 +183,7 @@ PanelWindow {
-             FocusGrabManager.clearTopGrab();
-             if (assistantSidebar.active && assistantSidebar.wantsFocus) {
-                 assistantSidebar.wantsFocus = false;
-+                assistantSidebar.releasedFocus = true;
-             }
-         }
-     }
+@@ -45,7 +50,10 @@ PanelWindow {
+ 
+     // Whether we need to capture full-screen input for click-outside detection.
+     // True when notch modules are open OR any FocusGrab is active (e.g., BarPopups).
+-    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab || (assistantSidebar.active && assistantSidebar.wantsFocus)
++    // axless.core: the sidebar no longer forces full-screen input capture; with
++    // OnDemand keyboard the compositor moves focus by click, and apps must
++    // receive those clicks directly.
++    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab
+ 
+     readonly property bool barEnabled: {
+         if (!Config.barReady) return false;
