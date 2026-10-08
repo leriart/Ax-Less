@@ -32,7 +32,7 @@ see every thought, tool call and observation. `stopped_reason` distinguishes
 GET /agent/models   ->  { "models": ["llama3.2:latest", "gemma4:e2b"] }
 ```
 
-The backend is Ollama's `/api/chat` - the same host `server.py` already
+The backend is Ollama's `/api/chat` - the same host the bridge already
 queries for capability detection - so nothing new has to be installed.
 
 ### Three things that make it work on small models
@@ -305,7 +305,7 @@ parameter size in advance.
 
 ## Configuration overrides
 
-Environment variables honored by `server.py`:
+Environment variables honored by the bridge:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
@@ -330,7 +330,7 @@ nothingclaw/
 ├── context_budget.py    ← token estimation + tier-aware sizing helpers
 ├── agent_loop.py        ← the autonomous agent loop (POST /agent)
 ├── fs_tools.py          ← sandboxed filesystem tools
-└── server.py            ← stdlib HTTP bridge + axctl + app catalog + knowledge tools
+└── server               ← compiled HTTP bridge + axctl + app catalog + knowledge tools
 ```
 
 For the overall agent layout and how to ship additional agents next to
