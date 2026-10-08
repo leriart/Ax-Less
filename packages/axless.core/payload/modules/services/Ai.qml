@@ -93,6 +93,12 @@ Singleton {
             if (savedMode === "chat" || savedMode === "agent")
                 root.currentMode = savedMode;
             root.currentAgentId = StateService.get("lastAiAgent", "");
+            root.autoApprove = StateService.get("aiAutoApprove", "0") === "1";
+            try {
+                let at = StateService.get("aiAllowedTools", "[]");
+                let parsed = JSON.parse(at);
+                if (Array.isArray(parsed)) root.allowedTools = parsed;
+            } catch (e) {}
         }
     }
 
@@ -230,6 +236,89 @@ Singleton {
         if (StateService.initialized)
             StateService.set("lastAiAgent", next);
         agentChanged();
+    }
+
+    // axless.core: name of the selected agent (for the sidebar label).
+    readonly property string currentAgentName: {
+        if (root.currentAgentId === "")
+            return "";
+        let conns = root.agentManager ? (root.agentManager.connections || []) : [];
+        for (let i = 0; i < conns.length; i++)
+            if (conns[i] && conns[i].id === root.currentAgentId)
+                return conns[i].name || "";
+        return "";
+    }
+
+    // axless.core: command approval. autoApprove runs every tool call without
+    // asking; allowedTools is a per-agent/per-command allow list ("open_app",
+    // "cmd:wpctl", ...). Persisted in StateService.
+    property bool autoApprove: false
+    property var allowedTools: []
+
+    function setAutoApprove(v) {
+        root.autoApprove = v === true;
+        if (StateService.initialized)
+            StateService.set("aiAutoApprove", root.autoApprove ? "1" : "0");
+    }
+
+    function _persistAllowed() {
+        if (StateService.initialized)
+            StateService.set("aiAllowedTools", JSON.stringify(root.allowedTools || []));
+    }
+
+    function _commandKey(name, args) {
+        if (name === "run_shell_command" || name === "execute_command") {
+            let cmd = String((args && (args.command || args.cmd)) || "");
+            let first = cmd.trim().split(/\s+/)[0];
+            if (first)
+                return "cmd:" + first;
+        }
+        return name;
+    }
+
+    function isToolAllowed(name, args) {
+        if (root.autoApprove)
+            return true;
+        let list = root.allowedTools || [];
+        if (list.indexOf(name) !== -1)
+            return true;
+        return list.indexOf(root._commandKey(name, args)) !== -1;
+    }
+
+    // Approve now and remember this tool/command so it runs automatically next
+    // time.
+    function alwaysAllow(index) {
+        let msg = currentChat[index];
+        if (!msg || !msg.functionCall)
+            return;
+        let key = root._commandKey(msg.functionCall.name, msg.functionCall.args || {});
+        let list = (root.allowedTools || []).slice();
+        if (list.indexOf(key) === -1) {
+            list.push(key);
+            root.allowedTools = list;
+            root._persistAllowed();
+        }
+        root.approveCommand(index);
+    }
+
+    // axless.core: agent "skills" (markdown), shipped in <generation>/skills
+    // and extendable by the user in ~/.config/ambxst/skills. Injected in agent
+    // mode. Adapted from the Odysseus agent skill set.
+    readonly property string _generationRoot: {
+        let u = Qt.resolvedUrl(".").toString();
+        u = u.replace(/modules\/services\/?$/, "");
+        return u.replace(/^file:\/\//, "");
+    }
+    property string skillsText: ""
+    Process {
+        id: skillsLoader
+        command: ["/usr/bin/bash", "-c",
+            "for d in \"" + root._generationRoot + "skills\" \"" +
+            Quickshell.env("HOME") + "/.config/ambxst/skills\"; do " +
+            "for f in \"$d\"/*.md; do [ -f \"$f\" ] && { echo; echo '## '$(basename \"$f\" .md); cat \"$f\"; echo; }; done; done"]
+        stdout: StdioCollector { id: skillsOut }
+        onExited: root.skillsText = skillsOut.text
+        Component.onCompleted: running = true
     }
 
     // How many agents are connected right now, for the sidebar badge.
@@ -576,6 +665,8 @@ Singleton {
                 + "actually happened - never claim success from the request alone.\n"
                 + "- Recovery: if a call fails, do not repeat it unchanged; fix the arguments or use another tool.\n"
                 + "Pass arguments as a JSON object matching the schema and reply briefly in the user's language.";
+            if (root.skillsText && root.skillsText.trim() !== "")
+                toolHint = toolHint + "\n\n# Skills\n" + root.skillsText.trim();
             systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + toolHint) : toolHint;
         }
         if (systemPrompt) {
@@ -794,10 +885,13 @@ Singleton {
                         let last = chat[chat.length - 1];
                         last.functionCall = { name: first.name, args: args };
                         last.toolCallId = first.id || ("call_" + Date.now());
-                        last.functionPending = true;
                         last.functionApproved = false;
+                        let allowed = root.isToolAllowed(first.name, args);
+                        last.functionPending = !allowed;
                         root.currentChat = chat;
                         root.saveCurrentChat();
+                        if (allowed)
+                            root.approveCommand(chat.length - 1);
                     }
                     root.responseBuffer = "";
                     return;

@@ -331,9 +331,183 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 
 	case "manage_memory":
 		return manageMemory(args)
+
+	case "capabilities":
+		return capabilities()
+
+	case "clipboard":
+		return clipboardTool(args)
+
+	case "notify":
+		return notifyTool(args)
+
+	case "volume":
+		return volumeTool(args)
+
+	case "media":
+		return mediaTool(args)
+
+	case "screenshot":
+		return screenshotTool(args)
 	}
 
 	return errContent("Tool '" + name + "' not found")
+}
+
+// shq quotes a string for safe use inside a bash -c command.
+func shq(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func capabilities() map[string]any {
+	groups := [][2]string{
+		{"windows", "list_windows, focus_window, close_window, move_window_to_workspace, move_windows, move_window_direction, move_window_to_monitor, resize_window, toggle_window_floating, set_window_fullscreen"},
+		{"workspaces", "list_workspaces, switch_workspace, move_window_to_workspace, move_windows, toggle_special_workspace"},
+		{"monitors", "list_monitors, focus_monitor, move_window_to_monitor"},
+		{"apps", "list_installed_apps, open_app, close_app, launch_program, check_program_installed, install_package"},
+		{"web", "open_url, web_search, fetch_url, manage_rag"},
+		{"system", "execute_command, run_shell_command, clipboard, notify, volume, media, screenshot"},
+		{"files", "list_dir, read_file, write_file, search_files"},
+		{"memory", "manage_memory, context_info"},
+	}
+	var sb strings.Builder
+	sb.WriteString("NothingClaw can control this Linux desktop and the machine behind it.\nCapability groups:\n")
+	for _, g := range groups {
+		sb.WriteString("- " + g[0] + ": " + g[1] + "\n")
+	}
+	sb.WriteString("Read the current state (list_windows / list_workspaces) before acting, and verify after acting.")
+	return okContent(sb.String())
+}
+
+func clipboardTool(args map[string]any) map[string]any {
+	action := strings.ToLower(strArg(args, "action", "get"))
+	switch action {
+	case "get", "read":
+		for _, c := range []string{"wl-paste -n", "xclip -selection clipboard -o", "xsel -b"} {
+			r := runShell(c, 5, "")
+			if r["error"] == nil {
+				if s, _ := r["content"].(string); strings.TrimSpace(s) == "" {
+					return okContent("(clipboard is empty)")
+				}
+				return r
+			}
+		}
+		return errContent("No clipboard tool found (install wl-clipboard, xclip or xsel).")
+	case "set", "write", "copy":
+		text := strArg(args, "text", "")
+		if text == "" {
+			return errContent("clipboard 'set' needs text")
+		}
+		cmd := "printf '%s' " + shq(text) + " | wl-copy"
+		alt := "printf '%s' " + shq(text) + " | xclip -selection clipboard"
+		alt2 := "printf '%s' " + shq(text) + " | xsel -b -i"
+		for _, c := range []string{cmd, alt, alt2} {
+			if runShell(c, 5, "")["error"] == nil {
+				return okContent("Copied to clipboard.")
+			}
+		}
+		return errContent("No clipboard tool found.")
+	}
+	return errContent("clipboard action must be 'get' or 'set'")
+}
+
+func notifyTool(args map[string]any) map[string]any {
+	body := strArg(args, "body", strArg(args, "text", ""))
+	if body == "" {
+		return errContent("notify needs body")
+	}
+	title := strArg(args, "title", "NothingClaw")
+	urgency := strings.ToLower(strArg(args, "urgency", "normal"))
+	switch urgency {
+	case "low", "normal", "critical":
+	default:
+		urgency = "normal"
+	}
+	if fireAndForget([]string{"notify-send", "-u", urgency, title, body}) {
+		return okContent("Notification sent.")
+	}
+	return errContent("notify-send not found (install libnotify).")
+}
+
+func clampPct(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 150 {
+		return 150
+	}
+	return n
+}
+
+func volumeTool(args map[string]any) map[string]any {
+	action := strings.ToLower(strArg(args, "action", "get"))
+	if _, err := exec.LookPath("wpctl"); err == nil {
+		switch action {
+		case "get":
+			return runShell("wpctl get-volume @DEFAULT_AUDIO_SINK@", 5, "")
+		case "set":
+			return runShell(fmt.Sprintf("wpctl set-volume @DEFAULT_AUDIO_SINK@ %d%%", clampPct(intArg(args, "value", 50))), 5, "")
+		case "up":
+			return runShell("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+", 5, "")
+		case "down":
+			return runShell("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", 5, "")
+		case "mute":
+			return runShell("wpctl set-mute @DEFAULT_AUDIO_SINK@ 1", 5, "")
+		case "unmute":
+			return runShell("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0", 5, "")
+		case "toggle":
+			return runShell("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", 5, "")
+		}
+	}
+	if _, err := exec.LookPath("pactl"); err == nil {
+		switch action {
+		case "get":
+			return runShell("pactl get-sink-volume @DEFAULT_SINK@", 5, "")
+		case "set":
+			p := clampPct(intArg(args, "value", 50))
+			return runShell(fmt.Sprintf("pactl set-sink-volume @DEFAULT_SINK@ %d%%", p), 5, "")
+		case "up":
+			return runShell("pactl set-sink-volume @DEFAULT_SINK@ +5%", 5, "")
+		case "down":
+			return runShell("pactl set-sink-volume @DEFAULT_SINK@ -5%", 5, "")
+		case "mute":
+			return runShell("pactl set-sink-mute @DEFAULT_SINK@ 1", 5, "")
+		case "unmute":
+			return runShell("pactl set-sink-mute @DEFAULT_SINK@ 0", 5, "")
+		case "toggle":
+			return runShell("pactl set-sink-mute @DEFAULT_SINK@ toggle", 5, "")
+		}
+	}
+	return errContent("no volume control found (install wireplumber for wpctl or pulseaudio-utils for pactl).")
+}
+
+func mediaTool(args map[string]any) map[string]any {
+	action := strings.ToLower(strArg(args, "action", "status"))
+	switch action {
+	case "play", "pause", "play-pause", "next", "previous", "stop", "status":
+		return runShell("playerctl "+action, 5, "")
+	}
+	return errContent("media action must be play/pause/play-pause/next/previous/stop/status")
+}
+
+func screenshotTool(args map[string]any) map[string]any {
+	path := strArg(args, "path", "/tmp/nothingclaw-screenshot.png")
+	if _, err := exec.LookPath("grim"); err == nil {
+		if r := runShell("grim "+shq(path), 15, ""); r["error"] == nil {
+			return okContent("Screenshot saved to " + path)
+		}
+	}
+	if _, err := exec.LookPath("maim"); err == nil {
+		if r := runShell("maim "+shq(path), 15, ""); r["error"] == nil {
+			return okContent("Screenshot saved to " + path)
+		}
+	}
+	if _, err := exec.LookPath("scrot"); err == nil {
+		if r := runShell("scrot "+shq(path), 15, ""); r["error"] == nil {
+			return okContent("Screenshot saved to " + path)
+		}
+	}
+	return errContent("no screenshot tool found (install grim for Wayland, or maim/scrot for X11).")
 }
 
 func guard(f func() map[string]any) map[string]any {

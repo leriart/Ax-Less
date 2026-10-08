@@ -63,10 +63,11 @@ var toolTiers = map[string][]string{
 		"manage_memory", "list_windows", "list_installed_apps",
 		"move_window_to_workspace", "open_url", "execute_command",
 		"run_shell_command", "context_info",
+		"capabilities", "clipboard", "notify", "volume", "media",
 	},
 	"small": {
 		"list_workspaces", "move_windows", "open_app", "close_app",
-		"web_search", "fetch_url", "manage_rag",
+		"web_search", "fetch_url", "manage_rag", "screenshot",
 	},
 	"medium": {
 		"list_monitors", "focus_window", "close_window", "switch_workspace",
@@ -232,6 +233,38 @@ func allTools() []map[string]any {
 		{"name": "context_info",
 			"description": "Return metadata about the current request - the model's detected capability tier, its known context window, and the per-tool-result token budget. Call this FIRST in any long chain of tool calls.",
 			"parameters":  tObj(map[string]any{})},
+		{"name": "capabilities",
+			"description": "List what this agent can do and which capability groups/tools are available. Use it to answer 'what can you do' or to discover capabilities instead of guessing.",
+			"parameters":  tObj(map[string]any{})},
+		{"name": "clipboard",
+			"description": "Read or write the system clipboard (Wayland wl-clipboard, X11 xclip/xsel).",
+			"parameters": tObj(map[string]any{
+				"action": tStrEnum([]string{"get", "set"}, "get = read current text, set = copy text."),
+				"text":   tStr("Text to copy (required for 'set')."),
+			}, "action")},
+		{"name": "notify",
+			"description": "Send a desktop notification via notify-send.",
+			"parameters": tObj(map[string]any{
+				"body":    tStr("Notification body text."),
+				"title":   tStr("Title (default 'NothingClaw')."),
+				"urgency": tStrEnum([]string{"low", "normal", "critical"}, "Urgency (default normal)."),
+			}, "body")},
+		{"name": "volume",
+			"description": "Control the default audio sink volume/mute via wpctl (PipeWire) or pactl.",
+			"parameters": tObj(map[string]any{
+				"action": tStrEnum([]string{"get", "set", "up", "down", "mute", "unmute", "toggle"}, "Action."),
+				"value":  tInt("Volume percent for 'set' (0-150)."),
+			}, "action")},
+		{"name": "media",
+			"description": "Control the active media player via playerctl (play/pause/play-pause/next/previous/stop/status).",
+			"parameters": tObj(map[string]any{
+				"action": tStrEnum([]string{"play", "pause", "play-pause", "next", "previous", "stop", "status"}, "Action."),
+			}, "action")},
+		{"name": "screenshot",
+			"description": "Take a screenshot of the whole screen with grim (Wayland) or maim/scrot (X11) and save it to a file. Returns the path.",
+			"parameters": tObj(map[string]any{
+				"path": tStr("Output file path (default /tmp/nothingclaw-screenshot.png)."),
+			})},
 	}
 	return append(tools, fsTools()...)
 }

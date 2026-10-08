@@ -84,6 +84,21 @@
     },
     {
       "type": "overlay",
+      "source": "payload/skills/verified-state-change.md",
+      "target": "skills/verified-state-change.md"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/skills/tool-discovery.md",
+      "target": "skills/tool-discovery.md"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/skills/concise-answers.md",
+      "target": "skills/concise-answers.md"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/PerMonitorConfig.qml",
       "target": "modules/services/PerMonitorConfig.qml"
     },
