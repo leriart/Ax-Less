@@ -356,6 +356,12 @@ Singleton {
         printErrors: false
     }
 
+    // axless.core: used to export a conversation to a file.
+    FileView {
+        id: exportFileView
+        printErrors: false
+    }
+
 
     // ============================================
     // TOOLS
@@ -965,6 +971,64 @@ Singleton {
         currentChat = [];
         currentChatId = Date.now().toString();
         chatModelChanged();
+    }
+
+    // axless.core: delete the current chat's file and start a fresh one.
+    function deleteCurrentChat() {
+        if (currentChatId) {
+            deleteChatProcess.command = ["/bin/rm", "-f", chatDir + "/" + currentChatId + ".json"];
+            deleteChatProcess.running = true;
+        }
+        createNewChat();
+    }
+
+    // Rough token estimate (~4 chars/token) for the whole conversation.
+    readonly property int currentTokens: {
+        let n = 0;
+        for (let i = 0; i < currentChat.length; i++) {
+            let m = currentChat[i];
+            n += (m.content || "").length;
+            if (m.functionCall)
+                n += JSON.stringify(m.functionCall.args || {}).length;
+        }
+        return Math.round(n / 4);
+    }
+
+    // The whole conversation as Markdown, JSON or plain text.
+    function conversationText(format) {
+        if (format === "json")
+            return JSON.stringify(currentChat, null, 2);
+        let out = [];
+        for (let i = 0; i < currentChat.length; i++) {
+            let m = currentChat[i];
+            let who = m.role === "user" ? "User" : (m.role === "assistant" ? "Assistant" : m.role);
+            if (m.functionCall)
+                out.push("**" + who + "** -> " + m.functionCall.name + " `" +
+                         JSON.stringify(m.functionCall.args || {}) + "`");
+            if (m.content)
+                out.push("**" + who + ":** " + m.content);
+        }
+        return out.join("\n\n");
+    }
+
+    // Write the conversation to a file in the home directory; returns the path.
+    function exportConversation(format) {
+        let ext = format === "json" ? "json" : (format === "txt" ? "txt" : "md");
+        let path = Quickshell.env("HOME") + "/ambxst-chat-" + Date.now() + "." + ext;
+        exportFileView.path = path;
+        exportFileView.setText(conversationText(format));
+        return path;
+    }
+
+    // Index of the first message containing a query, or -1.
+    function findInChat(query) {
+        if (!query || query.length === 0)
+            return -1;
+        let q = query.toLowerCase();
+        for (let i = 0; i < currentChat.length; i++)
+            if ((currentChat[i].content || "").toLowerCase().indexOf(q) !== -1)
+                return i;
+        return -1;
     }
 
     function saveCurrentChat() {
