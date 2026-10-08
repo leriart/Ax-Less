@@ -55,6 +55,8 @@ ApiStrategy {
                 };
                 if (msg.reasoningContent)
                     am.reasoning_content = msg.reasoningContent;
+                else if (root._wantsReasoning)
+                    am.reasoning_content = "";
                 formatted.push(am);
                 continue;
             }
@@ -75,14 +77,20 @@ ApiStrategy {
                 formatted.push({ role: msg.role, content: contentParts });
             } else {
                 let m = { role: msg.role, content: msg.content };
-                if (msg.role === "assistant" && msg.reasoningContent)
-                    m.reasoning_content = msg.reasoningContent;
+                if (msg.role === "assistant" && (msg.reasoningContent || root._wantsReasoning))
+                    m.reasoning_content = msg.reasoningContent || "";
                 formatted.push(m);
             }
         }
         return formatted;
     }
+    // axless.core: reasoning models (DeepSeek thinking, o1/o3, r1, qwq) need the
+    // assistant reasoning_content echoed back. Detected by model name.
+    property string _modelName: ""
+    readonly property bool _wantsReasoning: /deepseek|reason|think|qwq|(^|[^a-z])r1|o1|o3/i.test(_modelName)
+
     function getBody(messages, model, tools) {
+        root._modelName = model ? (model.model || "") : "";
         let body = {
             model: model.model,
             messages: _formatMessages(messages),
@@ -150,6 +158,8 @@ ApiStrategy {
                     let out = { content: msg.content || "", done: true, error: null };
                     if (msg.reasoning_content)
                         out.reasoningContent = String(msg.reasoning_content);
+                    else if (msg.reasoning)
+                        out.reasoningContent = String(msg.reasoning);
                     if (msg.tool_calls && msg.tool_calls.length > 0)
                         out.toolCallDelta = msg.tool_calls;
                     return out;
@@ -167,23 +177,22 @@ ApiStrategy {
         try {
             let json = JSON.parse(trimmed.substring(6));
             if (json.choices && json.choices.length > 0) {
-                let delta = json.choices[0].delta;
-                // axless.core: thinking-mode models stream reasoning_content that
-                // the API requires to be echoed back on the next turn.
-                if (delta && delta.reasoning_content)
-                    return { content: "", done: false, error: null, reasoningContent: delta.reasoning_content };
-                if (delta && delta.content)
-                    return { content: delta.content, done: false, error: null };
-
-                // Check for tool calls in stream
-                if (delta && delta.tool_calls) {
-                    // Accumulate tool call data — handled by Ai.qml
-                    return { content: "", done: false, error: null, toolCallDelta: delta.tool_calls };
-                }
-
-                // finish_reason check
+                let delta = json.choices[0].delta || {};
+                // axless.core: thinking-mode models stream reasoning that the API
+                // requires to be echoed back. Build one result so a chunk that
+                // carries both content and reasoning loses neither.
+                let out = { content: "", done: false, error: null };
+                if (delta.reasoning_content)
+                    out.reasoningContent = delta.reasoning_content;
+                else if (delta.reasoning)
+                    out.reasoningContent = delta.reasoning;
+                if (delta.content)
+                    out.content = delta.content;
+                if (delta.tool_calls)
+                    out.toolCallDelta = delta.tool_calls;
                 if (json.choices[0].finish_reason)
-                    return { content: "", done: true, error: null };
+                    out.done = true;
+                return out;
             }
             if (json.error)
                 return { content: "", done: false, error: json.error.message };
