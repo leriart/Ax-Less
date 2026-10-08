@@ -204,6 +204,10 @@ Singleton {
     // so nothing ever executed. These hold the call being assembled and the
     // registry of tools the connected agents advertise.
     property var _pendingToolCalls: []
+    // axless.core: one-shot nudge for providers that return an empty
+    // completion right after a tool result (DeepSeek and friends).
+    property bool _nudged: false
+    property string _nudgePrompt: ""
 
     // axless.core: chat vs agent. In chat mode no tools are advertised, so
     // the sidebar's toggle is not cosmetic - it changes what the model is
@@ -611,6 +615,8 @@ Singleton {
             return;
         isLoading = true;
         lastError = "";
+        root._nudged = false;
+        root._nudgePrompt = "";
         let userMsg = {
             role: "user",
             content: text
@@ -697,6 +703,11 @@ Singleton {
             if (msg.name)
                 apiMsg.name = msg.name;
             messages.push(apiMsg);
+        }
+
+        if (root._nudgePrompt) {
+            messages.push({ role: "system", content: root._nudgePrompt });
+            root._nudgePrompt = "";
         }
 
         // Build body — always use streaming
@@ -909,6 +920,23 @@ Singleton {
                     // The last message is our placeholder, leave as is
                     let lastMsg = root.currentChat[root.currentChat.length - 1];
                     if (!lastMsg.content) {
+                        // If the previous turn was a tool result, the provider
+                        // may have returned an empty completion; retry once with
+                        // a nudge instead of showing "no response" immediately.
+                        let toolRecent = false;
+                        for (let i = root.currentChat.length - 2; i >= 0 && i >= root.currentChat.length - 4; i--) {
+                            if (root.currentChat[i].role === "tool") { toolRecent = true; break; }
+                        }
+                        if (toolRecent && !root._nudged) {
+                            root._nudged = true;
+                            let c = Array.from(root.currentChat);
+                            c.pop();
+                            root.currentChat = c;
+                            root._nudgePrompt = "Answer the user in one short sentence using the tool result above. Do not call a tool.";
+                            root.isLoading = true;
+                            root.makeRequest();
+                            return;
+                        }
                         let newChat = Array.from(root.currentChat);
                         newChat[newChat.length - 1].content = I18n.t("ai.no_response");
                         root.currentChat = newChat;
