@@ -189,8 +189,6 @@ runs on.
 - **Axenide** — creator of [Ambxst](https://github.com/Axenide/Ambxst).
   Everything here is a mod for that shell, and most of it ports features Ambxst
   had not implemented.
-- **Leriart** — NothingLess developer and maintainer, and the author of this
-  mod. Most of the feature set originates there.
 - **Fabio** ([@fabiolopezperez-hue](https://github.com/fabiolopezperez-hue)) —
   author of the **Hax** spotlight launcher, ported here essentially unchanged.
   The plugin system, the calculator, the quick actions and the whole spotlight
