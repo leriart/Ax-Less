@@ -562,12 +562,20 @@ Singleton {
         // call the tools instead of narrating the action, and to pass a proper
         // arguments object. Kept short so it doesn't crowd a small context.
         if (systemTools && systemTools.length > 0) {
+            // axless.core: agent skills, adapted from the Odysseus agent skill
+            // set (tool-discovery / verified-state-change / recovery). Kept
+            // short so small local models are not crowded out.
             let toolHint = "You can control this Linux desktop with the provided tools. "
-                + "When the user asks you to do something (open or close apps, move or focus windows, "
-                + "search the web, run a command), call the correct tool instead of describing it. "
-                + "Pass arguments as a JSON object that matches the tool schema. "
-                + "Do NOT call any tool for greetings, thanks, or when the user asks what you can do - just reply in text. "
-                + "After a tool runs, read its real result and answer briefly.";
+                + "Act only when the user asks you to do something; for greetings, thanks or "
+                + "'what can you do', reply in text and call no tool.\n"
+                + "Agent skills:\n"
+                + "- Tool discovery: pick the smallest tool that matches the task and match the schema's "
+                + "argument names; do not guess.\n"
+                + "- Verified change: after acting (move/open/close a window, switch workspace, run a "
+                + "command), confirm it with a read tool (list_windows / list_workspaces) and report what "
+                + "actually happened - never claim success from the request alone.\n"
+                + "- Recovery: if a call fails, do not repeat it unchanged; fix the arguments or use another tool.\n"
+                + "Pass arguments as a JSON object matching the schema and reply briefly in the user's language.";
             systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + toolHint) : toolHint;
         }
         if (systemPrompt) {
