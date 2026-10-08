@@ -41,7 +41,7 @@ ApiStrategy {
             if (msg.functionCall) {
                 let id = msg.toolCallId || ("call_" + i);
                 lastToolCallId = id;
-                formatted.push({
+                let am = {
                     role: "assistant",
                     content: msg.content || null,
                     tool_calls: [{
@@ -52,7 +52,10 @@ ApiStrategy {
                             arguments: JSON.stringify(msg.functionCall.args || {})
                         }
                     }]
-                });
+                };
+                if (msg.reasoningContent)
+                    am.reasoning_content = msg.reasoningContent;
+                formatted.push(am);
                 continue;
             }
 
@@ -71,7 +74,10 @@ ApiStrategy {
                 }
                 formatted.push({ role: msg.role, content: contentParts });
             } else {
-                formatted.push({ role: msg.role, content: msg.content });
+                let m = { role: msg.role, content: msg.content };
+                if (msg.role === "assistant" && msg.reasoningContent)
+                    m.reasoning_content = msg.reasoningContent;
+                formatted.push(m);
             }
         }
         return formatted;
@@ -142,6 +148,8 @@ ApiStrategy {
                 if (full.choices && full.choices.length > 0) {
                     let msg = full.choices[0].message || {};
                     let out = { content: msg.content || "", done: true, error: null };
+                    if (msg.reasoning_content)
+                        out.reasoningContent = String(msg.reasoning_content);
                     if (msg.tool_calls && msg.tool_calls.length > 0)
                         out.toolCallDelta = msg.tool_calls;
                     return out;
@@ -160,6 +168,10 @@ ApiStrategy {
             let json = JSON.parse(trimmed.substring(6));
             if (json.choices && json.choices.length > 0) {
                 let delta = json.choices[0].delta;
+                // axless.core: thinking-mode models stream reasoning_content that
+                // the API requires to be echoed back on the next turn.
+                if (delta && delta.reasoning_content)
+                    return { content: "", done: false, error: null, reasoningContent: delta.reasoning_content };
                 if (delta && delta.content)
                     return { content: delta.content, done: false, error: null };
 

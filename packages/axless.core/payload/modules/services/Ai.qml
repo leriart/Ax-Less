@@ -192,8 +192,11 @@ Singleton {
             return;
         let c = Array.from(root.currentChat);
         let last = c[c.length - 1];
-        if (last && last.role === "assistant" && !last.functionCall)
+        if (last && last.role === "assistant" && !last.functionCall) {
             last.content = root.responseBuffer;
+            if (root._reasoningBuffer)
+                last.reasoningContent = root._reasoningBuffer;
+        }
         root.currentChat = c;
     }
     property string lastError: ""
@@ -208,6 +211,7 @@ Singleton {
     // completion right after a tool result (DeepSeek and friends).
     property bool _nudged: false
     property string _rawResponse: ""
+    property string _reasoningBuffer: ""
     property string _nudgePrompt: ""
 
     // axless.core: chat vs agent. In chat mode no tools are advertised, so
@@ -717,6 +721,7 @@ Singleton {
         // Reset streaming buffer
         responseBuffer = "";
         _rawResponse = "";
+        _reasoningBuffer = "";
         _pendingToolCalls = [];
 
         // Add placeholder assistant message for streaming
@@ -827,6 +832,9 @@ Singleton {
                     return;
                 }
 
+                if (result.reasoningContent)
+                    root._reasoningBuffer += result.reasoningContent;
+
                 if (result.content) {
                     // axless.core: only accumulate here. Reassigning currentChat
                     // on every token made the sidebar's ListView reset its model
@@ -906,6 +914,8 @@ Singleton {
                         let last = chat[chat.length - 1];
                         last.functionCall = { name: first.name, args: args };
                         last.toolCallId = first.id || ("call_" + Date.now());
+                        if (root._reasoningBuffer)
+                            last.reasoningContent = root._reasoningBuffer;
                         last.functionApproved = false;
                         let allowed = root.isToolAllowed(first.name, args);
                         last.functionPending = !allowed;
