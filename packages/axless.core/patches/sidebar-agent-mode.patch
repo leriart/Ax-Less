@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..73c51db 100644
+index 292f58c..f7161a6 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -826,7 +826,7 @@ index 292f58c..73c51db 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1711,120 @@ Item {
+@@ -1166,6 +1711,121 @@ Item {
                              }
                          }
  
@@ -877,6 +877,7 @@ index 292f58c..73c51db 100644
 +                                radius: Styling.radius(10)
 +                                TextField {
 +                                    id: chatSearchField
++                                    activeFocusOnTab: false
 +                                    anchors.left: parent.left
 +                                    anchors.right: parent.right
 +                                    anchors.verticalCenter: parent.verticalCenter

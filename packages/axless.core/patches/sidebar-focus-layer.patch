@@ -1,24 +1,21 @@
 diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
-index 786c98e..12c7d54 100644
+index 786c98e..f42319a 100644
 --- a/modules/shell/UnifiedShellPanel.qml
 +++ b/modules/shell/UnifiedShellPanel.qml
-@@ -34,8 +34,13 @@ PanelWindow {
+@@ -34,7 +34,11 @@ PanelWindow {
          if (notchContent.screenNotchOpen) {
              return WlrKeyboardFocus.Exclusive;
          }
 -        if (assistantSidebar.active && assistantSidebar.wantsFocus) {
--            return WlrKeyboardFocus.Exclusive;
-+        // axless.core: OnDemand while the assistant is open. The compositor
-+        // gives keyboard to whichever surface is clicked - the sidebar or any
-+        // other app - so the user can move back and forth freely. Exclusive
-+        // would trap the keyboard inside the shell (apps could not be typed
-+        // into); None could never return it on click.
++        // axless.core: take the keyboard exclusively while the assistant is
++        // open. OnDemand/None did not reliably deliver keys to the sidebar, so
++        // typing stopped working. Close the sidebar (toggle key) to type in
++        // other apps.
 +        if (assistantSidebar.active) {
-+            return WlrKeyboardFocus.OnDemand;
+             return WlrKeyboardFocus.Exclusive;
          }
          return WlrKeyboardFocus.None;
-     }
-@@ -45,7 +50,10 @@ PanelWindow {
+@@ -45,7 +49,10 @@ PanelWindow {
  
      // Whether we need to capture full-screen input for click-outside detection.
      // True when notch modules are open OR any FocusGrab is active (e.g., BarPopups).
