@@ -111,6 +111,15 @@ Singleton {
         }
     }
 
+    // axless.core: saving or removing an API key re-queries that provider so
+    // its model list appears (or disappears) without a restart.
+    Connections {
+        target: KeyStore
+        function onKeysChanged() {
+            root.fetchAvailableModels();
+        }
+    }
+
     // ============================================
     // STRATEGIES
     // ============================================
@@ -134,8 +143,12 @@ Singleton {
         case "groq": return groqStrategy;
         case "ollama": return ollamaStrategy;
         case "minimax": return minimaxStrategy;
-        case "deepseek": return openaiStrategy; // OpenAI-compatible API
-        case "custom": return openaiStrategy; // custom endpoints use OpenAI-compatible format by default
+        // axless.core: everything else that speaks the OpenAI wire format.
+        case "deepseek":
+        case "openrouter":
+        case "xai":
+        case "lmstudio":
+        case "custom":
         default: return openaiStrategy;
         }
     }
@@ -877,383 +890,139 @@ Singleton {
     property bool fetchingModels: false
     property int pendingFetches: 0
 
-    function fetchAvailableModels() {
-        fetchingModels = false; // Force refresh
-        if (fetchingModels)
-            return;
+    // axless.core: every provider is queried live. There are no hardcoded
+    // model lists: when a key is saved (or a local backend is enabled) the
+    // provider's own models endpoint is asked and whatever it returns becomes
+    // the list. This table is the single source of truth for endpoints, auth
+    // style and key ids, so adding a provider is one entry.
+    readonly property var modelProviders: [
+        { id: "openai",     label: "OpenAI",     base: "https://api.openai.com",                            path: "/v1/models", auth: "bearer",    keyId: "OPENAI_API_KEY",     icon: "openai.svg" },
+        { id: "anthropic",  label: "Anthropic",  base: "https://api.anthropic.com",                         path: "/v1/models", auth: "anthropic", keyId: "ANTHROPIC_API_KEY",  icon: "anthropic.svg" },
+        { id: "gemini",     label: "Gemini",     base: "https://generativelanguage.googleapis.com/v1beta",  path: "/models",    auth: "query",     keyId: "GEMINI_API_KEY",     icon: "google.svg", format: "gemini" },
+        { id: "mistral",    label: "Mistral",    base: "https://api.mistral.ai",                            path: "/v1/models", auth: "bearer",    keyId: "MISTRAL_API_KEY",    icon: "mistral.svg" },
+        { id: "groq",       label: "Groq",       base: "https://api.groq.com/openai",                       path: "/v1/models", auth: "bearer",    keyId: "GROQ_API_KEY",       icon: "groq.svg" },
+        { id: "deepseek",   label: "DeepSeek",   base: "https://api.deepseek.com",                          path: "/v1/models", auth: "bearer",    keyId: "DEEPSEEK_API_KEY",   icon: "deepseek.svg" },
+        { id: "openrouter", label: "OpenRouter", base: "https://openrouter.ai/api",                         path: "/v1/models", auth: "bearer",    keyId: "OPENROUTER_API_KEY", icon: "openrouter.svg" },
+        { id: "xai",        label: "xAI",        base: "https://api.x.ai",                                  path: "/v1/models", auth: "bearer",    keyId: "XAI_API_KEY",        icon: "xai.svg" },
+        { id: "minimax",    label: "MiniMax",    base: "https://api.minimax.io",                            path: "/v1/models", auth: "bearer",    keyId: "MINIMAX_API_KEY",    icon: "minimax.svg" },
+        { id: "ollama",     label: "Ollama",     base: "http://127.0.0.1:11434",                            path: "/api/tags",  auth: "none",      icon: "ollama.svg",   format: "ollama", local: true },
+        { id: "lmstudio",   label: "LM Studio",  base: "http://localhost:1234",                             path: "/v1/models", auth: "none",      icon: "lmstudio.svg", local: true }
+    ]
 
+    function _providerCommand(prov, key) {
+        const url = prov.base + prov.path;
+        if (prov.auth === "query")
+            return ["bash", "-c", "curl -s '" + url + "?key=" + key + "'"];
+        if (prov.auth === "anthropic")
+            return ["bash", "-c", "curl -s " + url
+                + " -H 'x-api-key: " + key + "' -H 'anthropic-version: 2023-06-01'"];
+        if (prov.auth === "bearer")
+            return ["bash", "-c", "curl -s " + url
+                + " -H 'Authorization: Bearer " + key + "'"];
+        return ["bash", "-c", "curl -s " + url];
+    }
+
+    function fetchAvailableModels() {
         fetchingModels = true;
         pendingFetches = 0;
 
-        // Gemini
-        let geminiKey = KeyStore.getKey("gemini");
-        if (geminiKey) {
+        for (let i = 0; i < modelProviders.length; i++) {
+            const prov = modelProviders[i];
+            let key = "";
+            if (prov.local) {
+                // Local backends have no key; the settings panel stores an
+                // "enabled" flag under their id when the user turns them on.
+                if (!KeyStore.hasKey(prov.id))
+                    continue;
+            } else {
+                key = KeyStore.getKey(prov.id);
+                if (!key)
+                    continue;
+            }
             pendingFetches++;
-            fetchProcessGemini.command = ["bash", "-c", "curl -s 'https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiKey + "'"];
-            fetchProcessGemini.running = true;
-        }
-
-        // OpenAI
-        let openaiKey = KeyStore.getKey("openai");
-        if (openaiKey) {
-            pendingFetches++;
-            fetchProcessOpenAI.command = ["bash", "-c", "curl -s https://api.openai.com/v1/models -H 'Authorization: Bearer " + openaiKey + "'"];
-            fetchProcessOpenAI.running = true;
-        }
-
-        // Anthropic
-        let anthropicKey = KeyStore.getKey("anthropic");
-        if (anthropicKey) {
-            pendingFetches++;
-            fetchProcessAnthropic.command = ["bash", "-c", "curl -s https://api.anthropic.com/v1/models -H 'x-api-key: " + anthropicKey + "' -H 'anthropic-version: 2023-06-01'"];
-            fetchProcessAnthropic.running = true;
-        }
-
-        // Mistral
-        let mistralKey = KeyStore.getKey("mistral");
-        if (mistralKey) {
-            pendingFetches++;
-            fetchProcessMistral.command = ["bash", "-c", "curl -s https://api.mistral.ai/v1/models -H 'Authorization: Bearer " + mistralKey + "'"];
-            fetchProcessMistral.running = true;
-        }
-
-        // Groq
-        let groqKey = KeyStore.getKey("groq");
-        if (groqKey) {
-            pendingFetches++;
-            fetchProcessGroq.command = ["bash", "-c", "curl -s https://api.groq.com/openai/v1/models -H 'Authorization: Bearer " + groqKey + "'"];
-            fetchProcessGroq.running = true;
-        }
-
-        // Ollama (local)
-        let ollamaEnabled = KeyStore.hasKey("ollama");
-        if (ollamaEnabled) {
-            pendingFetches++;
-            fetchProcessOllama.command = ["bash", "-c", "curl -s http://127.0.0.1:11434/api/tags"];
-            fetchProcessOllama.running = true;
-        }
-
-        // MiniMax
-        let minimaxKey = KeyStore.getKey("minimax");
-        if (minimaxKey) {
-            pendingFetches++;
-            fetchProcessMiniMax.command = ["bash", "-c", "echo 'done'"];
-            fetchProcessMiniMax.running = true;
-        }
-
-        // DeepSeek (OpenAI-compatible)
-        let deepseekKey = KeyStore.getKey("deepseek");
-        if (deepseekKey) {
-            pendingFetches++;
-            fetchProcessDeepSeek.command = ["bash", "-c", "echo 'done'"];
-            fetchProcessDeepSeek.running = true;
+            const proc = modelFetchFactory.createObject(root, {});
+            proc._provider = prov;
+            proc.command = _providerCommand(prov, key);
+            proc.running = true;
         }
 
         if (pendingFetches === 0) {
             fetchingModels = false;
+            tryRestore();
         }
     }
 
-    Process {
-        id: fetchProcessGemini
-        stdout: StdioCollector {
-            id: fetchGeminiOut
-        }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchGeminiOut.text);
-                    if (data.models) {
-                        let newModels = [];
-                        for (let i = 0; i < data.models.length; i++) {
-                            let item = data.models[i];
-                            let id = item.name.replace("models/", "");
-                            if (id.includes("gemini") || id.includes("flash") || id.includes("pro")) {
-                                let m = aiModelFactory.createObject(root, {
-                                    name: item.displayName || id,
-                                    icon: Qt.resolvedUrl("../../../assets/aiproviders/google.svg"),
-                                    description: item.description || I18n.t("ai.desc_google"),
-                                    endpoint: "https://generativelanguage.googleapis.com/v1beta",
-                                    model: id,
-                                    provider: "gemini",
-                                    requires_key: true,
-                                    key_id: "GEMINI_API_KEY"
-                                });
-                                if (m) newModels.push(m);
-                            }
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("Gemini fetch error: " + e);
-                }
+    // One Process per in-flight provider fetch, created on demand so the
+    // provider table drives everything. A fixed set of eight hand-written
+    // Process blocks used to live here.
+    Component {
+        id: modelFetchFactory
+        Process {
+            property var _provider: null
+            stdout: StdioCollector {}
+            onExited: (code) => {
+                if (code === 0)
+                    root._ingestModels(_provider, String(stdout.text || ""));
+                root.checkFetchCompletion();
+                destroy();
             }
-            checkFetchCompletion();
         }
     }
 
-    Process {
-        id: fetchProcessOpenAI
-        stdout: StdioCollector {
-            id: fetchOpenAIOut
-        }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchOpenAIOut.text);
-                    if (data.data) {
-                        let newModels = [];
-                        let allowed = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o1", "o1-mini", "o1-preview", "o3-mini"];
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            let id = item.id;
-                            let isAllowed = false;
-                            for (let j = 0; j < allowed.length; j++) {
-                                if (id === allowed[j] || id.startsWith(allowed[j] + "-")) {
-                                    isAllowed = true;
-                                    break;
-                                }
-                            }
-                            if (isAllowed) {
-                                let m = aiModelFactory.createObject(root, {
-                                    name: id,
-                                    icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
-                                    description: I18n.t("ai.desc_openai"),
-                                    endpoint: "https://api.openai.com",
-                                    model: id,
-                                    provider: "openai",
-                                    requires_key: true,
-                                    key_id: "OPENAI_API_KEY"
-                                });
-                                if (m) newModels.push(m);
-                            }
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("OpenAI fetch error: " + e);
-                }
+    // Parse a provider's response into models. Handles the Gemini, Ollama and
+    // OpenAI-compatible shapes; the latter also covers OpenRouter, xAI,
+    // DeepSeek, MiniMax, Groq, Mistral and LM Studio.
+    function _ingestModels(prov, text) {
+        if (!prov || !text || text.length === 0)
+            return;
+        let data;
+        try { data = JSON.parse(text); } catch (e) { return; }
+        if (data.error)
+            return;
+
+        let entries = [];
+        if (prov.format === "gemini") {
+            const list = data.models || [];
+            for (let i = 0; i < list.length; i++) {
+                const id = String(list[i].name || "").replace("models/", "");
+                if (id)
+                    entries.push({ id: id, name: list[i].displayName || id,
+                                   desc: list[i].description || "" });
             }
-            checkFetchCompletion();
-        }
-    }
-
-    Process {
-        id: fetchProcessMistral
-        stdout: StdioCollector {
-            id: fetchMistralOut
-        }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchMistralOut.text);
-                    if (data.data) {
-                        let newModels = [];
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            let id = item.id;
-                            let m = aiModelFactory.createObject(root, {
-                                name: id,
-                                icon: Qt.resolvedUrl("../../../assets/aiproviders/mistral.svg"),
-                                description: I18n.t("ai.desc_mistral"),
-                                endpoint: "https://api.mistral.ai/v1",
-                                model: id,
-                                provider: "mistral",
-                                requires_key: true,
-                                key_id: "MISTRAL_API_KEY"
-                            });
-                            if (m) newModels.push(m);
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("Mistral fetch error: " + e);
-                }
+        } else if (prov.format === "ollama") {
+            const list = data.models || [];
+            for (let i = 0; i < list.length; i++)
+                if (list[i].name)
+                    entries.push({ id: list[i].name, name: list[i].name, desc: "" });
+        } else {
+            const list = data.data || data.models || [];
+            for (let i = 0; i < list.length; i++) {
+                const e = list[i];
+                const id = e.id || e.name;
+                if (id)
+                    entries.push({ id: id, name: e.display_name || e.name || id,
+                                   desc: e.description || "" });
             }
-            checkFetchCompletion();
         }
-    }
 
-    Process {
-        id: fetchProcessGroq
-        stdout: StdioCollector {
-            id: fetchGroqOut
+        const newModels = [];
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+            const m = aiModelFactory.createObject(root, {
+                name: e.name,
+                icon: Qt.resolvedUrl("../../../assets/aiproviders/" + prov.icon),
+                description: e.desc || prov.label,
+                endpoint: prov.base,
+                model: e.id,
+                provider: prov.id,
+                requires_key: !prov.local,
+                key_id: prov.keyId || ""
+            });
+            if (m)
+                newModels.push(m);
         }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchGroqOut.text);
-                    if (data.data) {
-                        let newModels = [];
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            let id = item.id;
-                            let m = aiModelFactory.createObject(root, {
-                                name: id,
-                                icon: Qt.resolvedUrl("../../../assets/aiproviders/groq.svg"),
-                                description: I18n.t("ai.desc_groq"),
-                                endpoint: "https://api.groq.com/openai/v1",
-                                model: id,
-                                provider: "groq",
-                                requires_key: true,
-                                key_id: "GROQ_API_KEY"
-                            });
-                            if (m) newModels.push(m);
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("Groq fetch error: " + e);
-                }
-            }
-            checkFetchCompletion();
-        }
+        mergeModels(newModels);
     }
-
-    Process {
-        id: fetchProcessAnthropic
-        stdout: StdioCollector {
-            id: fetchAnthropicOut
-        }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchAnthropicOut.text);
-                    if (data.data) {
-                        let newModels = [];
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            let id = item.id;
-                            let m = aiModelFactory.createObject(root, {
-                                name: item.display_name || id,
-                                icon: Qt.resolvedUrl("../../../assets/aiproviders/anthropic.svg"),
-                                description: item.description || I18n.t("ai.desc_anthropic"),
-                                endpoint: "https://api.anthropic.com/v1/messages",
-                                model: id,
-                                provider: "anthropic",
-                                requires_key: true,
-                                key_id: "ANTHROPIC_API_KEY"
-                            });
-                            if (m) newModels.push(m);
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("Anthropic fetch error: " + e);
-                }
-            }
-            checkFetchCompletion();
-        }
-    }
-
-    Process {
-        id: fetchProcessOllama
-        stdout: StdioCollector {
-            id: fetchOllamaOut
-        }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchOllamaOut.text);
-                    if (data.models) {
-                        let newModels = [];
-                        for (let i = 0; i < data.models.length; i++) {
-                            let item = data.models[i];
-                            let m = aiModelFactory.createObject(root, {
-                                name: item.name,
-                                icon: Qt.resolvedUrl("../../../assets/aiproviders/ollama.svg"),
-                                description: I18n.t("ai.desc_ollama"),
-                                endpoint: "http://127.0.0.1:11434",
-                                model: item.name,
-                                provider: "ollama",
-                                requires_key: false
-                            });
-                            if (m) newModels.push(m);
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) {
-                    console.log("Ollama fetch error: " + e);
-                }
-            }
-            checkFetchCompletion();
-        }
-    }
-
-    // axless.core: DeepSeek. Its API is OpenAI-compatible - same request
-    // shape, same tool_calls, same streaming - so it runs on openaiStrategy
-    // and only needs its own endpoint, key and model list. The list is
-    // hardcoded rather than fetched so the models are offered as soon as a
-    // key is saved, without depending on a network round-trip at startup.
-    Process {
-        id: fetchProcessDeepSeek
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                let newModels = [];
-                let models = [
-                    { name: "DeepSeek Chat", model: "deepseek-chat",
-                      description: "DeepSeek V3 - general chat and tool use" },
-                    { name: "DeepSeek Reasoner", model: "deepseek-reasoner",
-                      description: "DeepSeek R1 - step-by-step reasoning" }
-                ];
-                for (let i = 0; i < models.length; i++) {
-                    let item = models[i];
-                    let m = aiModelFactory.createObject(root, {
-                        name: item.name,
-                        icon: Qt.resolvedUrl("../../../assets/aiproviders/deepseek.svg"),
-                        description: item.description,
-                        endpoint: "https://api.deepseek.com",
-                        model: item.model,
-                        provider: "deepseek",
-                        requires_key: true,
-                        key_id: "DEEPSEEK_API_KEY"
-                    });
-                    if (m) newModels.push(m);
-                }
-                mergeModels(newModels);
-            }
-            checkFetchCompletion();
-        }
-    }
-
-    Process {
-        id: fetchProcessMiniMax
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                let newModels = [];
-                
-                let models = [
-                    { name: "MiniMax-M2.7", model: "MiniMax-M2.7", description: "Latest model with recursive self-improvement, SOTA coding capabilities", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2.7-highspeed", model: "MiniMax-M2.7-highspeed", description: "Same performance as M2.7, faster inference (~100 tps)", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2.5", model: "MiniMax-M2.5", description: "Peak performance, ultimate value, master the complex", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2.5-highspeed", model: "MiniMax-M2.5-highspeed", description: "Same performance as M2.5, faster inference (~100 tps)", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2.1", model: "MiniMax-M2.1", description: "Powerful multi-language programming, enhanced reasoning", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2.1-highspeed", model: "MiniMax-M2.1-highspeed", description: "Same performance as M2.1, faster inference (~100 tps)", endpoint: "https://api.minimax.io" },
-                    { name: "MiniMax-M2", model: "MiniMax-M2", description: "Agentic capabilities, advanced reasoning, 200k context", endpoint: "https://api.minimax.io" },
-                    { name: "M2-her", model: "M2-her", description: "Role-playing, multi-turn conversations, emotional expression", endpoint: "https://api.minimax.io" }
-                ];
-                
-                for (let i = 0; i < models.length; i++) {
-                    let item = models[i];
-                    let m = aiModelFactory.createObject(root, {
-                        name: item.name,
-                        icon: Qt.resolvedUrl("../../../assets/aiproviders/minimax.svg"),
-                        description: item.description,
-                        endpoint: item.endpoint,
-                        model: item.model,
-                        provider: "minimax",
-                        requires_key: true,
-                        key_id: "MINIMAX_API_KEY"
-                    });
-                    if (m) newModels.push(m);
-                }
-                
-                mergeModels(newModels);
-            }
-            checkFetchCompletion();
-        }
-    }
-
 
     function checkFetchCompletion() {
         pendingFetches--;
