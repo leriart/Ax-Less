@@ -204,7 +204,11 @@ Singleton {
     // offered. currentAgentId narrows the tool set to one connected agent.
     signal modeChanged()
     signal agentChanged()
-    property string currentMode: "agent"
+    // axless.core: default to chat. Small local models call a tool for
+    // almost any message when tools are advertised, even "hello"; chat mode
+    // sends no tools so they answer normally. The user flips to agent mode
+    // from the sidebar when they want the assistant to act.
+    property string currentMode: "chat"
     property string currentAgentId: ""
 
     function setMode(mode) {
@@ -562,7 +566,7 @@ Singleton {
                 + "When the user asks you to do something (open or close apps, move or focus windows, "
                 + "search the web, run a command), call the correct tool instead of describing it. "
                 + "Pass arguments as a JSON object that matches the tool schema. "
-                + "Do NOT call a tool to answer a question or for casual chat - just reply. "
+                + "Do NOT call any tool for greetings, thanks, or when the user asks what you can do - just reply in text. "
                 + "After a tool runs, read its real result and answer briefly.";
             systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + toolHint) : toolHint;
         }
