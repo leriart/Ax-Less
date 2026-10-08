@@ -150,11 +150,11 @@ action pair maps directly to a documented axctl method.
 
 ## How it runs
 
-`server.py` uses **only the Python standard library** — no `pip install`,
-no virtualenv, no systemd unit. When you click **Connect** on the
-NothingClaw profile:
+`server` is a compiled **Go** binary — the standard library only, no
+interpreter, no `pip install`, no virtualenv, no systemd unit. When you
+click **Connect** on the NothingClaw profile:
 
-1. `AgentManager` spawns `python3 server.py` as a child process with
+1. `AgentManager` spawns the `server` binary as a child process with
    `cwd` set to this directory.
 2. The HTTP client polls `GET /tools` until the bridge responds.
 3. Tool calls go through `POST /tools` with

@@ -19,7 +19,6 @@
     ]
   },
   "commands": [
-    "python3",
     "curl",
     "ollama",
     "axctl",
