@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..2e59891 100644
+index 292f58c..9fba227 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -458,7 +458,20 @@ index 292f58c..2e59891 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -877,7 +1254,12 @@ Item {
+@@ -853,7 +1230,11 @@ Item {
+ 
+                                             StyledRect {
+                                                 id: bubble
+-                                                width: Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * (isSystem ? 0.9 : 0.7))
++                                                // axless.core: fixed width. Binding the bubble width to
++                                                            // bubbleContent.implicitWidth loops against the
++                                                            // TextEdit's wrap width (markdown layout) and can
++                                                            // peg the main thread. Fixed width avoids it.
++                                                            width: chatView.width * (isSystem ? 0.9 : 0.72)
+                                                 height: bubbleContent.implicitHeight + 24
+ 
+                                                 anchors.right: isUser ? parent.right : undefined
+@@ -877,7 +1258,12 @@ Item {
  
                                                          Repeater {
                                                              model: {
@@ -472,7 +485,7 @@ index 292f58c..2e59891 100644
                                                                  let parts = [];
                                                                  let regex = /```(\w*)\n([\s\S]*?)```/g;
                                                                  let lastIndex = 0;
-@@ -918,7 +1300,7 @@ Item {
+@@ -918,7 +1304,7 @@ Item {
                                                                      TextEdit {
                                                                          width: bubbleContent.width
                                                                          text: segment.content
@@ -481,7 +494,7 @@ index 292f58c..2e59891 100644
                                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                                          font.family: Config.theme.font
                                                                          font.pixelSize: 14
-@@ -945,7 +1327,16 @@ Item {
+@@ -945,7 +1331,16 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -494,12 +507,12 @@ index 292f58c..2e59891 100644
 +                                                        // rebuilt per token. Editing still uses the full
 +                                                        // text.
 +                                                        text: messageDelegate.isStreaming
-+                                                            ? Ai.responseBuffer
++                                                            ? (Ai.responseBuffer.length > 8000 ? Ai.responseBuffer.substring(0, 8000) + "…" : Ai.responseBuffer)
 +                                                            : (messageDelegate.isEditing ? (modelData.content || "") : "")
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1344,28 @@ Item {
+@@ -953,7 +1348,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -529,7 +542,7 @@ index 292f58c..2e59891 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1381,9 @@ Item {
+@@ -969,7 +1385,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -540,7 +553,7 @@ index 292f58c..2e59891 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1391,29 @@ Item {
+@@ -977,16 +1395,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -573,7 +586,7 @@ index 292f58c..2e59891 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1466,25 @@ Item {
+@@ -1039,6 +1470,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -599,7 +612,7 @@ index 292f58c..2e59891 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1549,25 @@ Item {
+@@ -1103,6 +1553,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -625,7 +638,7 @@ index 292f58c..2e59891 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1631,120 @@ Item {
+@@ -1166,6 +1635,120 @@ Item {
                              }
                          }
  
