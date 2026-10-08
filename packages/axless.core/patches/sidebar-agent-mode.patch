@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..b2ce66a 100644
+index 292f58c..4256ad4 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -302,7 +302,7 @@ index 292f58c..b2ce66a 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -685,10 +924,31 @@ Item {
+@@ -685,9 +924,32 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -310,7 +310,8 @@ index 292f58c..b2ce66a 100644
 +                                    property bool isSystem: modelData.role === "system" || modelData.role === "function" || modelData.role === "tool"
                                      property bool isEditing: false
                                      property bool retryMode: false
- 
++                                    property bool showFull: false
++
 +                                    // axless.core: the engine no longer reassigns
 +                                    // currentChat per token, so show the live buffer
 +                                    // for the last in-flight assistant turn here.
@@ -322,8 +323,9 @@ index 292f58c..b2ce66a 100644
 +                                        // axless.core: a tool result (e.g. list_workspaces
 +                                        // JSON on one line) can be huge; laying all of it
 +                                        // out as text is what locked the shell.
-+                                        if (isSystem && txt.length > 1500)
-+                                            txt = txt.substring(0, 1500) + "\n… +" + (txt.length - 1500) + " chars";
++                                        let limit = messageDelegate.showFull ? 1500 : 350;
++                                        if (isSystem && txt.length > limit)
++                                            txt = txt.substring(0, limit) + "\n… +" + (txt.length - limit) + " chars";
 +                                        // Bound the live text too: relaying out an
 +                                        // ever-growing buffer on every token is what
 +                                        // can hang the shell if a model rambles.
@@ -331,11 +333,10 @@ index 292f58c..b2ce66a 100644
 +                                            txt = txt.substring(0, 8000) + "…";
 +                                        return txt;
 +                                    }
-+
+ 
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
- 
-@@ -877,7 +1137,12 @@ Item {
+@@ -877,7 +1139,12 @@ Item {
  
                                                          Repeater {
                                                              model: {
@@ -349,7 +350,7 @@ index 292f58c..b2ce66a 100644
                                                                  let parts = [];
                                                                  let regex = /```(\w*)\n([\s\S]*?)```/g;
                                                                  let lastIndex = 0;
-@@ -918,7 +1183,7 @@ Item {
+@@ -918,7 +1185,7 @@ Item {
                                                                      TextEdit {
                                                                          width: bubbleContent.width
                                                                          text: segment.content
@@ -358,7 +359,7 @@ index 292f58c..b2ce66a 100644
                                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                                          font.family: Config.theme.font
                                                                          font.pixelSize: 14
-@@ -945,7 +1210,16 @@ Item {
+@@ -945,7 +1212,16 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -376,16 +377,37 @@ index 292f58c..b2ce66a 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1227,7 @@ Item {
+@@ -953,7 +1229,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
 -                                                        visible: messageDelegate.isEditing
 +                                                        visible: messageDelegate.isEditing || messageDelegate.isStreaming
++                                                    }
++
++                                                    // axless.core: expand/collapse a long tool result.
++                                                    Button {
++                                                        visible: isSystem && ((modelData.content || "").length > 350)
++                                                        flat: true
++                                                        Layout.alignment: Qt.AlignLeft
++                                                        text: messageDelegate.showFull ? "Ver menos" : "Ver más"
++                                                        onClicked: messageDelegate.showFull = !messageDelegate.showFull
++                                                        background: StyledRect {
++                                                            variant: parent.hovered ? "focus" : "common"
++                                                            radius: Styling.radius(4)
++                                                        }
++                                                        contentItem: Text {
++                                                            text: parent.text
++                                                            color: Colors.overSurfaceVariant
++                                                            font.family: Config.theme.font
++                                                            font.pixelSize: 12
++                                                            horizontalAlignment: Text.AlignHCenter
++                                                            verticalAlignment: Text.AlignVCenter
++                                                        }
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1243,9 @@ Item {
+@@ -969,7 +1266,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -396,7 +418,7 @@ index 292f58c..b2ce66a 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1253,29 @@ Item {
+@@ -977,16 +1276,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -429,7 +451,7 @@ index 292f58c..b2ce66a 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1328,25 @@ Item {
+@@ -1039,6 +1351,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -455,7 +477,7 @@ index 292f58c..b2ce66a 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1411,25 @@ Item {
+@@ -1103,6 +1434,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -481,7 +503,7 @@ index 292f58c..b2ce66a 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1493,35 @@ Item {
+@@ -1166,6 +1516,35 @@ Item {
                              }
                          }
  
