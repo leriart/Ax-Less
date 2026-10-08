@@ -74,6 +74,13 @@
     },
     {
       "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/OllamaApiStrategy.qml",
+      "target": "modules/services/ai/strategies/OllamaApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "dd2eb8b27333aeec7161802407c1c7ae4b7aa167a9fda44c3b1d3a00cf1a319c"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/PerMonitorConfig.qml",
       "target": "modules/services/PerMonitorConfig.qml"
     },
