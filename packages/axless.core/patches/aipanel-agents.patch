@@ -1,8 +1,8 @@
 diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
-index c6f4df7..4baf83a 100644
+index c6f4df7..027f344 100644
 --- a/modules/widgets/config/AiPanel.qml
 +++ b/modules/widgets/config/AiPanel.qml
-@@ -37,6 +37,74 @@ Item {
+@@ -37,9 +37,77 @@ Item {
                  Layout.bottomMargin: 8
              }
  
@@ -76,4 +76,8 @@ index c6f4df7..4baf83a 100644
 +
              // Providers
              Repeater {
-                 model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax"]
+-                model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax"]
++                model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax", "deepseek"]
+                 delegate: StyledRect {
+                     required property string modelData
+                     Layout.fillWidth: true

@@ -134,6 +134,7 @@ Singleton {
         case "groq": return groqStrategy;
         case "ollama": return ollamaStrategy;
         case "minimax": return minimaxStrategy;
+        case "deepseek": return openaiStrategy; // OpenAI-compatible API
         case "custom": return openaiStrategy; // custom endpoints use OpenAI-compatible format by default
         default: return openaiStrategy;
         }
@@ -940,6 +941,14 @@ Singleton {
             fetchProcessMiniMax.running = true;
         }
 
+        // DeepSeek (OpenAI-compatible)
+        let deepseekKey = KeyStore.getKey("deepseek");
+        if (deepseekKey) {
+            pendingFetches++;
+            fetchProcessDeepSeek.command = ["bash", "-c", "echo 'done'"];
+            fetchProcessDeepSeek.running = true;
+        }
+
         if (pendingFetches === 0) {
             fetchingModels = false;
         }
@@ -1166,6 +1175,42 @@ Singleton {
                 } catch (e) {
                     console.log("Ollama fetch error: " + e);
                 }
+            }
+            checkFetchCompletion();
+        }
+    }
+
+    // axless.core: DeepSeek. Its API is OpenAI-compatible - same request
+    // shape, same tool_calls, same streaming - so it runs on openaiStrategy
+    // and only needs its own endpoint, key and model list. The list is
+    // hardcoded rather than fetched so the models are offered as soon as a
+    // key is saved, without depending on a network round-trip at startup.
+    Process {
+        id: fetchProcessDeepSeek
+        onExited: exitCode => {
+            if (exitCode === 0) {
+                let newModels = [];
+                let models = [
+                    { name: "DeepSeek Chat", model: "deepseek-chat",
+                      description: "DeepSeek V3 - general chat and tool use" },
+                    { name: "DeepSeek Reasoner", model: "deepseek-reasoner",
+                      description: "DeepSeek R1 - step-by-step reasoning" }
+                ];
+                for (let i = 0; i < models.length; i++) {
+                    let item = models[i];
+                    let m = aiModelFactory.createObject(root, {
+                        name: item.name,
+                        icon: Qt.resolvedUrl("../../../assets/aiproviders/deepseek.svg"),
+                        description: item.description,
+                        endpoint: "https://api.deepseek.com",
+                        model: item.model,
+                        provider: "deepseek",
+                        requires_key: true,
+                        key_id: "DEEPSEEK_API_KEY"
+                    });
+                    if (m) newModels.push(m);
+                }
+                mergeModels(newModels);
             }
             checkFetchCompletion();
         }
