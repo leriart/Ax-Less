@@ -207,6 +207,7 @@ Singleton {
     // axless.core: one-shot nudge for providers that return an empty
     // completion right after a tool result (DeepSeek and friends).
     property bool _nudged: false
+    property string _rawResponse: ""
     property string _nudgePrompt: ""
 
     // axless.core: chat vs agent. In chat mode no tools are advertised, so
@@ -715,6 +716,7 @@ Singleton {
 
         // Reset streaming buffer
         responseBuffer = "";
+        _rawResponse = "";
         _pendingToolCalls = [];
 
         // Add placeholder assistant message for streaming
@@ -816,6 +818,8 @@ Singleton {
         // Use SplitParser for streaming — emits onRead per line
         stdout: SplitParser {
             onRead: data => {
+                if (root._rawResponse.length < 4000)
+                    root._rawResponse += data + "\n";
                 let result = root.currentStrategy.parseStreamChunk(data);
 
                 if (result.error) {
@@ -938,7 +942,15 @@ Singleton {
                             return;
                         }
                         let newChat = Array.from(root.currentChat);
-                        newChat[newChat.length - 1].content = I18n.t("ai.no_response");
+                        if (root._rawResponse.trim() !== "") {
+                            // axless.core: surface what the endpoint actually
+                            // returned so an unrecognised shape is visible.
+                            newChat[newChat.length - 1].content =
+                                I18n.t("ai.no_response") + "\n\n" +
+                                root._rawResponse.trim().substring(0, 600);
+                        } else {
+                            newChat[newChat.length - 1].content = I18n.t("ai.no_response");
+                        }
                         root.currentChat = newChat;
                     }
                 }
