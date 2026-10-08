@@ -174,8 +174,21 @@ Singleton {
         root.stoppedByUser = true;
         if (curlProcess.running)
             curlProcess.running = false;
-        root.isLoading = false;
-        root.responseBuffer = "";
+        // onExited clears isLoading after committing the buffer, so a stop does
+        // not flash an empty bubble.
+    }
+
+    // Write the streamed text into the in-flight assistant message. Called once
+    // when the request ends, so the sidebar's model changes a single time
+    // instead of on every token.
+    function _commitStream() {
+        if (root.responseBuffer === "" || root.currentChat.length === 0)
+            return;
+        let c = Array.from(root.currentChat);
+        let last = c[c.length - 1];
+        if (last && last.role === "assistant" && !last.functionCall)
+            last.content = root.responseBuffer;
+        root.currentChat = c;
     }
     property string lastError: ""
     property string responseBuffer: ""
@@ -691,13 +704,14 @@ Singleton {
                 }
 
                 if (result.content) {
+                    // axless.core: only accumulate here. Reassigning currentChat
+                    // on every token made the sidebar's ListView reset its model
+                    // and rebuild every delegate per token - the visible flicker
+                    // - and with a long answer the O(n^2) churn made the UI
+                    // unresponsive. The sidebar reads responseBuffer for the
+                    // in-flight message and the text is committed once in
+                    // onExited. Do NOT restore the per-token assignment.
                     root.responseBuffer += result.content;
-                    // Update the last message in currentChat with accumulated text
-                    let newChat = Array.from(root.currentChat);
-                    if (newChat.length > 0) {
-                        newChat[newChat.length - 1].content = root.responseBuffer;
-                        root.currentChat = newChat;
-                    }
                 }
 
                 // axless.core: accumulate streamed tool calls. They arrive as
@@ -737,6 +751,10 @@ Singleton {
         }
 
         onExited: exitCode => {
+            // Commit first, then drop isLoading: the sidebar keys its live
+            // buffer on isLoading, so flipping it first would show one empty
+            // frame before the text lands.
+            root._commitStream();
             root.isLoading = false;
 
             if (root.stoppedByUser) {
