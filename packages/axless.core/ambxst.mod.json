@@ -156,109 +156,10 @@
     },
     {
       "type": "overlay",
-      "source": "payload/modules/services/Ai.qml",
-      "target": "modules/services/Ai.qml",
-      "replace": true,
-      "expectedSha256": "34dc9477d4eb1c88bc63044dad9e96c0c8f990fc8714763ae273166c9b8bc9f3"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/ApiStrategy.qml",
-      "target": "modules/services/ai/strategies/ApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "5b15e5ff0029b8b67520d3c951be3cae3c92b369300778a5d0fa86fea5bf787e"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/OpenAiApiStrategy.qml",
-      "target": "modules/services/ai/strategies/OpenAiApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "db06412fe5725cb6aa5926bd48c92c750f46ead26505b60fabed930bceb31abc"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/OllamaApiStrategy.qml",
-      "target": "modules/services/ai/strategies/OllamaApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "dd2eb8b27333aeec7161802407c1c7ae4b7aa167a9fda44c3b1d3a00cf1a319c"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/GeminiApiStrategy.qml",
-      "target": "modules/services/ai/strategies/GeminiApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "4ab9c1c9a3002ffd193e94eb0a7a415ccea7487462faf16083ce77e375ea788e"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/AnthropicApiStrategy.qml",
-      "target": "modules/services/ai/strategies/AnthropicApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "2097a74c991ff2d6866ee990ecf54c340319ed8c4520358929b3a19713a208e6"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/MistralApiStrategy.qml",
-      "target": "modules/services/ai/strategies/MistralApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "2e6b330213a9bf2c67a06ba88f138bfc3ad08660e8c0277cba35f7dda2d58340"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/GroqApiStrategy.qml",
-      "target": "modules/services/ai/strategies/GroqApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "88ba2c4f2911e7d302fc4f864810897d7386489a80fd6e8c4cc90fd858432604"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/services/ai/strategies/MiniMaxApiStrategy.qml",
-      "target": "modules/services/ai/strategies/MiniMaxApiStrategy.qml",
-      "replace": true,
-      "expectedSha256": "8741d3e7891846c8cd5c67c84a48cc566d9103a1d28c56b488ed10bc8f04db4d"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/sidebar/AssistantSidebar.qml",
-      "target": "modules/sidebar/AssistantSidebar.qml",
-      "replace": true,
-      "expectedSha256": "2e2f9ec6325aeac80537a797fab2d0ed1282b01e188bf94df25d1c9d25ddb04e"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/sidebar/CodeBlock.qml",
-      "target": "modules/sidebar/CodeBlock.qml",
-      "replace": true,
-      "expectedSha256": "4e92fadaba9e70095148cd7ac2563a065e21846b0f4a6313d56811115f36957d"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/sidebar/ModelSelectorPopup.qml",
-      "target": "modules/sidebar/ModelSelectorPopup.qml",
-      "replace": true,
-      "expectedSha256": "df69137aa7deacf52288244aae1a31c5c225e96146e2a30ab6a1f25b9ebe182e"
-    },
-    {
-      "type": "overlay",
-      "source": "payload/modules/widgets/config/AiPanel.qml",
-      "target": "modules/widgets/config/AiPanel.qml",
-      "replace": true,
-      "expectedSha256": "67e678486c4257bdbd3081a4045781a1e3c2816e827888d9a61308f5c6c7d87e"
-    },
-    {
-      "type": "overlay",
       "source": "payload/modules/widgets/dashboard/controls/CompositorPanel.qml",
       "target": "modules/widgets/dashboard/controls/CompositorPanel.qml",
       "replace": true,
       "expectedSha256": "04279b7983702bbbb07e993ba700dbd503437dcb038ffa2104b679d612f5b8c2"
-    },
-    {
-      "type": "patch",
-      "source": "patches/agent-platform.patch"
-    },
-    {
-      "type": "patch",
-      "source": "patches/ai-prompt.patch"
     },
     {
       "type": "patch",
