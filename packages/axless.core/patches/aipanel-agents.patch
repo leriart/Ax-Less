@@ -1,13 +1,13 @@
 diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
-index c6f4df7..6c113f9 100644
+index c6f4df7..31cc859 100644
 --- a/modules/widgets/config/AiPanel.qml
 +++ b/modules/widgets/config/AiPanel.qml
-@@ -14,6 +14,44 @@ Item {
+@@ -14,6 +14,94 @@ Item {
      readonly property int contentWidth: Math.min(width, maxContentWidth)
      readonly property real sideMargin: Math.max(0, (width - contentWidth) / 2)
  
 +    // axless.core: the bundled bridges ship with the mod, so their paths are
-+    // resolved relative to this file rather than hardcoded.
++    // resolved relative to this file.
 +    readonly property string _ncBin: Qt.resolvedUrl("../../../mcp/nothingclaw/server").toString().replace("file://", "")
 +    readonly property string _ocBin: Qt.resolvedUrl("../../../mcp/opencode/server").toString().replace("file://", "")
 +
@@ -28,6 +28,40 @@ index c6f4df7..6c113f9 100644
 +        Ai.agentManager.addConnection(p);
 +    }
 +
++    function _parseEnv(text) {
++        const env = {};
++        const t = (text || "").trim();
++        if (!t)
++            return env;
++        const parts = t.split(",");
++        for (let i = 0; i < parts.length; i++) {
++            const eq = parts[i].indexOf("=");
++            if (eq > 0)
++                env[parts[i].slice(0, eq).trim()] = parts[i].slice(eq + 1).trim();
++        }
++        return env;
++    }
++
++    function _saveNewAgent() {
++        const name = agName.text.trim();
++        if (!name)
++            return;
++        const argsText = agArgs.text.trim();
++        const args = argsText ? argsText.split(/\s+/) : [];
++        const command = agCommand.text.trim();
++        const p = AgentStore.createBlankProfile(name);
++        p.type = agType.text.trim() || (command ? "mcp-stdio" : "http-bridge");
++        p.endpoint = agEndpoint.text.trim();
++        p.toolsPath = agTools.text.trim() || "/tools";
++        p.invokePath = agInvoke.text.trim() || "/tools";
++        p.command = command;
++        p.args = args;
++        p.process = { command: command, args: args, cwd: "", env: root._parseEnv(agEnv.text) };
++        Ai.agentManager.addConnection(p);
++        agName.text = ""; agEndpoint.text = ""; agCommand.text = "";
++        agArgs.text = ""; agEnv.text = ""; agTools.text = ""; agInvoke.text = "";
++    }
++
 +    function _liveFor(id) {
 +        const conns = Ai.agentManager.connections || [];
 +        for (let i = 0; i < conns.length; i++)
@@ -44,16 +78,31 @@ index c6f4df7..6c113f9 100644
 +            Ai.agentManager.reconnectAgent(id);
 +    }
 +
++    component AgentField: TextField {
++        Layout.fillWidth: true
++        color: Colors.overSurface
++        placeholderTextColor: Colors.outline
++        font.family: Config.theme.font
++        font.pixelSize: Config.theme.fontSize - 1
++        leftPadding: 10
++        rightPadding: 10
++        topPadding: 8
++        bottomPadding: 8
++        background: StyledRect {
++            variant: "internalbg"
++            radius: Styling.radius(4)
++        }
++    }
++
      Flickable {
          anchors.fill: parent
          contentHeight: contentColumn.implicitHeight + 40
-@@ -37,9 +75,136 @@ Item {
+@@ -37,9 +125,173 @@ Item {
                  Layout.bottomMargin: 8
              }
  
-+            // axless.core: agent profiles. The two bundled bridges can be
-+            // created here; each profile can be connected, disconnected or
-+            // removed. Connected agents' tools are offered in agent mode.
++            // axless.core: agent profiles - the two bundled bridges, the live
++            // list with connect/disconnect, and a form for any other agent.
 +            ColumnLayout {
 +                Layout.fillWidth: true
 +                spacing: 8
@@ -174,6 +223,44 @@ index c6f4df7..6c113f9 100644
 +                                }
 +                            }
 +                        }
++                    }
++                }
++
++                Text {
++                    Layout.topMargin: 6
++                    text: "Add another agent"
++                    font.family: Config.theme.font
++                    font.pixelSize: 16
++                    font.weight: Font.Medium
++                    color: Colors.overSurface
++                }
++
++                AgentField { id: agName; placeholderText: "Name" }
++                AgentField { id: agType; placeholderText: "Type: http-bridge | mcp-stdio | command (auto if blank)" }
++                AgentField { id: agEndpoint; placeholderText: "Endpoint (http-bridge), e.g. http://127.0.0.1:9000" }
++                AgentField { id: agCommand; placeholderText: "Command (mcp-stdio / command), e.g. npx" }
++                AgentField { id: agArgs; placeholderText: "Args, space separated" }
++                AgentField { id: agTools; placeholderText: "Tools path (default /tools)" }
++                AgentField { id: agInvoke; placeholderText: "Invoke path (default /tools)" }
++                AgentField { id: agEnv; placeholderText: "Env, KEY=VAL,KEY2=VAL2" }
++
++                StyledRect {
++                    variant: "primary"
++                    implicitWidth: saveTxt.implicitWidth + 28
++                    implicitHeight: 34
++                    radius: Styling.radius(4)
++                    Text {
++                        id: saveTxt
++                        anchors.centerIn: parent
++                        text: "Add agent"
++                        font.family: Config.theme.font
++                        font.pixelSize: Config.theme.fontSize - 1
++                        color: Styling.srItem("primary")
++                    }
++                    MouseArea {
++                        anchors.fill: parent
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root._saveNewAgent()
 +                    }
 +                }
 +            }

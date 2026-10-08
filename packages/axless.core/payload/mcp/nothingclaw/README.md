@@ -32,8 +32,10 @@ see every thought, tool call and observation. `stopped_reason` distinguishes
 GET /agent/models   ->  { "models": ["llama3.2:latest", "gemma4:e2b"] }
 ```
 
-The backend is Ollama's `/api/chat` - the same host the bridge already
-queries for capability detection - so nothing new has to be installed.
+The backend is any OpenAI-compatible chat endpoint
+(`NOTHINGCLAW_API_BASE`, default the local Ollama `/v1`), so the loop drives a
+local model or a cloud API with no change - set the base, the key and the
+model and it runs.
 
 ### Three things that make it work on small models
 
@@ -312,7 +314,8 @@ Environment variables honored by the bridge:
 | `NOTHINGCLAW_HOST` | `127.0.0.1` | Bind address |
 | `NOTHINGCLAW_PORT` | `8000` | Bind port |
 | `NOTHINGCLAW_AXCTL` | `/usr/local/bin/axctl` | Path to the axctl binary |
-| `NOTHINGCLAW_OLLAMA` | `http://127.0.0.1:11434` | Ollama host used by the agent loop |
+| `NOTHINGCLAW_API_BASE` | `http://127.0.0.1:11434/v1` | OpenAI-compatible base for the agent loop. Point it at any provider (Ollama, LM Studio, vLLM, a cloud API) |
+| `NOTHINGCLAW_API_KEY` | _(empty)_ | Bearer token sent to `NOTHINGCLAW_API_BASE` |
 | `NOTHINGCLAW_MODEL` | `llama3.2:latest` | Default model for `POST /agent` |
 | `NOTHINGCLAW_FS_ROOT` | `~` | Root the filesystem tools are confined to |
 | `NOTHINGCLAW_SEARXNG_URL` | _(empty)_ | Optional SearXNG instance (e.g. `http://localhost:8888`). When set, `web_search` queries this JSON endpoint instead of falling back to DuckDuckGo HTML. |
