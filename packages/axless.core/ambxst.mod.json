@@ -46,6 +46,20 @@
   "operations": [
     {
       "type": "overlay",
+      "source": "payload/modules/services/Ai.qml",
+      "target": "modules/services/Ai.qml",
+      "replace": true,
+      "expectedSha256": "34dc9477d4eb1c88bc63044dad9e96c0c8f990fc8714763ae273166c9b8bc9f3"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/OpenAiApiStrategy.qml",
+      "target": "modules/services/ai/strategies/OpenAiApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "db06412fe5725cb6aa5926bd48c92c750f46ead26505b60fabed930bceb31abc"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/PerMonitorConfig.qml",
       "target": "modules/services/PerMonitorConfig.qml"
     },

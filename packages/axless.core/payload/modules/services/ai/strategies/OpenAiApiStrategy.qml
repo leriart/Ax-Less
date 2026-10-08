@@ -1,5 +1,162 @@
 import QtQuick
 
-OpenAiCompatibleStrategy {
-    defaultBaseEndpoint: "https://api.openai.com"
+ApiStrategy {
+    supportsStreaming: true
+
+    function getEndpoint(modelObj, apiKey) {
+        let base = modelObj.endpoint || "https://api.openai.com";
+        // Ensure we don't double-append /v1
+        if (base.endsWith("/v1"))
+            return base + "/chat/completions";
+        return base + "/v1/chat/completions";
+    }
+
+    function getHeaders(apiKey) {
+        return [
+            "Content-Type: application/json",
+            "Authorization: Bearer " + apiKey
+        ];
+    }
+
+    function _formatMessages(messages) {
+        let formatted = [];
+        for (let i = 0; i < messages.length; i++) {
+            let msg = messages[i];
+
+            // axless.core: tool results. OpenAI's current API wants
+            // {role:"tool", tool_call_id, content}; the legacy {role:"function",
+            // name} shape is rejected by every modern provider. Ai.qml stores
+            // the id alongside the result so this can pair them up.
+            if (msg.role === "tool") {
+                let toolMsg = { role: "tool", content: msg.content || "" };
+                if (msg.toolCallId)
+                    toolMsg.tool_call_id = msg.toolCallId;
+                formatted.push(toolMsg);
+                continue;
+            }
+
+            // axless.core: an assistant turn that asked for a tool. The call
+            // has to be echoed back as `tool_calls` - the original code dropped
+            // it entirely, so the model saw a conversation where its own request
+            // had vanished and answered as if it had never been made.
+            if (msg.functionCall) {
+                let call = {
+                    id: msg.toolCallId || ("call_" + i),
+                    type: "function",
+                    function: {
+                        name: msg.functionCall.name,
+                        arguments: JSON.stringify(msg.functionCall.args || {})
+                    }
+                };
+                formatted.push({
+                    role: "assistant",
+                    content: msg.content || null,
+                    tool_calls: [call]
+                });
+                continue;
+            }
+
+            if (msg.attachments && msg.attachments.length > 0) {
+                let contentParts = [{type: "text", text: msg.content}];
+                for (let j = 0; j < msg.attachments.length; j++) {
+                    let att = msg.attachments[j];
+                    if (att.type === "image") {
+                        contentParts.push({
+                            type: "image_url",
+                            image_url: { url: "data:" + att.mimeType + ";base64," + att.base64 }
+                        });
+                    }
+                }
+                formatted.push({ role: msg.role, content: contentParts });
+            } else {
+                formatted.push({ role: msg.role, content: msg.content });
+            }
+        }
+        return formatted;
+    }
+    function getBody(messages, model, tools) {
+        let body = {
+            model: model.model,
+            messages: _formatMessages(messages),
+            temperature: 0.7
+        };
+        if (tools && tools.length > 0) {
+            body.tools = tools.map(t => ({
+                type: "function",
+                function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters
+                }
+            }));
+        }
+        return body;
+    }
+
+    function getStreamBody(messages, model, tools) {
+        let body = getBody(messages, model, tools);
+        body.stream = true;
+        return body;
+    }
+
+    function parseResponse(response) {
+        try {
+            let json = JSON.parse(response);
+            if (json.choices && json.choices.length > 0) {
+                let msg = json.choices[0].message;
+                if (msg.tool_calls && msg.tool_calls.length > 0) {
+                    let tc = msg.tool_calls[0];
+                    return {
+                        content: msg.content || "",
+                        functionCall: {
+                            name: tc.function.name,
+                            args: JSON.parse(tc.function.arguments)
+                        }
+                    };
+                }
+                return { content: msg.content };
+            }
+            if (json.error)
+                return { content: "API Error: " + json.error.message };
+            return { content: "Error: No content in response." };
+        } catch (e) {
+            return { content: "Error parsing response: " + e.message };
+        }
+    }
+
+    function parseStreamChunk(line) {
+        let trimmed = line.trim();
+        if (trimmed === "" || trimmed.startsWith("event:"))
+            return { content: "", done: false, error: null };
+
+        if (trimmed === "data: [DONE]")
+            return { content: "", done: true, error: null };
+
+        if (!trimmed.startsWith("data: "))
+            return { content: "", done: false, error: null };
+
+        try {
+            let json = JSON.parse(trimmed.substring(6));
+            if (json.choices && json.choices.length > 0) {
+                let delta = json.choices[0].delta;
+                if (delta && delta.content)
+                    return { content: delta.content, done: false, error: null };
+
+                // Check for tool calls in stream
+                if (delta && delta.tool_calls) {
+                    // Accumulate tool call data — handled by Ai.qml
+                    return { content: "", done: false, error: null, toolCallDelta: delta.tool_calls };
+                }
+
+                // finish_reason check
+                if (json.choices[0].finish_reason)
+                    return { content: "", done: true, error: null };
+            }
+            if (json.error)
+                return { content: "", done: false, error: json.error.message };
+            return { content: "", done: false, error: null };
+        } catch (e) {
+            return { content: "", done: false, error: null };
+        }
+    }
 }

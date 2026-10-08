@@ -384,6 +384,75 @@ class _Server(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
+def _pid_holding_port(port):
+    # Find the pid listening on a TCP port, using /proc only.
+    import glob
+    inode = None
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path) as fh:
+                next(fh)
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) < 10 or parts[3] != "0A":  # 0A = LISTEN
+                        continue
+                    try:
+                        if int(parts[1].rsplit(":", 1)[1], 16) == port:
+                            inode = parts[9]
+                            break
+                    except (ValueError, IndexError):
+                        continue
+        except OSError:
+            continue
+        if inode:
+            break
+    if not inode:
+        return None
+    target = "socket:[" + inode + "]"
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            if os.readlink(fd) == target:
+                return int(fd.split("/")[2])
+        except OSError:
+            continue
+    return None
+
+
+def _clear_orphan():
+    # Free the port when it is held by an unresponsive bridge from a previous
+    # shell. Only ever kills an opencode bridge, so a different service on the
+    # same port is left alone and reported instead.
+    import time
+    pid = _pid_holding_port(LISTEN_PORT)
+    if pid is None or pid == os.getpid():
+        return False
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as fh:
+            cmdline = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    if "opencode" not in cmdline:
+        sys.stderr.write(
+            "[opencode-bridge] port %d is held by pid %d, not touching it\n"
+            % (LISTEN_PORT, pid))
+        return False
+    sys.stderr.write("[opencode-bridge] clearing orphaned instance pid %d\n" % pid)
+    try:
+        os.kill(pid, 15)
+    except OSError:
+        return False
+    for _ in range(20):
+        time.sleep(0.1)
+        if not _pid_holding_port(LISTEN_PORT):
+            return True
+    try:
+        os.kill(pid, 9)
+    except OSError:
+        pass
+    time.sleep(0.2)
+    return not _pid_holding_port(LISTEN_PORT)
+
+
 def main():
     if _bridge_already_running():
         sys.stderr.write(
@@ -394,13 +463,23 @@ def main():
     try:
         server = _Server((LISTEN_HOST, LISTEN_PORT), Handler)
     except OSError as exc:
-        # Lost the race against another instance starting at the same moment.
-        if exc.errno in (errno.EADDRINUSE, errno.EACCES) and _bridge_already_running():
-            sys.stderr.write(
-                "[opencode-bridge] another instance won the race on %s:%d\n"
-                % (LISTEN_HOST, LISTEN_PORT))
-            return
-        raise
+        # Lost the race against another instance starting at the same moment,
+        # or the port is held by a bridge left behind by the previous shell.
+        if exc.errno in (errno.EADDRINUSE, errno.EACCES):
+            if _bridge_already_running():
+                sys.stderr.write(
+                    "[opencode-bridge] another instance won the race on %s:%d\n"
+                    % (LISTEN_HOST, LISTEN_PORT))
+                return
+            if _clear_orphan():
+                try:
+                    server = _Server((LISTEN_HOST, LISTEN_PORT), Handler)
+                except OSError:
+                    raise
+            else:
+                raise
+        else:
+            raise
 
     sys.stderr.write(
         "[opencode-bridge] %d tools -> %s on http://%s:%d\n"

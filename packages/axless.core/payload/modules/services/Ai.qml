@@ -67,13 +67,6 @@ Singleton {
             isRestored = true;
     }
 
-    // ── State restore ──
-    // The daemon owns writes to states.json, so StateService.initialized
-    // flips asynchronously and is usually still false while this
-    // singleton is being constructed. Waiting for initializedChanged
-    // (instead of the legacy one-shot stateLoaded) is what makes the
-    // saved model survive a cold start. _restored keeps both the signal
-    // and the completion handler from running restoreModel twice.
     property bool _restored: false
     Connections {
         target: StateService
@@ -81,7 +74,6 @@ Singleton {
             root._restore();
         }
     }
-
     Connections {
         target: KeyStore
         function onKeysChanged() {
@@ -89,13 +81,7 @@ Singleton {
         }
     }
 
-    // ── Lazy init ──
-    // Fetching the model list, reading the chat directory and creating
-    // a chat are all deferred until the AI sidebar is opened for the
-    // first time. Doing this in Component.onCompleted costs every
-    // Ambxst start several curl round trips even when the sidebar is
-    // never used.
-    property bool _aiInitialized: false
+    Component.onCompleted: root._restore()
 
     function _restore() {
         if (StateService.initialized && !root._restored) {
@@ -104,32 +90,25 @@ Singleton {
         }
     }
 
+    // Lazy init: trigger fetchAvailableModels/reloadHistory/createNewChat
+    // when AI sidebar is opened for the first time.
+    property bool _aiInitialized: false
     function _ensureInit() {
-        if (_aiInitialized)
-            return;
+        if (_aiInitialized) return;
         _aiInitialized = true;
-        if (StateService.initialized && !root._restored) {
-            root._restored = true;
-            restoreModel();
-        }
         if (models.length === 0)
             fetchAvailableModels();
         reloadHistory();
         createNewChat();
     }
 
+    // Trigger lazy init when AI sidebar is opened
     Connections {
         target: GlobalStates
         function onAssistantVisibleChanged() {
             if (GlobalStates.assistantVisible)
                 root._ensureInit();
         }
-    }
-
-    Component.onCompleted: root._restore()
-
-    Component.onDestruction: {
-        fetchProcessDeepSeek.running = false;
     }
 
     // ============================================
@@ -143,34 +122,8 @@ Singleton {
     property GroqApiStrategy groqStrategy: GroqApiStrategy {}
     property OllamaApiStrategy ollamaStrategy: OllamaApiStrategy {}
     property MiniMaxApiStrategy minimaxStrategy: MiniMaxApiStrategy {}
-    property DeepSeekApiStrategy deepseekStrategy: DeepSeekApiStrategy {}
-
-    // Capability probe — queries the model itself for its features
-    // (Ollama's /api/show returns `capabilities` + `parameter_size` +
-    // `context_length`; OpenAI-compatible /v1/models/{model} confirms
-    // existence). The result is cached and consumed by every strategy
-    // so we don't have to hardcode model-family rules. See
-    // ModelCapabilityProbe.qml for the full design.
-    property ModelCapabilityProbe capabilityProbe: ModelCapabilityProbe {}
-
-    // Currently-resolved capability record for the active model.
-    // Refreshed on model switch and after each request emits a
-    // recordOutcome() update. Null while the first probe is in
-    // flight — callers should fall back to the strategy heuristic.
-    property var activeCapabilities: null
 
     property ApiStrategy currentStrategy: openaiStrategy
-
-    Connections {
-        target: root.capabilityProbe
-        function onCapabilityUpdated(modelObj, caps) {
-            if (!currentModel) return;
-            if (modelObj && modelObj.endpoint === currentModel.endpoint
-                    && modelObj.model === currentModel.model) {
-                root.activeCapabilities = caps;
-            }
-        }
-    }
 
     function getStrategyForProvider(providerName) {
         switch (providerName) {
@@ -181,164 +134,9 @@ Singleton {
         case "groq": return groqStrategy;
         case "ollama": return ollamaStrategy;
         case "minimax": return minimaxStrategy;
-        case "deepseek": return deepseekStrategy;
         case "custom": return openaiStrategy; // custom endpoints use OpenAI-compatible format by default
         default: return openaiStrategy;
         }
-    }
-
-    // ============================================
-    // OLLAMA LIFECYCLE
-    // ============================================
-
-    property string ollamaStatus: "unknown"
-    property string ollamaLastError: ""
-    property bool _ollamaFetchPending: false
-    property bool _ollamaChatPending: false
-    // ── Nudge budget ──
-    // How many times we'll re-prompt the model after it returns an
-    // empty completion following a tool result. The default 3 covers
-    // the common DeepSeek / Mistral pattern where the model returns
-    // finish_reason=stop with no content on the first post-tool turn
-    // (their chain trigger), and a short textual nudge ("continue,
-    // call the next tool") gets it back on track. Tiny local models
-    // (granite-2b, qwen-1.5) sometimes burn all 3 nudges without
-    // progressing — after the budget is exhausted we surface a hint
-    // to the user instead of looping forever.
-    //
-    // Sourced from Config.ai.nudgeBudget so power users can tune it
-    // per model — DeepSeek-R1 with tool_choice:"required" may only
-    // need 1 nudge while a finicky local Ollama model may need 5.
-    // We fall back to 3 when the config isn't loaded yet.
-    readonly property int _nudgeBudget:
-        (Config && Config.ai && Config.ai.nudgeBudget > 0)
-            ? Config.ai.nudgeBudget : 3
-    property int _nudgeCount: 0
-
-    // axless.core: hard cap on model round-trips for one user message.
-    //
-    // _maxToolCallsPerTurn limits a single tool *by name*, so a loop that
-    // alternates between tools (list_windows -> list_workspaces ->
-    // list_monitors -> ...) never reaches it and can run until the provider
-    // kills the stream. This counts every request made while serving one user
-    // message, whichever code path re-entered makeRequest, and force-finishes
-    // the turn with an explanation instead of hanging.
-    property int _turnSteps: 0
-    readonly property int _maxTurnSteps: 14
-
-    // Reasoning models that are looping emit reasoning_content forever while
-    // the visible answer stays empty. That is data, so the inactivity
-    // watchdog never fires. Once this much reasoning has accumulated with no
-    // answer, the stream is treated as runaway.
-    readonly property int _runawayReasoningChars: 120000
-
-    // The other shape the runaway takes, and the one DeepSeek flash actually
-    // produces: a single request whose stream never finishes. It is not a tool
-    // loop - makeRequest is entered once - so neither the step budget nor the
-    // reasoning guard above can see it. One answer does not need tens of
-    // thousands of characters, so once this much has arrived without the
-    // provider reporting completion, the stream is runaway.
-    readonly property int _runawayStreamChars: 40000
-
-    // A third shape, and the one DeepSeek flash hits most often: it starts a
-    // tool call whose `arguments` string keeps growing and never terminates.
-    // pendingToolCall is set from the first delta, so the guard above skips it
-    // exactly when it matters, and the wall-clock deadline is the only thing
-    // left to stop it. Arguments are JSON - nothing legitimate needs kilobytes.
-    readonly property int _runawayToolArgsChars: 6000
-
-    // axless.core: silent-retry budget for a stalled stream. The aborted
-    // attempt's partial text is discarded, so the retry replaces it rather
-    // than landing after a fragment.
-    property int _turnStallRetries: 0
-    property bool _runawayAbortReported: false
-    // Saved state of the last successful move_windows call so the user
-    // can say "regresalo" / "undo" / "return" to reverse it. Recorded
-    // from the natural tool flow (NOT from the bypass) so the chat
-    // history remains consistent.
-    property var _lastMove: null
-    readonly property string ollamaEnsureScript: Qt.resolvedUrl(
-        "../../scripts/ollama-ensure.sh").toString().replace("file://", "")
-
-    function ensureOllamaRunning() {
-        if (root.ollamaStatus === "starting") return;
-        root._ollamaFetchPending = false;
-        root._ollamaChatPending = false;
-        root.ollamaStatus = "starting";
-        root.ollamaLastError = "";
-        ollamaEnsureProcess.running = true;
-    }
-
-    // Pre-warm a model into Ollama's KV cache. Sends a tiny
-    // completion request that:
-    //   • Loads the model weights into RAM (if not already loaded)
-    //     — Ollama lazy-loads and the first real chat request would
-    //     otherwise pay 5-30s of model-load latency.
-    //   • Establishes the keep_alive window so the model stays hot
-    //     for `keepAliveMinutes` after the last activity. Without
-    //     this Ollama unloads the model after 5 min of idle, and
-    //     the next chat request eats the same load penalty.
-    //   • Returns immediately if the model is already loaded —
-    //     Ollama returns the cached response in <50ms.
-    //
-    // Safe to call repeatedly. Errors are silently ignored — we
-    // don't want a failed pre-warm to surface a chat error.
-    function prewarmOllamaModel(modelObj, keepAliveMinutes) {
-        if (!modelObj || modelObj.provider !== "ollama") return;
-        let endpoint = (modelObj.endpoint || "http://localhost:11434").trim();
-        endpoint = endpoint.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
-        let url = endpoint + "/api/generate";
-        let minutes = Math.max(1, Math.min(1440, keepAliveMinutes || 30));
-        let payload = {
-            model: modelObj.model,
-            prompt: "hi",
-            stream: false,
-            keep_alive: minutes + "m"
-        };
-        try {
-            let req = new XMLHttpRequest();
-            req.open("POST", url, true);
-            req.setRequestHeader("Content-Type", "application/json");
-            req.timeout = 3000;  // hard cap so a slow load never blocks startup
-            req.onreadystatechange = function() {
-                if (req.readyState !== XMLHttpRequest.DONE) return;
-                if (req.status >= 200 && req.status < 300) {
-                    console.log("[Ai.qml] prewarmed " + modelObj.model
-                        + " (keep_alive=" + minutes + "m)");
-                }
-            };
-            req.send(JSON.stringify(payload));
-        } catch (e) { /* silent — pre-warm is best-effort */ }
-    }
-
-    function _ensureOllamaThenFetch() {
-        if (root.ollamaStatus === "starting") {
-            root._ollamaFetchPending = true;
-            return;
-        }
-        root._ollamaFetchPending = true;
-        root.ollamaStatus = "starting";
-        root.ollamaLastError = "";
-        ollamaEnsureProcess.running = true;
-    }
-
-    function _ensureOllamaThenChat() {
-        if (root.ollamaStatus === "starting") {
-            root._ollamaChatPending = true;
-            return;
-        }
-        root._ollamaChatPending = true;
-        root.ollamaStatus = "starting";
-        root.ollamaLastError = "";
-        ollamaEnsureProcess.running = true;
-    }
-
-    function restartOllama() {
-        root._ollamaFetchPending = false;
-        root._ollamaChatPending = false;
-        root.ollamaStatus = "starting";
-        root.ollamaLastError = "";
-        ollamaRestartProcess.running = true;
     }
 
     function updateStrategy() {
@@ -346,44 +144,6 @@ Singleton {
             currentStrategy = getStrategyForProvider(currentModel.provider);
         else
             currentStrategy = openaiStrategy;
-        // Refresh the cached capability record on every model switch.
-        // cachedFor() returns null while the probe is in flight; the
-        // strategy's _caps falls back to the family heuristic for THIS
-        // request and the cache will be ready before the next one.
-        if (currentModel) {
-            let cached = root.capabilityProbe.cachedFor(currentModel);
-            if (cached) {
-                root.activeCapabilities = cached;
-            } else {
-                root.activeCapabilities = null;
-                let apiKey = root.getApiKey(currentModel);
-                root.capabilityProbe.probe(currentModel, apiKey);
-            }
-            // Pre-warm Ollama models — loads the weights into RAM and
-            // extends keep_alive so the next user message isn't
-            // delayed by 5-30s of model-load time. Fire-and-forget.
-            if (currentModel.provider === "ollama") {
-                prewarmOllamaModel(currentModel, 30);
-            }
-        }
-    }
-
-    // Helper used by _onToolFinished / makeRequest — pulls the
-    // request API key from KeyStore for the active model so the
-    // capability probe can auth against cloud endpoints. Wrapped
-    // here so it doesn't have to be inlined in multiple places.
-    function _requestApiKey() {
-        if (!currentModel) return "";
-        return getApiKey(currentModel);
-    }
-
-    // ============================================
-    // AGENTS
-    // ============================================
-
-    property AgentToolRegistry agentToolRegistry: AgentToolRegistry {}
-    property AgentManager agentManager: AgentManager {
-        toolRegistry: root.agentToolRegistry
     }
 
     // ============================================
@@ -393,268 +153,15 @@ Singleton {
     property bool isLoading: false
     property string lastError: ""
     property string responseBuffer: ""
-    // Streaming content exposed directly to the sidebar delegate.
-    // The delegate binds to this property instead of modelData.content
-    // for the last assistant message, so we never need to reassign
-    // currentChat during streaming — avoiding full ListView re-layout
-    // on every token.  Updated at streamThrottleMs rate.
-    property string streamingContent: ""
-    // Accumulated tool-call delta from streaming responses.
-    // OpenAI-compatible APIs stream tool calls in chunks (each delta
-    // carries a partial `function.arguments` string). We merge them
-    // here so that, when curl finishes, we can attach a complete
-    // functionCall to the assistant message — without this the agent
-    // tool path silently disappears and the chat freezes on a half-
-    // streamed response (the AI's preface text is shown but no tool
-    // card appears, so the user can't approve/reject and any further
-    // input stacks on top of a stuck conversation).
-    property var pendingToolCall: null
-    // Tracks the tool_call_id of the LAST assistant message that
-    // proposed a tool call. Both the streaming toolCallId and the
-    // post-stream functionCall.tool_call_id are set from the same
-    // primary.id, but the AI can stream chunks with different `id`
-    // fields across deltas, and some providers (DeepSeek) reassign
-    // the id on the second-to-last delta. The cleanest fix is to
-    // remember the authoritative id once the tool is approved and
-    // force the subsequent tool result to use that exact id — that
-    // way the assistant's tool_calls[].id and the tool's tool_call_id
-    // are guaranteed to match in the outgoing payload, no matter how
-    // non-deterministic the provider's id assignment was.
-    property string lastToolCallId: ""
-    // Reasoning content accumulated during streaming. Populated by
-    // the strategy's parseStreamChunk (DeepSeek R1, OpenAI o-series
-    // emit `reasoning_content`; qwen3 / gemma thinking mode emit
-    // inline-think tags that the strategy strips to a separate
-    // channel). Persisted onto the final assistant message so the
-    // sidebar can render a collapsible "Show thinking" card.
-    property string reasoningBuffer: ""
-    // Short human-readable description of what is happening right
-    // now ("streaming…", "running tool…", "awaiting tool approval…").
-    // Drives the status indicator in the sidebar header.
-    property string streamingStatus: ""
-    // Wall-clock start of the current in-flight chat request. Set to
-    // Date.now() in makeRequest before firing curlProcess, reset to 0
-    // on every terminal path (curlProcess.onExited, watchdog, deadline).
-    // The wall-clock deadline in curlProcess.stdout.onRead uses this
-    // to detect streams that trickle bytes and so never trip curl's
-    // --max-time (inactivity) watchdog.
-    property int requestStartMs: 0
 
-    // Throttle for streaming UI updates. Instead of reassigning
-    // `currentChat` (which forces the sidebar ListView to re-layout
-    // every delegate), we copy the accumulated token buffer into
-    // `streamingContent` at most every `streamThrottleMs` ms.
-    // The sidebar delegate binds directly to `streamingContent` for
-    // the last streaming message — only that one TextEdit re-renders,
-    // no ListView re-layout, no Markdown re-split on other messages.
-    property int streamThrottleMs: 100
-    property int _streamLastModelUpdate: 0
-    property Timer _streamUpdateTimer: Timer {
-        interval: root.streamThrottleMs
-        repeat: false
-        onTriggered: root._flushStreamUpdate()
-    }
-
-    // Safety flags to prevent onExited handlers from overwriting
-    // state after the user called stopGeneration(). When true,
-    // curlProcess.onExited and commandExecutionProc.onExited must
-    // clean up silently — no message overwrites, no makeRequest.
-    property bool _killedByUser: false
-
-    // Re-entrancy guard for makeRequest. Set true while a curl is
-    // actively streaming; cleared in curlProcess.onExited. A second
-    // makeRequest call (e.g. from a tool-result follow-up that fires
-    // while the previous response is still streaming) sets
-    // `requestQueued` instead of spawning a second curl. After the
-    // in-flight request finishes we re-run makeRequest once to
-    // drain the queue — preventing both parallel curls and lost
-    // follow-up requests.
-    property bool requestInFlight: false
-    property bool requestQueued: false
-
-    // Watchdog: if `requestInFlight` stays true longer than the
-    // configured timeout (default 120s, see Config.ai.requestTimeoutSeconds),
-    // something is stuck — the curl onExited didn't fire or threw
-    // before clearing the flag. Auto-reset so the sidebar isn't
-    // permanently frozen. Also runs the queued request if any.
-    // Without this watchdog a single missed onExited would hang the
-    // AI pipeline forever.
-    //
-    // _pendingToolChoice / _currentToolChoice — carry the tool_choice
-    // override requested by the caller through the re-entrancy guard
-    // and into the curl body. Set in makeRequest, consumed by
-    // getStreamBody. Cleared on every terminal path so the next
-    // default-mode request isn't accidentally pinned to "required".
-    property string _pendingToolChoice: ""
-    property string _currentToolChoice: ""
-    // Parallel tool counter. The OpenAI spec allows a model to
-    // emit multiple tool_calls in one assistant turn; we dispatch
-    // them concurrently and only fire makeRequest when ALL of them
-    // have completed. Decremented in _onToolFinishedParallel when
-    // a parallel result lands.
-    property int _parallelToolPending: 0
-    //
-    // Mirrors Odysseus's two-layer timeout design:
-    //   - Inactivity: curl --max-time = requestTimeoutSeconds (kills
-    //     wedged/silent endpoints that stop sending bytes).
-    //   - Wall-clock deadline: max(timeout * 4, 1200) (catches the
-    //     rare streams that trickle bytes forever and so never trip
-    //     the inactivity timeout). For the default 120s this is
-    //     480s, but capped to 1200s on the lower end to cover
-    //     multi-round tool chains on slower hardware.
-    //
-    // The previous 90s default was too tight for small local
-    // Ollama models (qwen2.5:3b on CPU can take 60-90s for a
-    // single chat response with tools, and the requestWatchdog
-    // would fire just as the model finished streaming).
-    //
-    // Per-tier multiplier on top of the configured inactivity
-    // timeout. Small / tiny CPU models need more time per token
-    // because they share the limited RAM with the OS; large cloud
-    // models are fast enough that the configured timeout is
-    // generous. Multiplier is applied on top of the configured
-    // base — users who set 60s on a fast cloud model aren't forced
-    // into 240s just because they sometimes use a small Ollama
-    // model.
-    readonly property real _tierTimeoutMultiplier: {
-        // Try to detect the active model. When no model is selected
-        // yet (boot time, model-switch), return 1.0 — the configured
-        // base applies.
-        if (!currentModel) return 1.0;
-        // Use the existing capability probe result when available;
-        // fall back to a quick size estimate from the model name.
-        let p = (capabilityProbe && capabilityProbe.cachedFor(currentModel))
-            || null;
-        if (p && p.parameterSize) {
-            let sizeStr = String(p.parameterSize).toUpperCase();
-            let m = sizeStr.match(/^(\d+(?:\.\d+)?)\s*([BMK]?)$/);
-            if (m) {
-                let n = parseFloat(m[1]);
-                let unit = m[2];
-                let bn = unit === "M" ? n / 1000
-                    : unit === "K" ? n / 1000000 : n;
-                if (bn > 0 && bn <= 2.0) return 2.5;
-                if (bn > 0 && bn <= 8.0) return 1.6;
-                if (bn > 0 && bn <= 32.0) return 1.1;
-                return 1.0;
-            }
-        }
-        // Substring fallback when no probe data yet (e.g. cloud
-        // model names that don't have parameter sizes).
-        let n = (currentModel.model || "").toLowerCase();
-        if (n.indexOf("mini") >= 0 || n.indexOf("haiku") >= 0
-                || n.indexOf("nano") >= 0 || n.indexOf(":0.") >= 0
-                || n.indexOf(":1.") >= 0 || n.indexOf(":2b") >= 0
-                || n.indexOf(":3b") >= 0 || n.indexOf("small") >= 0)
-            return 2.0;
-        return 1.0;
-    }
-    readonly property int _requestInactivityTimeoutMs:
-        Math.max(10000,
-            Math.round((Config.ai.requestTimeoutSeconds || 240) * 1000
-                * root._tierTimeoutMultiplier))
-    // axless.core: this used to be Math.max(_requestInactivityTimeoutMs * 4,
-    // 1200000). The hardcoded floor meant the deadline was never below 20
-    // minutes no matter what requestTimeoutSeconds said, so a model stuck in
-    // a generation loop left the user waiting until the provider gave up with
-    // "Stream exceeded the 1200s wall-clock limit". The floor is now a
-    // sensible few minutes and the ceiling is the same order as the
-    // inactivity timeout, so a stuck stream is cut in minutes.
-    readonly property int _requestWallClockDeadlineMs:
-        Math.min(
-            Math.max(_requestInactivityTimeoutMs * 2, 90000),
-            180000)
-    property Timer requestWatchdog: Timer {
-        interval: root._requestInactivityTimeoutMs
-        repeat: false
-        onTriggered: {
-            if (root.requestInFlight) {
-                let secs = Math.round(root._requestInactivityTimeoutMs / 1000);
-                console.warn("Ai.qml: requestInFlight stuck — resetting ("
-                             + secs + "s inactivity watchdog)");
-                if (root.curlProcess && root.curlProcess.running) {
-                    root.curlProcess.running = false;
-                }
-                root.requestInFlight = false;
-                root.streamingStatus = "request timed out after " + secs + "s";
-                root.isLoading = false;
-                root.streamingElapsedTimer.stop();
-                root.streamingStartedAt = 0;
-                // Surface a system message so the user knows the
-                // request died, rather than staring at a frozen
-                // spinner. Append to the last assistant placeholder
-                // if any, otherwise push a new system message.
-                let errChat = Array.from(root.currentChat);
-                if (errChat.length > 0
-                        && errChat[errChat.length - 1].role === "assistant"
-                        && (!errChat[errChat.length - 1].content
-                            || errChat[errChat.length - 1].content === "")) {
-                    errChat[errChat.length - 1].content =
-                        "[Request timed out after " + secs + "s. The API may be "
-                        + "unresponsive or the conversation may be malformed. "
-                        + "Try again, or `/model` to switch. Increase "
-                        + "`requestTimeoutSeconds` in AI settings for slow "
-                        + "local models.]";
-                    errChat[errChat.length - 1].role = "system";
-                } else {
-                    errChat.push({
-                        role: "system",
-                        content: "[Request timed out after " + secs + "s.]"
-                    });
-                }
-                root.currentChat = errChat;
-                root.saveCurrentChat();
-                if (root.requestQueued) {
-                    root.requestQueued = false;
-                    Qt.callLater(root.makeRequest);
-                }
-            }
-        }
-    }
-
-    // Timer that fires when an agent tool invocation takes too long.
-// If the HTTP call or command agent doesn't respond within this
-// window, we synthesise a timeout error so the chat doesn't hang
-// forever on "running tool: …".
-//
-// Must be LONGER than the bridge's curl --max-time (25s in
-// HttpAgentClient.qml) and the server-side subprocess timeout
-// (up to 30s for open_url which spawns xdg-open and waits for
-// Wayland portal activation). 35s gives a 5s margin over the
-// longest server-side path so the model sees the real result
-// instead of a synthetic timeout error while the URL is still
-// being dispatched in the background.
-    property Timer agentToolInvokeTimeout: Timer {
-        interval: 35000
-        repeat: false
-        property var onFire: null
-        onTriggered: {
-            if (onFire) onFire();
-            onFire = null;
-        }
-    }
-
-    // Ticks every 5s while a request is in flight. Updates the
-    // streamingStatus string to show how long the AI has been
-    // streaming (e.g. "streaming… 15s"). When the AI provider is
-    // slow the user sees that something is happening, instead of
-    // the sidebar just sitting there with a frozen feel. The
-    // counter is reset in makeRequest() and stopped in
-    // curlProcess.onExited / stopGeneration.
-    property int streamingStartedAt: 0
-    property Timer streamingElapsedTimer: Timer {
-        interval: 5000
-        repeat: true
-        onTriggered: {
-            if (root.streamingStartedAt <= 0) return;
-            let secs = Math.floor((Date.now() - root.streamingStartedAt) / 1000);
-            // Only update status when it's still in the streaming
-            // prefix; if the AI produced a tool call meanwhile the
-            // status will have moved on (e.g. "tool call: ...").
-            if (root.streamingStatus && root.streamingStatus.indexOf("streaming") === 0) {
-                root.streamingStatus = "streaming… " + secs + "s";
-            }
-        }
+    // axless.core: tool-call loop state, built on the original engine.
+    // The original sent `tools` but ignored the streamed tool calls entirely,
+    // so nothing ever executed. These hold the call being assembled and the
+    // registry of tools the connected agents advertise.
+    property var _pendingToolCalls: []
+    property AgentToolRegistry agentToolRegistry: AgentToolRegistry {}
+    property AgentManager agentManager: AgentManager {
+        toolRegistry: root.agentToolRegistry
     }
 
     // Current Chat
@@ -703,7 +210,10 @@ Singleton {
         saveCurrentChat();
     }
 
-    property var systemTools: [
+    // axless.core: the registry only exposes tools whose agent is actually
+    // connected, so the model is never told about a tool nobody can serve.
+    property var systemTools: {
+        let t = [
         {
             name: "run_shell_command",
             description: "Execute a shell command on the user's system (Linux). Use this to list files, control the system, or run utilities. Output will be returned.",
@@ -718,557 +228,13 @@ Singleton {
                 required: ["command"]
             }
         }
-    ]
-
-    property string currentMode: "agent"
-    property string currentAgentId: ""
-    property var activeTools: []
-
-    function _rebuildActiveTools() {
-        let t = [];
-        if (root.currentMode === "agent") {
-            t = Array.from(systemTools);
-            let registry = root.agentToolRegistry;
-            if (registry && registry.tools) {
-                for (let i = 0; i < registry.tools.length; i++) {
-                    let tool = registry.tools[i];
-                    if (!tool) continue;
-                    if (root.currentAgentId !== "" && tool._agentId !== root.currentAgentId)
-                        continue;
-                    t.push(tool);
-                }
-            }
+        ];
+        let reg = root.agentToolRegistry;
+        if (reg && reg.tools) {
+            for (let i = 0; i < reg.tools.length; i++)
+                t.push(reg.tools[i]);
         }
-        root.activeTools = t;
-    }
-
-    function setMode(mode) {
-        if (mode !== "chat" && mode !== "agent") return;
-        if (root.currentMode === mode) return;
-        root.currentMode = mode;
-    }
-
-    function setAgent(agentId) {
-        let normalized = agentId || "";
-        if (root.currentAgentId === normalized) return;
-        root.currentAgentId = normalized;
-        if (Config && Config.ai && Config.ai.defaultAgentId !== normalized) {
-            Config.ai.defaultAgentId = normalized;
-        }
-    }
-
-    // axless.core: can `name` actually be invoked right now?
-    //
-    // Three sources, in the same order the request body uses: the system
-    // tools (run_shell_command), the agent registry (filtered to agents that
-    // are actually connected), and the text-detected tool list. Checking the
-    // same set that was advertised to the model is the point - if a tool was
-    // not offered, a mention of it is not a request.
-    function _toolAvailable(name) {
-        if (!name)
-            return false;
-        if (Array.isArray(root.activeTools) && root.activeTools.length > 0) {
-            for (let i = 0; i < root.activeTools.length; i++) {
-                if (root.activeTools[i] && root.activeTools[i].name === name)
-                    return true;
-            }
-            return false;
-        }
-        // activeTools is only filled in agent mode; in chat mode fall back to
-        // the system tools so run_shell_command is still recognised.
-        if (Array.isArray(root.systemTools)) {
-            for (let i = 0; i < root.systemTools.length; i++) {
-                if (root.systemTools[i] && root.systemTools[i].name === name)
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    // axless.core: every detected call goes through this gate.
-    //
-    // _detectTextToolCallRaw recognises six different notations, plus a URL
-    // sniffer that fires on any http link in the prose. Checking each of them
-    // separately is how open_url kept leaking through, so the availability
-    // test lives here instead: once, over whatever shape was recognised.
-    //
-    // A small model with no tools available still writes "open_url(...)" in
-    // the body of its answer, because the prompt names the tools. Turning
-    // that into a real invocation produced "Tool unavailable: no agent is
-    // currently exposing 'open_url'", the model saw the failure, tried
-    // again, and the turn ran to the wall-clock deadline every time. Text
-    // that merely mentions a tool stays text.
-    function _detectTextToolCall(text) {
-        const detected = _detectTextToolCallRaw(text);
-        if (!detected)
-            return null;
-        if (!_toolAvailable(detected.name))
-            return null;
-        return detected;
-    }
-
-    function _detectTextToolCallRaw(text) {
-        if (!text) return null
-
-        // Pattern 1: JSON block with "name" and "arguments"
-        // e.g. {"name": "run_shell_command", "arguments": {"command": "ls -la"}}
-        let re = /\{[^{}]*"name"\s*:\s*"([^"]+)"[^{}]*"arguments"\s*:\s*(\{[^}]+\})[^{}]*\}/
-        let m = text.match(re)
-        if (m) {
-            try { let args = JSON.parse(m[2]); return { name: m[1], args: args } } catch (e) {}
-        }
-
-        // Pattern 2: structured "tool:" / "parameters:" format
-        re = /tool\s*:\s*(\S+)\s*\n\s*(?:parameters|args?)\s*:\s*(\{[^}]+\})/i
-        m = text.match(re)
-        if (m) {
-            try { let args = JSON.parse(m[2]); return { name: m[1], args: args } } catch (e) {}
-        }
-
-        // Pattern 3: inline shell: / run: / command: prefix
-        re = /(?:^|\n)\s*(?:shell|run|command)\s*:\s*(.+?)(?:\n|$)/i
-        m = text.match(re)
-        if (m) return { name: "run_shell_command", args: { command: m[1].trim() } }
-
-        // Pattern 4: <tool_call> JSON </tool_call>
-        re = /<tool_call>\s*(\{[^}]+\})\s*<\/tool_call>/
-        m = text.match(re)
-        if (m) {
-            try {
-                let json = JSON.parse(m[1])
-                if (json.name && (json.arguments || json.args))
-                    return { name: json.name, args: json.arguments || json.args }
-            } catch (e) {}
-        }
-
-        // Pattern 5: ```tool_call ... ``` code block
-        re = /```(?:tool_call|tool)?\s*\n?\s*(\{[^}]+\})\s*\n?\s*```/
-        m = text.match(re)
-        if (m) {
-            try {
-                let json = JSON.parse(m[1])
-                if (json.name && (json.arguments || json.args))
-                    return { name: json.name, args: json.arguments || json.args }
-            } catch (e) {}
-        }
-
-        // Pattern 6: {"function_call": {"name": "...", "arguments": {...}}}
-        re = /\{[^{}]*"function_call"\s*:\s*(\{[^}]+\})[^{}]*\}/
-        m = text.match(re)
-        if (m) {
-            try {
-                let fc = JSON.parse(m[1])
-                if (fc.name && fc.arguments)
-                    return { name: fc.name, args: fc.arguments }
-            } catch (e) {}
-        }
-
-        // Pattern 7: tiny-model prose descriptions. Small local LLMs
-        // (granite-2b, qwen-0.5b, phi-1.5, etc.) often fail to emit
-        // proper tool_calls deltas and instead narrate a multi-step
-        // plan in plain text:
-        //   "1. Execute shell command: xdg-open https://youtube.com
-        //    2. Create a file /tmp/youtube.desktop ...
-        //    3. Launch the browser to open YouTube using: xdg-open ..."
-        // If we don't catch this, the user sees a verbose recipe
-        // instead of an executed action. We look for the first
-        // runnable command in the text — anywhere in the response,
-        // not just after a verb — and route it through
-        // run_shell_command. We anchor on (^|\n|:\s) so we don't
-        // match mid-word. Skip lines that are obviously explanatory
-        // ("use xdg-open to open...") by requiring a real command
-        // shape: binary followed by an argument that isn't a
-        // conjunction.
-        let runnables = text.match(/(?:^|[\n:]\s*)(xdg-open\s+\S+|setsid\s+\S+|nohup\s+\S+|bash\s+-c\s+\S+|firefox\s+\S+|chromium\s+\S+|google-chrome\s+\S+|code\s+\S+|notify-send\s+\S+|systemctl\s+\S+)/i);
-        if (runnables) {
-            let cmd = runnables[1].trim();
-            // Only treat as tool call if the command is actually a
-            // recognized opener — avoid false positives on mentions
-            // like "you can use xdg-open".
-            let openerRe = /^(xdg-open|setsid|nohup|bash\s+-c|firefox|chromium|google-chrome|code|notify-send|systemctl)/i;
-            if (openerRe.test(cmd)) {
-                return { name: "run_shell_command", args: { command: cmd } };
-            }
-        }
-
-        // Pattern 8: 'open <url> in browser' / 'go to <url>' style. Tiny
-        // models often narrate this as "I would open https://...
-        // in the default browser using xdg-open" without ever
-        // calling a tool. We catch the explicit URL mention and
-        // route it through the agent's open_url tool (which has
-        // alias expansion and a clean error path).
-        let urlRe = /(?:open|go to|browse to|visit|navigate to|abre|abrir)\s+(https?:\/\/\S+|(?:www\.)?[a-z0-9-]+(?:\.[a-z]{2,})(?:\/\S*)?|youtube|github|gmail|google|reddit|twitter|stackoverflow)/i;
-        let urlMatch = text.match(urlRe);
-        if (urlMatch) {
-            let raw = urlMatch[1];
-            // Skip obvious non-URL fragments
-            if (!/^(the|a|my|this|that)$/i.test(raw)) {
-                return { name: "open_url", args: { url: raw } };
-            }
-        }
-
-        // Pattern 9: Python-style tool call. Tiny models (granite-2b,
-        // phi-1.5, qwen-1.5, llama-3.2-1b) often emit a single line like
-        //     open_url('https://www.youtube.com')
-        //     move_window_to_workspace('1', '0x123')
-        //     list_windows()
-        // instead of a proper OpenAI tool_calls JSON object. The
-        // text looks like a function call but the API parses it as
-        // plain prose — without this fallback the tool never fires.
-        //
-        // We anchor on a known tool name so we don't false-positive
-        // on arbitrary function calls inside code snippets, and we
-        // require the `(` immediately after so we don't match
-        // identifiers followed by English text.
-        let pyMatch = text.match(/\b(list_windows|list_workspaces|list_installed_apps|move_window_to_workspace|move_windows|open_url|open_app|close_app|list_monitors|move_window_to_monitor|focus_window|close_window|toggle_window_floating|set_window_fullscreen|resize_window|move_window_direction|switch_workspace|toggle_special_workspace|focus_monitor|set_layout|execute_command|launch_program|check_program_installed|install_package|run_shell_command)\s*\(([^()]*)\)/i);
-        if (pyMatch) {
-            let pyTool = pyMatch[1];
-            let pyArgsRaw = pyMatch[2].trim();
-            // Strip surrounding quotes from each positional arg.
-            let stripQuotes = s => {
-                // Trim whitespace FIRST so the ^ anchor can see the
-                // leading quote — otherwise a leading space means
-                // `^['"]` never matches and only the trailing quote
-                // gets stripped, leaving a half-dequoted token. The
-                // `+` quantifier lets us eat consecutive quotes too.
-                let t = s.trim();
-                t = t.replace(/^['"]+/, "").replace(/['"]+$/, "");
-                return t;
-            };
-            let parts = pyArgsRaw === "" ? [] : pyArgsRaw.split(",").map(stripQuotes);
-            let pyArgs = {};
-            // Per-tool positional → named-arg mapping. Order matches
-            // the schema in the bridge / Ai.qml systemTools. Tools
-            // not listed here still get a generic pass-through so we
-            // catch future additions.
-            if (pyTool === "open_url" && parts[0]) pyArgs.url = parts[0];
-            else if (pyTool === "run_shell_command" && parts[0]) pyArgs.command = parts[0];
-            else if (pyTool === "execute_command" && parts[0]) pyArgs.command = parts[0];
-            else if (pyTool === "launch_program" && parts[0]) pyArgs.program_name = parts[0];
-            else if (pyTool === "check_program_installed" && parts[0]) pyArgs.program_name = parts[0];
-            else if (pyTool === "open_app" && parts[0]) pyArgs.app_name = parts[0];
-            else if (pyTool === "close_app" && parts[0]) pyArgs.app_name = parts[0];
-            else if (pyTool === "switch_workspace" && parts[0]) pyArgs.workspace_id = parts[0];
-            else if (pyTool === "focus_window") {
-                if (parts[0]) pyArgs.window_id = parts[0];
-                if (parts[1]) pyArgs.direction = parts[1];
-            }
-            else if (pyTool === "close_window" && parts[0]) pyArgs.window_id = parts[0];
-            else if (pyTool === "toggle_special_workspace" && parts[0]) pyArgs.name = parts[0];
-            else if (pyTool === "focus_monitor" && parts[0]) pyArgs.monitor_id = parts[0];
-            else if (pyTool === "set_layout" && parts[0]) pyArgs.name = parts[0];
-            else if (pyTool === "resize_window") {
-                if (parts[0]) pyArgs.width = parseInt(parts[0]) || 0;
-                if (parts[1]) pyArgs.height = parseInt(parts[1]) || 0;
-                if (parts[2]) pyArgs.window_id = parts[2];
-            }
-            else if (pyTool === "set_window_fullscreen") {
-                if (parts[0]) pyArgs.state = (parts[0].toLowerCase() === "true" || parts[0] === "1");
-                if (parts[1]) pyArgs.window_id = parts[1];
-            }
-            else if (pyTool === "move_window_to_workspace") {
-                if (parts[0]) pyArgs.workspace_id = parts[0];
-                if (parts[1]) pyArgs.window_id = parts[1];
-            }
-            else if (pyTool === "move_window_to_monitor") {
-                if (parts[0]) pyArgs.monitor_id = parts[0];
-                if (parts[1]) pyArgs.window_id = parts[1];
-            }
-            else if (pyTool === "move_window_direction") {
-                if (parts[0]) pyArgs.direction = parts[0];
-                if (parts[1]) pyArgs.window_id = parts[1];
-            }
-            else if (pyTool === "toggle_window_floating" && parts[0]) pyArgs.window_id = parts[0];
-            else if (pyTool === "list_installed_apps" && parts[0]) pyArgs.filter = parts[0];
-            else if (pyTool === "install_package" && parts[0]) pyArgs.package_name = parts[0];
-            else if (pyTool === "move_windows") {
-                // Multi-arg, handled by JSON in the schema. Best-effort:
-                // first positional = workspace_id if it doesn't look
-                // like an object, otherwise leave to the model.
-                if (parts[0] && !parts[0].startsWith("{")) {
-                    pyArgs.workspace_id = parts[0];
-                }
-            }
-            else {
-                // Generic fallback: try kw=value parsing, then
-                // collapse all parts into an `input` array so the
-                // tool at least sees the data.
-                for (let p of parts) {
-                    let kv = p.match(/^([a-z_][a-z_0-9]*)\s*=\s*(.+)$/i);
-                    if (kv) pyArgs[kv[1]] = stripQuotes(kv[2]);
-                }
-                if (Object.keys(pyArgs).length === 0 && parts.length > 0) {
-                    pyArgs.input = parts.join(", ");
-                }
-            }
-            return { name: pyTool, args: pyArgs };
-        }
-
-        return null
-    }
-
-    // Normalize tool-call arguments so that minor cosmetic
-    // variations from the model (extra spaces, stray quotes,
-    // different key ordering) don't bypass duplicate detection.
-    // Returns a stable string fingerprint of the args.
-    function _normalizeToolArgs(args) {
-        if (args === null || args === undefined) return "";
-        if (typeof args === "string") {
-            return args.trim().replace(/\s+/g, " ");
-        }
-        if (typeof args === "object") {
-            let normalized = {};
-            let keys = Object.keys(args).sort();
-            for (let i = 0; i < keys.length; i++) {
-                let k = keys[i];
-                let v = args[k];
-                if (typeof v === "string") {
-                    normalized[k] = v.trim().replace(/\s+/g, " ");
-                } else {
-                    normalized[k] = v;
-                }
-            }
-            return JSON.stringify(normalized);
-        }
-        return String(args);
-    }
-
-    // Decide whether the incoming tool call should be auto-approved
-    // (i.e. execute without showing the user the approval card).
-    //
-    // Two-stage gate, matches the UI toggle + allowlist fields in
-    // AiPanel.qml and the AGENTS.md contract:
-    //
-    //   1. toolAutoApprove must be on. If off, never auto-approve.
-    //   2. toolAllowlist gates the actual set:
-    //        - empty  → ALL tools auto-approve (full trust mode)
-    //        - non-empty → only tools/commands whose name or first
-    //          token is in the allowlist auto-approve
-    //
-    // For `run_shell_command` we look at the first whitespace-separated
-    // token of `args.command` so the user can list binaries like
-    // ["ls", "cat", "systemctl"] instead of full shell invocations.
-    // For every other tool we look at the tool name itself.
-    function _shouldAutoApprove(toolName, args) {
-        if (!Config.ai.toolAutoApprove) return false;
-        let allowlist = Config.ai.toolAllowlist || [];
-        if (allowlist.length === 0) return true;
-        if (toolName === "run_shell_command" && args && args.command) {
-            let firstToken = String(args.command).trim().split(/\s+/)[0];
-            if (!firstToken) return false;
-            return allowlist.indexOf(firstToken) !== -1;
-        }
-        return allowlist.indexOf(toolName) !== -1;
-    }
-
-    // ── Chain-continuation nudge builder ──
-    // Constructs the system-role prompt we send when the model returns
-    // an empty completion right after a read-only tool result
-    // (DeepSeek R1, Mistral, and a few other providers do this — they
-    // return finish_reason=stop with no content because the read
-    // didn't progress toward a tool call, so the chain stalls). The
-    // nudge explicitly enumerates the next step the model should take
-    // based on which read tool was just called, paired with
-    // tool_choice:"required" so the model can't return another empty
-    // response. Combined, those two changes are what got the model
-    // back on track without us having to fake the tool execution
-    // ourselves.
-    function _buildChainNudge(toolName, toolResult) {
-        let userIntent = "";
-        for (let i = root.currentChat.length - 1; i >= 0; i--) {
-            if (root.currentChat[i].role === "user") {
-                userIntent = root.currentChat[i].content || "";
-                break;
-            }
-        }
-        let baseHint = "The user asked: \"" + userIntent + "\". "
-            + "You just received the result of " + toolName + " but you "
-            + "did not call the next tool. You MUST call a write tool "
-            + "now to actually perform the action — do not reply with "
-            + "text, do not narrate. ";
-        if (toolName === "list_windows") {
-            // Try to extract the target workspace from the user message
-            // so the nudge names it explicitly (DeepSeek's R1 model
-            // sometimes loses track of the target across turns).
-            let wsHint = "";
-            let m = userIntent.match(/workspace\s+(\d+|[a-z]\w*)/i)
-                  || userIntent.match(/ws\s*(\d+)/i)
-                  || userIntent.match(/al\s+(\d+)/i);
-            if (m) wsHint = " Target workspace: " + m[1] + ".";
-            // Detect intent so the nudge names the right write tool.
-            let writeTool = "move_window_to_workspace or move_windows";
-            if (/close|cerrar|cierra|quit|kill/i.test(userIntent)) {
-                writeTool = "close_window or close_app";
-            } else if (/focus|enfocar|foco/i.test(userIntent)) {
-                writeTool = "focus_window";
-            }
-            return baseHint + wsHint + " Call " + writeTool
-                + " now with the matching window id from the list above.";
-        }
-        if (toolName === "list_installed_apps") {
-            return baseHint + " Call open_app with the matching "
-                + "app_name now (case-insensitive substring of the "
-                + "app's display name).";
-        }
-        if (toolName === "list_workspaces") {
-            return baseHint + " Call switch_workspace or "
-                + "move_window_to_workspace now.";
-        }
-        if (toolName === "list_monitors") {
-            return baseHint + " Call focus_monitor or "
-                + "move_window_to_monitor now.";
-        }
-        return baseHint + " Call the appropriate write tool now.";
-    }
-
-    // Decide whether the incoming tool call should be auto-rejected.
-    // Returns one of:
-    //   ""             — not a duplicate, allow the call
-    //   "duplicate"    — exact same tool + args already executed this turn
-    //   "rate-limit"   — same tool already called MAX times this turn
-    //
-    // We use a two-pronged check:
-    //   1. Normalized args fingerprint — catches "xdg-open https://..."
-    //      vs "xdg-open  https://..." (extra spaces), or any other
-    //      cosmetic variation the small model might emit.
-    //   2. Rate limit by tool name — if the same tool has been
-    //      called MAX_TOOL_CALLS_PER_TURN times regardless of args,
-    //      reject.  This prevents loops where the model keeps varying
-    //      the args slightly to evade detection.
-    //
-    // Scoped to the current user turn (walks backwards from end
-    // until it hits a user message).  This way a later, different
-    // user request can legitimately re-use the same tool.
-    //
-    // Set to 5 (was 1): the "duplicate" check (normalized args
-    // fingerprint) already catches identical tool+args calls.  The
-    // rate limit is a safety net for models that vary args slightly
-    // to dodge the fingerprint — 5 different calls in one turn is
-    // almost certainly a loop, while 2-3 different commands (e.g.
-    // "ls /home" then "ls /etc") are legitimate multi-action prompts.
-    readonly property int _maxToolCallsPerTurn: 5
-
-    // Read-only / idempotent tools. Their result reflects current
-    // system state (window list, workspace list, installed apps) and
-    // always changes between calls — re-invoking them is the model's
-    // normal way of refreshing its view between user actions, NOT a
-    // loop. They bypass the duplicate-fingerprint check entirely; the
-    // rate-limit still applies as a runaway-loop safety net.
-    readonly property var _idempotentReadTools: [
-        "list_windows",
-        "list_workspaces",
-        "list_monitors",
-        "list_installed_apps"
-    ]
-
-    function _shouldAutoRejectToolCall(toolName, args) {
-        if (!toolName) return "";
-
-        let argsFp = root._normalizeToolArgs(args);
-        let callCount = 0;
-        let isIdempotent = root._idempotentReadTools.indexOf(toolName) !== -1;
-
-        for (let i = root.currentChat.length - 1; i >= 0; i--) {
-            let m = root.currentChat[i];
-            if (m.role === "user") break;
-            if (m.role === "assistant" && m.functionCall
-                    && m.functionCall.name === toolName) {
-                // Skip the current message (no functionPending yet
-                // because we're checking before attachment).  Only
-                // count previously-seen calls.
-                if (m.functionPending === true) continue;
-
-                callCount++;
-                // Exact (normalized) duplicate of a previous call.
-                // Skipped for read-only tools — see _idempotentReadTools.
-                if (!isIdempotent && m.functionPending === false) {
-                    let prevFp = root._normalizeToolArgs(m.functionCall.args);
-                    if (prevFp === argsFp) {
-                        return "duplicate";
-                    }
-                }
-            }
-        }
-
-        // Rate limit: if this tool was already called the max
-        // number of times in the current turn, reject — regardless
-        // of whether the args match.  The model is looping.
-        if (callCount >= root._maxToolCallsPerTurn) {
-            return "rate-limit";
-        }
-
-        return "";
-    }
-
-    // Strip a pending function call from the last assistant message
-    // and push a synthetic function result that tells the model the
-    // call was auto-rejected.  This is the single source of truth
-    // for what an auto-rejection looks like — both the native
-    // streaming path and the text-fallback path route through here
-    // so the model gets a consistent protocol regardless of how
-    // the tool call was detected.
-    //
-    // `reason` is one of: "duplicate", "rate-limit".
-    function _autoRejectToolCall(toolName, toolCallId, reason) {
-        let dupChat = Array.from(root.currentChat);
-        let dupLast = dupChat[dupChat.length - 1];
-        dupLast.functionCall = undefined;
-        dupLast.functionPending = false;
-        dupLast.functionApproved = false;
-        dupLast.toolCallId = "";
-        dupChat[dupChat.length - 1] = dupLast;
-
-        let msg;
-        if (reason === "duplicate") {
-            msg = "[Auto-rejected: this exact tool call (same name and "
-                + "arguments) was already executed earlier in this "
-                + "conversation. Do NOT re-invoke the same tool with the "
-                + "same arguments. Respond with a brief text "
-                + "confirmation of what was done, or wait for the user's "
-                + "next request.]";
-        } else if (reason === "rate-limit") {
-            msg = "[Auto-rejected: the tool '" + toolName + "' has already "
-                + "been called " + root._maxToolCallsPerTurn + " times in "
-                + "this turn. The system detected a loop. Do NOT call this "
-                + "tool again in this turn. Respond with a brief text "
-                + "summary of what was already done, or ask the user for "
-                + "clarification.]";
-        } else {
-            msg = "[Auto-rejected: tool call not allowed (" + reason + "). "
-                + "Respond with text instead.]";
-        }
-
-        dupChat.push({
-            role: "function",
-            name: toolName,
-            content: msg,
-            tool_call_id: toolCallId
-        });
-        root.currentChat = dupChat;
-
-        // Queue a follow-up request so the model is asked to
-        // respond with text instead of looping again.  The
-        // re-entrancy guard in makeRequest sees requestInFlight is
-        // still true, so it sets requestQueued = true; the existing
-        // drainPending logic at the end of onExited then runs the
-        // queued makeRequest once the guard is cleared.
-        root.isLoading = true;
-        root.streamingStatus = "streaming…";
-        root.lastError = "";
-        root.makeRequest();
-    }
-
-    onCurrentModeChanged: { _rebuildActiveTools(); saveCurrentChat(); }
-    onCurrentAgentIdChanged: { _rebuildActiveTools(); saveCurrentChat(); }
-
-    Connections {
-        target: root.agentToolRegistry
-        function onAgentToolsChanged() { root._rebuildActiveTools(); }
-    }
-    Connections {
-        target: Config.ai
-        function onEnabledToolsChanged() { root._rebuildActiveTools(); }
-        function onToolChanged() { root._rebuildActiveTools(); }
+        return t;
     }
 
     // ============================================
@@ -1282,14 +248,6 @@ Singleton {
         let filename = chatDir + "/" + id + ".json";
         deleteChatProcess.command = ["rm", filename];
         deleteChatProcess.running = true;
-    }
-
-    function loadChat(id) {
-        if (!id) return;
-        let filename = chatDir + "/" + id + ".json";
-        loadChatProcess.targetId = id;
-        loadChatProcess.command = ["cat", "--", filename];
-        loadChatProcess.running = true;
     }
 
     // ============================================
@@ -1341,32 +299,17 @@ Singleton {
                     }
                 }
                 if (!found) {
-                    pushSystemMessage("Model '" + args + "' not found.");
+                    pushSystemMessage(I18n.t("ai.model_not_found").replace("%1", args));
                 } else {
-                    pushSystemMessage("Switched to model: " + currentModel.name);
+                    pushSystemMessage(I18n.t("ai.switched_to_model").replace("%1", currentModel.name));
                 }
             } else {
                 modelSelectionRequested();
             }
             return true;
         case "/help":
-            pushSystemMessage("🤖 **Assistant Commands**\n\n" + "**`/new`**\n" + "Starts a fresh conversation context.\n\n" + "**`/model [name]`**\n" + "Switches the active AI model.\n" + "• **List models:** Type `/model` without arguments.\n" + "• **Switch:** Type `/model gemini` or `/model mistral`.\n\n" + "**`/help`**\n" + "Shows this help message.\n\n" + "💡 **Tips:**\n" + "• **Edit:** Click the pen icon on any message to modify it.\n" + "• **Regenerate:** Click the refresh icon to get a new response.\n" + "• **Copy:** Use the copy button to grab code or text.");
+            pushSystemMessage(I18n.t("ai.help_message"));
             return true;
-        case "/mode":
-            setMode(args === "chat" || args === "agent" ? args : (currentMode === "agent" ? "chat" : "agent"));
-            pushSystemMessage("Mode: " + currentMode);
-            return true;
-        case "/agent":
-            if (!args) { pushSystemMessage("Current agent: " + (currentAgentId === "" ? "all" : currentAgentId)); return true; }
-            if (args === "all" || args === "none") { setAgent(""); pushSystemMessage("Agent: all"); return true; }
-            let conns = root.agentManager ? root.agentManager.connections : [];
-            let found = null;
-            for (let i = 0; i < conns.length; i++) { if (conns[i] && conns[i].name && conns[i].name.toLowerCase().includes(args.toLowerCase())) { found = conns[i]; break; } }
-            if (found) { setAgent(found.id); pushSystemMessage("Agent: " + found.name); }
-            else { pushSystemMessage("Agent not found. Use /agents."); }
-            return true;
-        case "/agents": listAgents(); return true;
-        case "/tools": listTools(); return true;
         }
 
         return false;
@@ -1381,383 +324,6 @@ Singleton {
         currentChat = newChat;
     }
 
-    // Enqueue a system note into the chat so the user sees it AFTER
-    // the current streaming turn completes (if one is in flight) or
-    // immediately (if idle). Used for the "tools disabled" notice
-    // so we don't write into currentChat mid-stream and trigger a
-    // ListView re-layout that scrolls the in-progress answer away.
-    property bool _forceTextOnlyNotified: false
-    property var _pendingSystemNotes: []
-    function _enqueueSystemNote(text) {
-        _pendingSystemNotes = (_pendingSystemNotes || []).concat([text]);
-        Qt.callLater(_drainPendingSystemNotes);
-    }
-    function _drainPendingSystemNotes() {
-        if (root.isLoading) return;
-        if (!_pendingSystemNotes || _pendingSystemNotes.length === 0) return;
-        let notes = _pendingSystemNotes;
-        _pendingSystemNotes = [];
-        for (let i = 0; i < notes.length; i++) {
-            pushSystemMessage(notes[i]);
-        }
-        saveCurrentChat();
-    }
-
-    // Pick a tier label ("tiny" / "small" / "medium" / "large" / "")
-    // from the active model's probed parameter size. Returns "" when
-    // we don't have enough info — callers should default to medium.
-    // Compress the chat history to keep the most recent `maxTurns`
-    // exchanges. A "turn" here is one (user + assistant) pair plus
-    // any tool-result messages that attach to the assistant's
-    // tool_call. We pair user messages with their assistant
-    // response so the model never sees a user message without its
-    // paired reply (which would confuse tool-call pairing).
-    function _compressChatForTier(messages, maxTurns) {
-        if (!messages || messages.length === 0) return messages || [];
-        if (maxTurns <= 0) return messages;
-        // Walk from the END counting user/assistant pairs.
-        let kept = [];
-        let userAssistantPairs = 0;
-        for (let i = messages.length - 1; i >= 0; i--) {
-            let m = messages[i];
-            kept.unshift(m);
-            if (m && (m.role === "user" || m.role === "assistant")) {
-                userAssistantPairs++;
-                if (userAssistantPairs >= maxTurns * 2) break;
-            }
-        }
-        return kept;
-    }
-
-    function _maybeCompactSystemPrompt(prompt) {
-        // For tiny / small local models the full prompt (~700 chars)
-        // can be ~30% of their 4k context window. Strip the verbose
-        // "Tips" footer, the casual-message guidance, the
-        // investigation-style examples, and the deep-research
-        // framing — keep just the operational rules + the chain
-        // contract that actually changes model behaviour. Returns
-        // the prompt unchanged for medium / large tiers where the
-        // token cost is negligible and the verbose guidance is
-        // cheap to keep.
-        let tier = root._modelTier();
-        if (tier !== "tiny" && tier !== "small") return prompt;
-
-        // Strip the "## Response style" / "## Casual messages" /
-        // "## Memory" / "## Empty responses are NEVER acceptable"
-        // sections — they're useful for big models but cost tokens
-        // the small ones need for the actual chain. Keep just the
-        // rule headers that gate behaviour:
-        //   - ## Core rules (always)
-        //   - ## Multi-step chains (always — the chain contract)
-        //   - ## Tool selection (always)
-        let lines = String(prompt).split("\n");
-        let out = [];
-        let keep = true;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            // Drop sections that small models don't reliably follow
-            // but pay for in token cost.
-            if (line.indexOf("## Response style") === 0
-                    || line.indexOf("## Casual messages") === 0
-                    || line.indexOf("## Memory:") === 0
-                    || line.indexOf("## Empty responses are NEVER acceptable") === 0
-                    || line.indexOf("## Tips") === 0
-                    || line.indexOf("Tip:") === 0
-                    || line.indexOf("💡") === 0) {
-                keep = false;
-                continue;
-            }
-            // Keep sections that gate actual behaviour.
-            if (line.indexOf("## ") === 0) keep = true;
-            if (keep) out.push(line);
-        }
-        // The keep-state above can over-strip when a "##" section
-        // sits below a dropped one without a blank line. Hard-stop
-        // at the first "## Empty responses" or "## Tips" header
-        // and copy only up to that point.
-        let result = out.join("\n").trimEnd();
-        // Hard cap: even the kept rules should fit in ~1500 chars
-        // for tiny models — drop tail after a hard ceiling.
-        let hardCap = tier === "tiny" ? 1200 : 1800;
-        if (result.length > hardCap) {
-            result = result.substring(0, hardCap);
-            let lastBreak = result.lastIndexOf(". ");
-            if (lastBreak > hardCap * 0.7)
-                result = result.substring(0, lastBreak + 1);
-        }
-        return result;
-    }
-
-    function _modelTier() {
-        if (!activeCapabilities || !activeCapabilities.parameterSize)
-            return "";
-        let sizeStr = String(activeCapabilities.parameterSize).toUpperCase();
-        let m = sizeStr.match(/^(\d+(?:\.\d+)?)\s*([BMK]?)$/);
-        if (!m) return "";
-        let n = parseFloat(m[1]);
-        let unit = m[2];
-        let bn = unit === "M" ? n / 1000
-            : unit === "K" ? n / 1000000 : n;
-        if (bn <= 2.0) return "tiny";
-        if (bn <= 8.0) return "small";
-        if (bn <= 32.0) return "medium";
-        return "large";
-    }
-
-    function _truncateToolResult(toolName, content) {
-        // Cap in characters. We approximate 4 chars per token (matches
-        // the latin ratio in context_budget.py from the NothingClaw
-        // bridge) and reserve the per-tier budget the strategy uses
-        // for the model's own response — the tool result shouldn't
-        // be larger than what the model can produce in reply.
-        let tier = root._modelTier() || "small";
-        let perTierTokens = ({
-            "tiny": 600, "small": 1500, "medium": 3000, "large": 6000
-        })[tier];
-        let charCap = Math.max(800, perTierTokens * 4);
-
-        // Cheap pre-check — most tool results fit.
-        if (content.length <= charCap) return content;
-
-        // Some tools naturally produce multi-line output (JSON
-        // arrays, log files). Slice at a paragraph boundary when we
-        // can, falling back to a line / word / hard cut.
-        let cut = content.substring(0, charCap);
-        for (let sep of ["\n\n", "\n", ". "]) {
-            let idx = cut.lastIndexOf(sep);
-            if (idx > charCap * 0.5) {
-                cut = cut.substring(0, idx + sep.length).trim();
-                break;
-            }
-        }
-        let note = "\n\n[…truncated to fit the model's context budget. "
-            + "Total result was " + content.length + " chars / ~"
-            + Math.round(content.length / 4) + " tokens. Call the tool "
-            + "again with a narrower query for more detail…]";
-        return cut + note;
-    }
-
-    // Dispatch a single tool call — the parallel path calls this N
-    // times in a row, with `_parallelToolPending` counting down so
-    // we only fire makeRequest after ALL the results have landed.
-    // Mirrors the agentToolRegistry.invoke → onResult → result-pass
-    // chain that approveCommand() does for the single-call path.
-    function _invokeToolCall(toolName, args, toolCallId) {
-        // Set lastToolCallId so _onToolFinished picks the correct id.
-        // Don't clear it after each invocation — the next one
-        // overwrites it; _onToolFinished clears it on the LAST result
-        // via the parallel-counter gate below.
-        root.lastToolCallId = toolCallId;
-        if (toolName === "run_shell_command") {
-            commandExecutionProc.originalCommand = args.command || "";
-            commandExecutionProc.detached = root._shouldDetach(args.command || "");
-            let cmd;
-            if (commandExecutionProc.detached) {
-                cmd = "setsid nohup bash -c '"
-                    + (args.command || "").replace(/'/g, "'\\''") + "'"
-                    + " </dev/null >/tmp/null 2>&1 &";
-            } else {
-                cmd = "timeout " + root.shellCommandTimeoutSeconds + " bash -c '"
-                    + (args.command || "").replace(/'/g, "'\\''") + "'";
-            }
-            commandExecutionProc.command = ["bash", "-c", cmd];
-            commandExecutionProc.targetIndex = -1;
-            commandExecutionProc.running = true;
-            root.streamingStatus = commandExecutionProc.detached
-                ? "launched: " + toolName
-                : "running tool: " + toolName;
-        } else if (root.agentToolRegistry
-                && root.agentToolRegistry.hasTool(toolName)) {
-            root.streamingStatus = "running tool: " + toolName;
-            // Timeout wrapper so a hung agent doesn't lock the chat.
-            var finished = false;
-            var timerKey = "pt_" + Date.now() + "_"
-                + Math.random().toString(36).slice(2, 8);
-            root.agentToolInvokeTimeout.stop();
-            root.agentToolInvokeTimeout.onFire = function() {
-                if (finished) return;
-                finished = true;
-                root._onToolFinishedParallel(toolName, toolCallId,
-                    "Tool invocation timed out after "
-                    + Math.round(root.agentToolInvokeTimeout.interval / 1000)
-                    + "s — the agent may be unreachable or the tool "
-                    + "is taking too long. The action may still have "
-                    + "happened in the background.",
-                    true);
-            };
-            root.agentToolInvokeTimeout.restart();
-            root.agentToolRegistry.invoke(toolName, args, function(result) {
-                if (finished) return;
-                finished = true;
-                root.agentToolInvokeTimeout.stop();
-                root.agentToolInvokeTimeout.onFire = null;
-                let output = result.error || result.content || "";
-                if (result.error && !result.content) {
-                    output = "Error: " + result.error;
-                } else if (result.error && result.content) {
-                    output = result.content + "\n\n[Error: " + result.error + "]";
-                }
-                root._onToolFinishedParallel(toolName, toolCallId,
-                    output, !!result.error && !result.content);
-            });
-        } else {
-            // Tool not found (e.g. agent disconnected). Treat as an
-            // error result so the model gets feedback it can react
-            // to in the next turn.
-            root._onToolFinishedParallel(toolName, toolCallId,
-                "Tool unavailable: no agent is currently exposing '"
-                + toolName + "'.",
-                true);
-        }
-    }
-
-    // Parallel-aware variant of _onToolFinished. Each parallel tool
-    // call's result routes here. We append the result message, then
-    // only fire makeRequest when the parallel counter hits zero —
-    // this avoids the "tool 1 result fires a request, tool 2 result
-    // queues another, both collapse into one" inefficiency of the
-    // pre-existing re-entrancy guard.
-    function _onToolFinishedParallel(toolName, toolCallId, result, isError) {
-        let newChat = Array.from(currentChat);
-        let id = root.lastToolCallId || toolCallId || "";
-        let truncResult = root._truncateToolResult(toolName, result || "");
-        let toolMsg = { role: "function", name: toolName, content: truncResult };
-        if (id) toolMsg.tool_call_id = id;
-        if (isError) toolMsg.is_error = true;
-        newChat.push(toolMsg);
-        root.lastToolCallId = "";
-        currentChat = newChat;
-        saveCurrentChat();
-        // Record undo state for move_windows / move_window_to_workspace.
-        if (!isError
-                && (toolName === "move_windows"
-                    || toolName === "move_window_to_workspace")) {
-            try {
-                let parsed = null;
-                if (typeof result === "string") {
-                    parsed = JSON.parse(result);
-                } else if (typeof result === "object" && result !== null) {
-                    parsed = result.content ? JSON.parse(result.content) : null;
-                }
-                if (parsed
-                        && Array.isArray(parsed.moved)
-                        && parsed.moved.length > 0) {
-                    let prevWs = {};
-                    let ids = [];
-                    for (let e of parsed.moved) {
-                        let wid = String(e.window_id);
-                        ids.push(wid);
-                        if (e.previous_workspace_id !== undefined
-                                && e.previous_workspace_id !== null) {
-                            prevWs[wid] = String(e.previous_workspace_id);
-                        }
-                    }
-                    if (ids.length > 0) {
-                        root._lastMove = {
-                            window_ids: ids,
-                            prev_ws: prevWs,
-                            target_ws: (parsed.moved[0]
-                                && parsed.moved[0].workspace_id)
-                                ? String(parsed.moved[0].workspace_id) : null
-                        };
-                    }
-                }
-            } catch (e) { /* best-effort */ }
-        }
-        // Decrement the parallel counter; only fire makeRequest when
-        // the LAST parallel tool has completed.
-        if (root._parallelToolPending > 0) {
-            root._parallelToolPending--;
-        }
-        if (root._parallelToolPending <= 0) {
-            root._parallelToolPending = 0;
-            isLoading = true;
-            lastError = "";
-            streamingStatus = "";
-            makeRequest();
-        }
-        // (else: more parallel results still incoming — they'll fire
-        // makeRequest when they land.)
-    }
-
-    function _onToolFinished(toolName, toolCallId, result, isError) {
-        let newChat = Array.from(currentChat);
-        // Prefer the id captured at approval time (lastToolCallId)
-        // over the one passed in — same rationale as the
-        // commandExecutionProc.onExited fix.
-        let id = root.lastToolCallId || toolCallId || "";
-        // Truncate oversized tool results to fit the active model's
-        // tool-result budget. Without this, list_installed_apps on a
-        // big desktop can return 20+ KB JSON which on a 7B Ollama
-        // model blows the entire 8K context window — the next
-        // makeRequest sanitises the message away entirely and the
-        // model loses the tool result context. The truncation slices
-        // at a paragraph boundary and appends a marker so the model
-        // knows there's more (and won't hallucinate missing data).
-        let rawResult = result || "";
-        let truncResult = root._truncateToolResult(toolName, rawResult);
-        let toolMsg = { role: "function", name: toolName, content: truncResult };
-        if (id) toolMsg.tool_call_id = id;
-        if (isError) toolMsg.is_error = true;
-        newChat.push(toolMsg);
-        root.lastToolCallId = "";
-        currentChat = newChat;
-        saveCurrentChat();
-        // Record undo state for move_windows and move_window_to_workspace.
-        // The bridge now embeds `previous_workspace_id` for each moved
-        // window in the response payload, so "regresalo" / "undo" can
-        // actually revert to the right workspace instead of falling
-        // back to "default workspace 1" (which routinely sent windows
-        // back to the wrong place).  Best-effort — failing to record
-        // undo state must never break the chat loop.
-        if (!isError
-                && (toolName === "move_windows"
-                    || toolName === "move_window_to_workspace")) {
-            try {
-                let parsed = null;
-                if (typeof result === "string") {
-                    parsed = JSON.parse(result);
-                } else if (typeof result === "object" && result !== null) {
-                    parsed = result.content ? JSON.parse(result.content) : null;
-                }
-                let entries = [];
-                if (parsed && Array.isArray(parsed.moved)
-                        && parsed.moved.length > 0) {
-                    entries = parsed.moved;
-                } else if (parsed && parsed.window_id
-                        && parsed.previous_workspace_id !== undefined) {
-                    entries = [parsed];
-                }
-                if (entries.length > 0) {
-                    let prevWs = {};
-                    let ids = [];
-                    for (let e of entries) {
-                        let wid = String(e.window_id);
-                        ids.push(wid);
-                        if (e.previous_workspace_id !== undefined
-                                && e.previous_workspace_id !== null) {
-                            prevWs[wid] = String(e.previous_workspace_id);
-                        }
-                    }
-                    if (ids.length > 0) {
-                        root._lastMove = {
-                            window_ids: ids,
-                            prev_ws: prevWs,
-                            target_ws: (entries[0] && entries[0].workspace_id)
-                                ? String(entries[0].workspace_id) : null
-                        };
-                    }
-                }
-            } catch (e) {
-                // Undo state is best-effort.
-            }
-        }
-        isLoading = true;
-        lastError = "";
-        streamingStatus = "";
-        makeRequest();
-    }
-
     // Function Call Handling
     function approveCommand(index) {
         let msg = currentChat[index];
@@ -1767,117 +333,53 @@ Singleton {
         let newChat = Array.from(currentChat);
         newChat[index].functionPending = false;
         newChat[index].functionApproved = true;
-        // Lock in the tool call id at approval time. The provider's
-        // streaming deltas may emit different `id` values across
-        // chunks, and the assistant's stored toolCallId is whatever
-        // the LAST delta happened to contain. By capturing the id
-        // that the UI was actually showing to the user when they
-        // approved, we guarantee the tool result uses the same id
-        // that the assistant message carries forward.
-        root.lastToolCallId = msg.toolCallId || msg.functionCall.tool_call_id || "";
         currentChat = newChat;
         saveCurrentChat();
 
-        let args = msg.functionCall.args;
-        let toolName = msg.functionCall.name;
-        let toolCallId = msg.functionCall.tool_call_id || "";
-        if (msg.functionCall.name === "run_shell_command") {
-            // Wrap with `timeout N` so a hung GUI launch (e.g.
-            // `firefox URL` which only returns when the user
-            // closes the browser) can't freeze the chat forever.
-            // For commands that obviously spawn a GUI window
-            // (xdg-open, firefox, mpv, …) we also detach with
-            // setsid+nohup+& so the shell returns immediately
-            // and the AI gets a fast "launched" acknowledgement.
-            commandExecutionProc.originalCommand = args.command || "";
-            commandExecutionProc.detached = root._shouldDetach(args.command || "");
-            let cmd;
-            if (commandExecutionProc.detached) {
-                // Detached launch: redirect output, run in new
-                // session, return immediately. We send the
-                // backgrounded process output to /tmp/null so we
-                // don't fill up the home directory with stray
-                // logs.
-                cmd = "setsid nohup bash -c "
-                    + "'" + (args.command || "").replace(/'/g, "'\\''") + "'"
-                    + " </dev/null >/tmp/null 2>&1 &";
-            } else {
-                // Foreground with timeout. We don't use timeout's
-                // --foreground flag because we want to capture
-                // stdout/stderr as the command runs.
-                cmd = "timeout " + root.shellCommandTimeoutSeconds + " bash -c "
-                    + "'" + (args.command || "").replace(/'/g, "'\\''") + "'";
-            }
-            commandExecutionProc.command = ["bash", "-c", cmd];
+        let name = msg.functionCall.name;
+        let args = msg.functionCall.args || {};
+
+        if (name === "run_shell_command") {
+            commandExecutionProc.command = ["bash", "-c", args.command];
             commandExecutionProc.targetIndex = index;
             commandExecutionProc.running = true;
-            root.streamingStatus = commandExecutionProc.detached
-                ? "launched: " + toolName
-                : "running tool: " + toolName;
-        } else if (root.agentToolRegistry && root.agentToolRegistry.hasTool(toolName)) {
-            root.streamingStatus = "running tool: " + toolName;
-
-            // Gate: if the agent is unreachable or the HTTP
-            // endpoint never responds, the invoke callback will
-            // never fire. The timeout timer below (default 35s,
-            // see agentToolInvokeTimeout.interval) synthesises a
-            // failure so the chat doesn't hang. 35s leaves room
-            // for the bridge's 25s curl --max-time plus a 5s
-            // buffer for xdg-open on cold-launch Wayland.
-            var finished = false;
-            root.agentToolInvokeTimeout.stop();
-            root.agentToolInvokeTimeout.onFire = function() {
-                if (!finished) {
-                    finished = true;
-                    let secs = Math.round(root.agentToolInvokeTimeout.interval / 1000);
-                    _onToolFinished(toolName, toolCallId,
-                        "Tool invocation timed out after " + secs
-                        + "s — the agent may be unreachable or the tool "
-                        + "is taking too long. The action may still have "
-                        + "happened in the background.",
-                        true);
-                }
-            };
-            root.agentToolInvokeTimeout.restart();
-
-            root.agentToolRegistry.invoke(toolName, args, function(result) {
-                if (finished) return;
-                finished = true;
-                root.agentToolInvokeTimeout.stop();
-                root.agentToolInvokeTimeout.onFire = null;
-
-                let output = result.error || result.content || "";
-                if (result.error && !result.content) {
-                    output = "Error: " + result.error;
-                } else if (result.error && result.content) {
-                    output = result.content + "\n\n[Error: " + result.error + "]";
-                }
-                _onToolFinished(toolName, toolCallId, output, !!result.error && !result.content);
-            });
-        } else {
-            // Tool name not in registry (e.g. stale chat, registry
-            // disconnected mid-flight). Don't leave the user
-            // staring at a frozen approval card.
-            let newChat = Array.from(currentChat);
-            newChat[index].functionPending = false;
-            newChat[index].functionApproved = false;
-            // Propagate tool_call_id so the outgoing tool message
-            // pairs with the assistant's tool_calls[].id. Same fix
-            // as in _onToolFinished — without it the conversation
-            // is malformed and the model returns empty on the next
-            // turn.
-            newChat.push({
-                role: "function",
-                name: toolName,
-                content: "Tool unavailable: no agent is currently exposing '" + toolName + "'.",
-                tool_call_id: root.lastToolCallId || toolCallId
-            });
-            root.lastToolCallId = "";
-            root.currentChat = newChat;
-            root.saveCurrentChat();
-            root.streamingStatus = "";
-            root.makeRequest();
+            return;
         }
+
+        // axless.core: a tool from a connected agent. The registry routes it
+        // to whichever agent advertised it; if none can, it answers with an
+        // error string that is returned to the model like any other result,
+        // so the conversation stays well-formed instead of stalling.
+        if (root.agentToolRegistry && root.agentToolRegistry.hasTool(name)) {
+            root.agentToolRegistry.invoke(name, args, function(result) {
+                let out = "";
+                if (result && result.error)
+                    out = "Error: " + result.error;
+                else if (result && result.content !== undefined)
+                    out = result.content;
+                root._finishToolCall(index, name, out);
+            });
+            return;
+        }
+
+        root._finishToolCall(index, name,
+            "Error: tool '" + name + "' is not available.");
+    }
+
+    // Push a tool result and let the model continue. Uses the current OpenAI
+    // shape (role "tool" + tool_call_id) so the request is valid.
+    function _finishToolCall(index, name, output) {
+        let msg = currentChat[index];
+        let newChat = Array.from(currentChat);
+        newChat.push({
+            role: "tool",
+            name: name,
+            toolCallId: msg ? msg.toolCallId : "",
+            content: output
+        });
+        root.currentChat = newChat;
+        root.saveCurrentChat();
+        root.makeRequest();
     }
 
     function rejectCommand(index) {
@@ -1885,28 +387,15 @@ Singleton {
         newChat[index].functionPending = false;
         newChat[index].functionApproved = false;
 
-        // Prefer lastToolCallId (captured at approval time) for the
-        // same reason as the other tool-result sites: the persisted
-        // functionCall.tool_call_id can drift from the id the user
-        // actually saw and approved, and the assistant's outgoing
-        // tool_calls[].id is the one that matters for pairing.
-        let rejectedToolCallId = root.lastToolCallId
-            || (newChat[index].functionCall
-                ? newChat[index].functionCall.tool_call_id
-                : "")
-            || "";
-        root.lastToolCallId = "";
-
         newChat.push({
-            role: "function",
+            role: "tool",
             name: newChat[index].functionCall.name,
-            content: "User rejected the command execution.",
-            tool_call_id: rejectedToolCallId
+            toolCallId: newChat[index].toolCallId || "",
+            content: "The user rejected this tool call."
         });
 
         currentChat = newChat;
         saveCurrentChat();
-        streamingStatus = "";
         makeRequest();
     }
 
@@ -1915,66 +404,6 @@ Singleton {
             return;
         if (processCommand(text))
             return;
-        // Clear any lingering stop/kill state from a previous
-        // stopGeneration() call. This is the only place where
-        // _killedByUser should transition from true→false — the
-        // onExited handlers intentionally leave it set so a
-        // second onExited (e.g. from a concurrently-killed shell
-        // command) also sees the flag and bails out instead of
-        // corrupting the chat.
-        _killedByUser = false;
-        shellCmdWasCancelled = false;
-        // Reset nudge budget for the new user turn. Each empty
-        // post-tool completion consumes one nudge (see curlProcess
-        // .onExited). When the user says something new, we reset
-        // so they're never penalised for an earlier stalled chain.
-        root._nudgeCount = 0;
-        // axless.core: new user message, new turn budget.
-        root._turnSteps = 0;
-        root._runawayAbortReported = false;
-        root._turnStallRetries = 0;
-        // Short undos: "regresalo", "return it", "undo" → reverse
-        // the last successful move_windows call without bothering
-        // the model. The user is explicitly asking for an undo, so
-        // we run the inverse tool directly and append a synthetic
-        // tool result — the chat remains consistent because the
-        // next makeRequest sees a well-formed assistant→function
-        // pair (we fabricate a paired assistant tool_call so the
-        // outgoing payload round-trips cleanly).
-        if (/^(regresa(lo)?|return|undo|devu[eé]lve(lo)?|deshaz)\s*$/i.test(text.trim())
-                && root._lastMove) {
-            let prevWs = "1";
-            let last = root._lastMove;
-            for (let wid of last.window_ids) {
-                if (last.prev_ws && last.prev_ws[wid]) { prevWs = last.prev_ws[wid]; break; }
-            }
-            let toolArgs = { window_ids: last.window_ids, workspace_id: prevWs };
-            let callId = "call_undo_" + Date.now();
-            // Drain any queued system notes BEFORE the undo
-            // injection so the user sees the latest state.
-            root._drainPendingSystemNotes();
-            let newChat = Array.from(currentChat);
-            newChat.push({ role: "user", content: text });
-            newChat.push({
-                role: "assistant",
-                content: "",
-                functionCall: { name: "move_windows", args: toolArgs, tool_call_id: callId },
-                toolCallId: callId,
-                functionPending: true,
-                functionApproved: true
-            });
-            currentChat = newChat;
-            saveCurrentChat();
-            // Record the tool-call id so _onToolFinished pairs the
-            // tool result correctly with the assistant's tool_calls[].id.
-            root.lastToolCallId = callId;
-            root.agentToolRegistry.invoke("move_windows", toolArgs, function(result) {
-                let output = result.error || result.content || "Done";
-                root._onToolFinished("move_windows", callId, output, !!result.error);
-            });
-            root._lastMove = null;
-            return;
-        }
         isLoading = true;
         lastError = "";
         let userMsg = {
@@ -1987,155 +416,13 @@ Singleton {
         newChat.push(userMsg);
         currentChat = newChat;
         saveCurrentChat();
-        // Drain pending system notes (e.g. "text-only mode"
-        // notification) so the user sees the latest state before
-        // the AI starts streaming its reply.
-        _drainPendingSystemNotes();
         makeRequest();
     }
 
-    // axless.core: chat and agent get different prompts.
-    //
-    // Config.ai.systemPrompt is written for the agent: it mandates tool
-    // chains, forbids replying in prose between tool results and repeats
-    // "never end the turn silently". In chat mode no tools are sent at all,
-    // so those rules describe a machine the model is not driving — and a
-    // small model reacts by inventing tool calls or looping. Chat therefore
-    // gets a short prompt that matches what it can actually do.
-    readonly property string _chatSystemPrompt:
-        "You are the AI assistant of a Linux desktop, answering in the "
-        + "user's language. Be concise: a couple of sentences is usually "
-        + "enough. You can discuss and explain anything, and you have "
-        + "context about the desktop, its apps and its settings. Keep "
-        + "formatting light — short paragraphs and lists rather than "
-        + "headers for everything."
-
-    function _promptForMode() {
-        if (currentMode === "agent")
-            return Config.ai.systemPrompt;
-        return _chatSystemPrompt;
-    }
-
-    function _finishTurnWithNote(text) {
-        // axless.core: end the turn with a visible message instead of leaving
-        // the model free to keep calling tools. Any in-flight request is
-        // abandoned; there is nothing useful left to read from it.
-        root.requestInFlight = false;
-        root._nudgeCount = 0;
-        root._turnSteps = 0;
-        root.pushSystemMessage(text);
-        root.saveCurrentChat();
-    }
-
-    function makeRequest(options) {
-        // axless.core: stop runaway chains before they reach the provider.
-        // Every path that continues a turn (tool result, nudge, agent
-        // completion, rejection) re-enters here, so this is the one place
-        // that can count them.
-        if (root._turnSteps >= root._maxTurnSteps) {
-            console.warn("Ai.qml: turn step limit reached ("
-                + root._maxTurnSteps + "), finishing the turn");
-            root._finishTurnWithNote(
-                "I stopped after " + root._maxTurnSteps
-                + " steps without reaching an answer. Try asking for one "
-                + "thing at a time.");
-            return;
-        }
-        root._turnSteps++;
-        // options.toolChoice (optional) — override the strategy's
-        // default for this request. Used by the nudge layer to force
-        // the model to call a tool on its next response (tool_choice:
-        // "required") when it returned empty content after a previous
-        // tool call. Strategy-specific resolution happens in
-        // ApiStrategy.resolveToolChoice() so Anthropic and Gemini
-        // can map "required" onto their native equivalents.
-        // Re-entrancy guard. If a curl is already in flight and
-        // something else (a tool-result follow-up, a re-send after
-        // an error, an agent tool completion) calls makeRequest
-        // again, queue the second call so it runs after the
-        // current one finishes — instead of spawning a second
-        // curl in parallel that would race for the responseBuffer
-        // and the streaming placeholder. Without this guard the
-        // sidebar visibly freezes when the AI chains several tool
-        // calls quickly (one finishes, another starts, the user
-        // sees two interleaved ghost placeholders).
-        if (root.requestInFlight) {
-            // Preserve the latest nudge's options so the queued
-            // re-run uses the strongest tool_choice we asked for
-            // — otherwise the queued call would inherit the
-            // original (default) tool_choice and the chain break.
-            if (options && options.toolChoice) {
-                root._pendingToolChoice = options.toolChoice;
-            }
-            root.requestQueued = true;
-            return;
-        }
-        root.requestInFlight = true;
-        // Capture the tool_choice for the actual run. Stored on the
-        // root (not a local var) so onExited can inspect it after
-        // the response — used to decide whether to nudge again.
-        let toolChoice = (options && options.toolChoice)
-            ? options.toolChoice
-            : (root._pendingToolChoice || null);
-        root._currentToolChoice = toolChoice;
-        root._pendingToolChoice = null;
-        // 90s watchdog — fires if curl takes longer than its own
-        // --max-time 90s (e.g. bodyFileView stuck), reset the
-        // flag and bail so the sidebar isn't permanently hung.
-        root.requestWatchdog.restart();
-
-        // Ollama lifecycle: before sending the chat request, ensure
-        // the local daemon is actually up. The model fetch already
-        // does this (via _ensureOllamaThenFetch) but Ollama can fall
-        // over between the fetch and the user's first message, or
-        // the user can kill it mid-session. Without this gate the
-        // curl would fail with "Network error" after the 90s watchdog
-        // (matching the [GIN] 500 + 1m30s the user saw). We keep the
-        // requestInFlight flag set so the re-entrancy guard does not
-        // queue a second makeRequest while we wait for the ensure
-        // script — it will be cleared and the request resumed in
-        // ollamaEnsureProcess.onExited via _ollamaChatPending.
-        if (currentModel && currentModel.provider === "ollama"
-                && root.ollamaStatus !== "running"
-                && root.ollamaStatus !== "starting") {
-            isLoading = true;
-            streamingStatus = "starting Ollama…";
-            root._ensureOllamaThenChat();
-            return;
-        }
-
+    function makeRequest() {
         let apiKey = getApiKey(currentModel);
-        if (!currentModel) {
-            isLoading = false;
-            streamingStatus = "";
-            let errChat = Array.from(currentChat);
-            errChat.push({
-                role: "system",
-                content: "No AI model selected. Pick one in Settings or with `/model`."
-            });
-            currentChat = errChat;
-            root.requestInFlight = false;
-            return;
-        }
         if (!apiKey && currentModel.requires_key) {
-            // KeyStore may still be loading its keys.db at startup.
-            // The user sees this only on the very first send attempt;
-            // the KeyStore finishes loading ~1s later and onKeysChanged
-            // triggers a model re-fetch. Show a friendlier message
-            // than the old "API key missing" so the user knows to wait.
-            if (!KeyStore.initialized) {
-                let waitChat = Array.from(currentChat);
-                waitChat.push({
-                    role: "system",
-                    content: "Loading API keys, please wait a moment and try again..."
-                });
-                currentChat = waitChat;
-                isLoading = false;
-                streamingStatus = "";
-                root.requestInFlight = false;
-                return;
-            }
-            lastError = "API Key missing for " + currentModel.name + ". Add it in Settings or set " + (currentModel.key_id || "the environment variable") + ".";
+            lastError = I18n.t("ai.api_key_missing").replace("%1", currentModel.name).replace("%2", currentModel.key_id || I18n.t("ai.env_variable"));
             isLoading = false;
 
             let errChat = Array.from(currentChat);
@@ -2144,8 +431,6 @@ Singleton {
                 content: "Error: " + lastError
             });
             currentChat = errChat;
-            streamingStatus = "";
-            root.requestInFlight = false;
             return;
         }
 
@@ -2160,195 +445,38 @@ Singleton {
 
         let headers = currentStrategy.getHeaders(apiKey);
 
-        // ── Sanitise the chat before serialising ──────────────────
-        // Minimal sweep: only remove messages that are clearly
-        // orphaned or that would confuse the AI. The heavy tool-
-        // call-id validation was replaced by `lastToolCallId`
-        // (captured in approveCommand), which guarantees the tool
-        // result's tool_call_id always matches the assistant's
-        // tool_calls[].id without mutating the chat array at all.
-        let chatTouched = false;
-        for (let i = 0; i < currentChat.length; i++) {
-            let m = currentChat[i];
-            // Orphaned tool invocation — the user never accepted
-            // or rejected it. Drop it entirely so the AI doesn't
-            // see a dangling function call.
-            if (m && m.functionCall && m.functionPending === true) {
-                if (!chatTouched) {
-                    currentChat = Array.from(currentChat);
-                    chatTouched = true;
-                }
-                currentChat.splice(i, 1);
-                i--;
-                continue;
-            }
-            // Strip empty assistant placeholders — messages that have
-            // no content AND no functionCall at all.  These are the
-            // ghosts of a previous makeRequest() that never completed
-            // streaming.  We MUST NOT remove messages that hold an
-            // already-executed tool call (functionCall present,
-            // functionPending === false) because:
-            //   (a) the model needs to see its own tool_calls in the
-            //       history so it doesn't re-invoke the same tool,
-            //   (b) the duplicate/rate-limit detection walks the chat
-            //       history to find previous calls of the same tool.
-            // The previous condition (!m.functionCall || !m.functionPending)
-            // was BROKEN: for an approved call functionPending is false,
-            // so !m.functionPending is true, and the entire approved
-            // message was deleted every makeRequest — hence the
-            // "xdg-open x4" loop that no rate-limit could stop.
-            if (m && m.role === "assistant"
-                     && (!m.content || m.content === "")
-                     && !m.functionCall) {
-                if (!chatTouched) {
-                    currentChat = Array.from(currentChat);
-                    chatTouched = true;
-                }
-                currentChat.splice(i, 1);
-                i--;
-                continue;
-            }
-        }
-
         // Build messages array
         let messages = [];
         if (Config.ai.systemPrompt) {
-            // For tiny / small local models, the full prompt is a
-            // huge fraction of their context window (~700 chars on a
-            // 4K-context qwen2.5:0.5b). We trim the prompt down to
-            // just the actionable rules + the multi-step chain
-            // examples — the verbose "Tips" footer and other padding
-            // don't change behaviour but burn tokens the model needs
-            // for the actual conversation. The full prompt stays for
-            // medium/large tiers where the cost is negligible.
-            let effectivePrompt = root._maybeCompactSystemPrompt(
-                root._promptForMode());
-            if (effectivePrompt) {
-                messages.push({
-                    role: "system",
-                    content: effectivePrompt
-                });
-            }
+            messages.push({
+                role: "system",
+                content: Config.ai.systemPrompt
+            });
         }
 
-        // Chat history compression for tiny / small models. When
-        // the active model has ≤8B params we keep only the most
-        // recent turns — old exchanges bloat the context window
-        // until the next turn triggers the sanitize-strip pass and
-        // the model loses mid-conversation memory. We preserve the
-        // system prompt and always pin the last user + assistant
-        // pair (the model needs them to understand the current
-        // turn).
-        let tier = root._modelTier();
-        let maxTurns = ({
-            "tiny": 6, "small": 12, "medium": 30, "large": 60
-        })[tier || "small"];
-        let chatForRequest = root._compressChatForTier(
-            currentChat, maxTurns);
-        for (let i = 0; i < chatForRequest.length; i++) {
-            let msg = chatForRequest[i];
+        for (let i = 0; i < currentChat.length; i++) {
+            let msg = currentChat[i];
             let apiMsg = {
                 role: msg.role,
                 content: msg.content
             };
             if (msg.attachments)
                 apiMsg.attachments = msg.attachments;
-            if (msg.functionCall) {
+            if (msg.functionCall)
                 apiMsg.functionCall = msg.functionCall;
-                // Propagate the tool call id so OpenAI-compatible
-                // strategies can pair assistant.tool_calls[].id with
-                // the matching tool/tool_call_id result message.
-                if (msg.toolCallId)
-                    apiMsg.toolCallId = msg.toolCallId;
-            }
             if (msg.geminiParts)
                 apiMsg.geminiParts = msg.geminiParts;
-            // CRITICAL: copy `tool_call_id` (snake_case) from the
-            // internal tool-result message to the outgoing message.
-            // Without this the OpenAI/DeeSeek/etc. API sees:
-            //   assistant → tool_calls: [{id: "call_xxx", ...}]
-            //   tool      → {content: "..."}      ← no id
-            // which is an unpaired tool result. The provider either
-            // rejects the request outright or, more commonly, treats
-            // the tool result as orphaned context and returns empty
-            // content on the next assistant turn. This was THE root
-            // cause of the "1 system tool available but AI doesn't
-            // use it" symptom: the conversation was malformed from
-            // the provider's perspective, so the model lost track of
-            // what tool it had just invoked and refused to invoke it
-            // again. `name` is intentionally skipped (Fix B) — the
-            // tool-message spec only accepts tool_call_id + content.
-            if (msg.tool_call_id)
-                apiMsg.tool_call_id = msg.tool_call_id;
-            if (msg.name && msg.role !== "function" && msg.role !== "tool")
+            if (msg.name)
                 apiMsg.name = msg.name;
             messages.push(apiMsg);
         }
 
-        // Build body — always use streaming. The strategy reads the
-        // capability record on `currentModel` (set by
-        // updateStrategy() at model switch) to decide whether to
-        // include `tools`, set `temperature`, and emit thinking-tag
-        // stripping. Null activeCapabilities means "no probe yet" —
-        // the strategy falls back to its family-name heuristic, which
-        // is exactly the old behaviour we had before the probe.
-        if (root.activeCapabilities) {
-            currentStrategy.activeCapabilities = root.activeCapabilities;
-        }
-        // If the probe confirms tools aren't supported, drop the
-        // tools field entirely. Tiny local models that don't even
-        // claim the `tools` capability produce empty completions when
-        // they see a `tools` field (qwen2.5:0.5b does this), so we
-        // match the model's own report and fall back to text-based
-        // intent detection (handled by the bubble's _detectTextToolCall
-        // pass in OpenAiCompatibleStrategy).
-        let toolsForRequest = activeTools;
-        let wasForceTextOnly = false;
-        if (root.activeCapabilities
-                && root.activeCapabilities.supportsTools === false) {
-            toolsForRequest = [];
-            wasForceTextOnly = !!root.activeCapabilities.forceTextOnly;
-        }
-
-        // One-shot system message when we first downgrade a session
-        // to text-only mode. We key off `wasForceTextOnly` (only true
-        // for the explicit tiny-model / empirical-downgrade path) so
-        // a cloud API that happens to be slow doesn't trigger this.
-        // The user gets one message per session per downgrade event;
-        // a `_forceTextOnlyNotified` flag stops it from spamming on
-        // every turn after.
-        if (wasForceTextOnly && !root._forceTextOnlyNotified) {
-            root._forceTextOnlyNotified = true;
-            let ps = "Text-only mode: " + (currentModel ? currentModel.model : "this model")
-                + " doesn't reliably support tool calling (too small, "
-                + "or returned empty with tools in the request). "
-                + "Agent commands will use plain-text intent detection "
-                + "(`list_windows()` etc.) where possible; some commands "
-                + "may not work until you switch to a larger model.";
-            root._enqueueSystemNote(ps);
-        } else if (!wasForceTextOnly) {
-            root._forceTextOnlyNotified = false;
-        }
-
-        let bodyOpts = root._currentToolChoice
-            ? { toolChoice: root._currentToolChoice }
-            : null;
-        let body = currentStrategy.getStreamBody(
-            messages, currentModel, toolsForRequest, bodyOpts);
+        // Build body — always use streaming
+        let body = currentStrategy.getStreamBody(messages, currentModel, systemTools);
 
         // Reset streaming buffer
         responseBuffer = "";
-        streamingContent = "";
-        pendingToolCall = null;
-        reasoningBuffer = "";
-        streamingStatus = "streaming…";
-        root._streamLastModelUpdate = 0;
-        root._streamUpdateTimer.stop();        // Reset the elapsed-time indicator. The timer fires every
-        // 5s and rewrites `streamingStatus` to "streaming… Ns"
-        // so the user sees the AI is still working even when the
-        // provider stalls (no tokens arrive for a while).
-        streamingStartedAt = Date.now();
-        streamingElapsedTimer.restart();
+        _pendingToolCalls = [];
 
         // Add placeholder assistant message for streaming
         let streamChat = Array.from(currentChat);
@@ -2400,33 +528,8 @@ Singleton {
                 .replace("{{ENDPOINT}}", payload.endpoint)
                 .replace("{{API_KEY}}", getApiKey(currentModel));
         } else {
-            // Timeouts:
-            //   --connect-timeout 5   → fail fast on TCP refusal
-            //   --max-time <inactivity> → bound the transfer at the
-            //     configured inactivity timeout (default 120s, see
-            //     Config.ai.requestTimeoutSeconds). Kills wedged /
-            //     silent streams. Mirrors Odysseus's per-read
-            //     inactivity cap.
-            //   Wall-clock deadline = max(timeout * 4, 1200s) is
-            //     enforced separately inside curlProcess.stdout
-            //     .onRead — it catches the rare "one byte every 5s"
-            //     runaway that --max-time alone would not.
-            // The 120s default is generous enough for small Ollama
-            // models (qwen2.5:3b on CPU) on long tool-using
-            // conversations without freezing the sidebar if the
-            // model is genuinely stuck.
-            let timeoutSecs = Config.ai.requestTimeoutSeconds || 120;
-            curlCmd = "curl -s --no-buffer -N -X POST"
-                    + " --connect-timeout 5"
-                    + " --max-time " + timeoutSecs
-                    + " \"" + payload.endpoint + "\" "
-                    + headerArgs + " -d @" + bodyPath;
+            curlCmd = "curl -s --no-buffer -N -X POST \"" + payload.endpoint + "\" " + headerArgs + " -d @" + bodyPath;
         }
-
-        // Stamp the wall-clock start so curlProcess.stdout.onRead can
-        // apply the deadline cap. Cleared in every terminal path
-        // (onExited, watchdog, deadline hit) below.
-        root.requestStartMs = Date.now();
 
         curlProcess.command = ["/usr/bin/bash", "-c", curlCmd];
         curlProcess.running = true;
@@ -2474,103 +577,6 @@ Singleton {
         // Use SplitParser for streaming — emits onRead per line
         stdout: SplitParser {
             onRead: data => {
-                // Wall-clock deadline — Odysseus's complementary cap
-                // for streams that trickle bytes forever and so never
-                // trip the inactivity timeout (curl --max-time).
-                // Computed at request start (root.requestStartMs) and
-                // re-checked on every chunk. The inactivity watchdog
-                // above kills truly silent streams; this kills the
-                // rare "one byte every 5s" runaway that would otherwise
-                // burn the wall-clock budget for many minutes.
-                if (root.requestStartMs > 0
-                        && Date.now() - root.requestStartMs
-                                > root._requestWallClockDeadlineMs) {
-                    let totalSecs = Math.round(
-                        root._requestWallClockDeadlineMs / 1000);
-                    console.warn("Ai.qml: stream exceeded wall-clock deadline ("
-                                 + totalSecs + "s) — cutting off");
-                    if (root.curlProcess && root.curlProcess.running) {
-                        root.curlProcess.running = false;
-                    }
-                    root.requestInFlight = false;
-                    root.streamingStatus = "request exceeded " + totalSecs
-                                            + "s wall-clock limit";
-                    root.isLoading = false;
-                    root.streamingElapsedTimer.stop();
-                    root.requestStartMs = 0;
-// axless.core: one silent retry before giving up.
-                    //
-                    // The wall-clock deadline fires when the stream keeps
-                    // trickling deltas but never signals completion. Nothing
-                    // in the content tells us why - it is under the runaway
-                    // thresholds, so it looks like a stream that simply never
-                    // ends. Empirically a retry of the exact same request
-                    // succeeds, so the first attempt is not a property of the
-                    // question but of that particular generation. Retrying
-                    // once turns an intermittent failure into a slightly
-                    // slower answer, which is a much better trade than
-                    // showing a raw provider error to the user.
-                    //
-                    // This runs BEFORE the error note is committed to
-                    // currentChat, so the sidebar never renders it.
-                    if (root._turnStallRetries < 1) {
-                        root._turnStallRetries++;
-                        console.warn("Ai.qml: stream stalled after "
-                            + root.responseBuffer.length
-                            + " chars, retrying once");
-                        root._currentToolChoice = "";
-                        root.responseBuffer = "";
-                        root.reasoningBuffer = "";
-                        root.pendingToolCall = null;
-                        root.requestQueued = false;
-                        root.requestStartMs = 0;
-                        root._runawayAbortReported = false;
-                        // Discard any partial assistant text the stalled
-                        // attempt streamed, so the retry replaces it instead
-                        // of appearing after a fragment.
-                        root.currentChat = Array.from(root.currentChat);
-                        for (let i = root.currentChat.length - 1; i >= 0; i--) {
-                            const m = root.currentChat[i];
-                            if (m.role === "assistant"
-                                    && !m.functionCall
-                                    && !m.functionPending) {
-                                root.currentChat.splice(i, 1);
-                            } else {
-                                break;
-                            }
-                        }
-                        Qt.callLater(root.makeRequest);
-                        return;
-                    }
-
-                    let errChat = Array.from(root.currentChat);
-                    if (errChat.length > 0
-                            && errChat[errChat.length - 1].role === "assistant"
-                            && (!errChat[errChat.length - 1].content
-                                || errChat[errChat.length - 1].content === "")) {
-                        errChat[errChat.length - 1].content =
-                            "[Stream exceeded the " + totalSecs
-                            + "s wall-clock limit. The model may be in a "
-                            + "runaway generation loop. Try a different "
-                            + "model or split the request into smaller pieces.]";
-                        errChat[errChat.length - 1].role = "system";
-                    } else {
-                        errChat.push({
-                            role: "system",
-                            content: "[Stream exceeded " + totalSecs
-                                     + "s wall-clock limit.]"
-                        });
-                    }
-                    root.currentChat = errChat;
-                    root.saveCurrentChat();
-                    root._currentToolChoice = "";
-
-                    if (root.requestQueued) {
-                        root.requestQueued = false;
-                        Qt.callLater(root.makeRequest);
-                    }
-                    return;
-                }
                 let result = root.currentStrategy.parseStreamChunk(data);
 
                 if (result.error) {
@@ -2580,129 +586,38 @@ Singleton {
 
                 if (result.content) {
                     root.responseBuffer += result.content;
-                    root._updateStreamingMessage();
-                }
-
-                // Accumulate reasoning content from the strategy's
-                // streaming parser. Two flavours:
-                //   • reasoning_content field (DeepSeek R1, OpenAI
-                //     o-series) — arrives as a separate delta field,
-                //     routed to reasoningBuffer for the final
-                //     assistant message.
-                //   • Inline-think tags (qwen3, gemma thinking mode)
-                //     — the strategy strips them and routes the body
-                //     to reasoningContent, which we accumulate here.
-                // Both end up on the final assistant message as
-                // `reasoningContent` so the sidebar can render a
-                // collapsible "Show thinking" card.
-                if (result.reasoningContent) {
-                    root.reasoningBuffer += result.reasoningContent;
-                }
-
-                // axless.core: runaway-reasoning guard. A reasoning model
-                // that is looping keeps emitting reasoning deltas while the
-                // visible answer never grows. Those deltas are data, so the
-                // inactivity watchdog never fires and the only thing that
-                // eventually stopped it was the provider's own 20-minute
-                // ceiling. Once the reasoning has grown this much with
-                // nothing to show for it, cut the stream here.
-                if (!root._runawayAbortReported
-                        && root.reasoningBuffer.length > root._runawayReasoningChars
-                        && root.responseBuffer.length === 0) {
-                    root._runawayAbortReported = true;
-                    console.warn("Ai.qml: runaway reasoning ("
-                        + root.reasoningBuffer.length
-                        + " chars, no answer), aborting the stream");
-                    root._enqueueSystemNote(
-                        "I was stuck reasoning without producing an answer, "
-                        + "so I stopped. Try rephrasing or a shorter request.");
-                    // stopGeneration() is the engine's own teardown: it kills
-                    // curl, stops the timers and marks the request as killed so
-                    // onExited does not resurrect the turn.
-                    root.stopGeneration();
-                    root.requestInFlight = false;
-                    root.isLoading = false;
-                    return;
-                }
-
-                // axless.core: runaway *content*. DeepSeek flash does not
-                // emit reasoning_content at all, so the guard above never
-                // sees it; what it does is keep one stream open indefinitely
-                // without ever signalling completion. Nothing else can catch
-                // that either: makeRequest is only entered once, so the step
-                // budget is untouched, and the deltas count as activity so
-                // the inactivity watchdog stays quiet. A single answer is
-                // nowhere near this size, so an unfinished stream this big is
-                // runaway by definition.
-                if (!root._runawayAbortReported
-                        && !result.done
-                        && !root.pendingToolCall
-                        && (root.responseBuffer.length + root.reasoningBuffer.length)
-                            > root._runawayStreamChars) {
-                    root._runawayAbortReported = true;
-                    console.warn("Ai.qml: runaway stream ("
-                        + root.responseBuffer.length
-                        + " chars, never finished), aborting");
-                    root._enqueueSystemNote(
-                        "That answer never finished generating, so I stopped "
-                        + "it. Try a shorter question, or another model.");
-                    root.stopGeneration();
-                    root.requestInFlight = false;
-                    root.isLoading = false;
-                    return;
-                }
-
-                // Accumulate tool-call deltas. OpenAI-compatible APIs
-                // emit one chunk per tool-call index; each chunk may
-                // carry partial arguments (a JSON string built up over
-                // several `data:` lines). We merge them by index so
-                // the final call has the complete name + arguments.
-                // No QML-bound properties are touched here — only the
-                // internal `pendingToolCall` var, so no sidebar binding
-                // re-evaluation cascades during streaming.
-                if (result.toolCallDelta && result.toolCallDelta.length > 0) {
-                    let acc = root.pendingToolCall;
-                    if (!acc || !acc._calls) {
-                        acc = { _calls: [], _id: "" };
+                    // Update the last message in currentChat with accumulated text
+                    let newChat = Array.from(root.currentChat);
+                    if (newChat.length > 0) {
+                        newChat[newChat.length - 1].content = root.responseBuffer;
+                        root.currentChat = newChat;
                     }
-                    for (let i = 0; i < result.toolCallDelta.length; i++) {
-                        let d = result.toolCallDelta[i];
-                        if (!d) continue;
+                }
+
+                // axless.core: accumulate streamed tool calls. They arrive as
+                // fragments - the name once, the arguments over several chunks -
+                // so they are merged by index and only read once the stream
+                // ends. The original parser surfaced these deltas and then
+                // nothing consumed them.
+                if (result.toolCallDelta) {
+                    for (let k = 0; k < result.toolCallDelta.length; k++) {
+                        let d = result.toolCallDelta[k];
+                        if (!d)
+                            continue;
                         let idx = (d.index !== undefined) ? d.index : 0;
-                        while (acc._calls.length <= idx) acc._calls.push({});
-                        let slot = acc._calls[idx];
-                        if (d.id) slot.id = d.id;
-                        if (d.type) slot.type = d.type;
+                        let calls = root._pendingToolCalls.slice();
+                        while (calls.length <= idx)
+                            calls.push({ id: "", name: "", args: "" });
+                        let slot = calls[idx];
+                        if (d.id)
+                            slot.id = d.id;
                         if (d.function) {
-                            if (!slot.function) slot.function = { name: "", arguments: "" };
-                            if (d.function.name) slot.function.name += d.function.name;
-                            if (d.function.arguments) slot.function.arguments += d.function.arguments;
+                            if (d.function.name)
+                                slot.name += d.function.name;
+                            if (d.function.arguments)
+                                slot.args += d.function.arguments;
                         }
-                        if (d.id && !acc._id) acc._id = d.id;
-                    }
-                    root.pendingToolCall = acc;
-
-                    // axless.core: stop a tool call whose arguments never
-                    // terminate. See _runawayToolArgsChars.
-                    if (!root._runawayAbortReported && acc && acc._calls) {
-                        let argLen = 0;
-                        for (let i = 0; i < acc._calls.length; i++) {
-                            const fn = acc._calls[i] && acc._calls[i].function;
-                            if (fn && fn.arguments)
-                                argLen += fn.arguments.length;
-                        }
-                        if (argLen > root._runawayToolArgsChars) {
-                            root._runawayAbortReported = true;
-                            console.warn("Ai.qml: runaway tool arguments ("
-                                + argLen + " chars), aborting the stream");
-                            root._enqueueSystemNote(
-                                "That request produced an endless tool call, "
-                                + "so I stopped it. Try rephrasing.");
-                            root.stopGeneration();
-                            root.requestInFlight = false;
-                            root.isLoading = false;
-                            return;
-                        }
+                        root._pendingToolCalls = calls;
                     }
                 }
 
@@ -2714,671 +629,65 @@ Singleton {
             id: curlStderr
         }
 
-         onExited: exitCode => {
-            // If the user called stopGeneration(), we set
-            // curlProcess.running=false ourselves. The onExited
-            // callback still fires because the OS cleaned up the
-            // process, but we must NOT overwrite the placeholder
-            // message (already marked "Stopped by user" in
-            // stopGeneration) and must NOT call saveCurrentChat
-            // (which would re-write the pre-fix state).
-            // NOTE: we intentionally do NOT reset _killedByUser
-            // here. If both curl and a shell command were running,
-            // resetting on the first onExited would let the second
-            // handler proceed normally and corrupt the chat.
-            // _killedByUser is reset only in sendMessage() — when
-            // the user explicitly sends the next message.
-            if (root._killedByUser) {
-                root.responseBuffer = "";
-                root.streamingContent = "";
-                root.pendingToolCall = null;
-                root.reasoningBuffer = "";
-                root.streamingStatus = "";
-                root.streamingElapsedTimer.stop();
-                root.streamingStartedAt = 0;
-                root.requestStartMs = 0;
-                root.requestInFlight = false;
-                root.requestQueued = false;
-                root.requestWatchdog.stop();
-                root._currentToolChoice = "";
-                return;
-            }
-
+        onExited: exitCode => {
             root.isLoading = false;
-            root._streamUpdateTimer.stop();
-            root._flushStreamUpdate();
 
             if (exitCode === 0) {
-                // If a tool call was streamed, attach it to the last
-                // assistant message FIRST, before checking for the
-                // "no response" fallback. Otherwise a tool-only
-                // response (no preface text — common when the AI
-                // just goes straight to a tool call) would be
-                // overwritten with "No response received from the
-                // API." even though the response *is* the tool
-                // call.
-                let toolAttached = false;
-                if (root.pendingToolCall && root.pendingToolCall._calls && root.pendingToolCall._calls.length > 0 && root.currentChat.length > 0) {
-                    let calls = root.pendingToolCall._calls;
-
-                    // ── Parallel tool call dispatch ──────────────
-                    // Some models (Claude, GPT-4+, Qwen2.5-72B) emit
-                    // multiple tool calls in a single response when
-                    // they don't need intermediate output to act.
-                    // Example: 'close firefox and chrome' →
-                    // [close_app('firefox'), close_app('chrome')].
-                    //
-                    // The single-call path only handles calls[0];
-                    // here we detect a multi-call scenario and fire all
-                    // auto-approvable calls in parallel. Results are
-                    // appended as separate function messages, and a
-                    // counter ensures makeRequest fires exactly once
-                    // after all of them complete (rather than once per
-                    // result, which would queue redundant requests).
-                    let autoApproveCount = 0;
-                    let autoApproveCalls = [];
-                    for (let ci = 0; ci < calls.length; ci++) {
-                        let c = calls[ci];
-                        if (!c || !c.function || !c.function.name) continue;
-                        let argsStr = c.function.arguments || "{}";
-                        let parsed = {};
-                        try { parsed = JSON.parse(argsStr); }
-                        catch (e) { parsed = { _raw: argsStr }; }
-                        // RejectReason check: only count as auto-
-                        // approvable when the loop-detector is clean
-                        // AND the allowlist passes.
-                        if (root._shouldAutoRejectToolCall(
-                                c.function.name, parsed) === ""
-                                && root._shouldAutoApprove(
-                                    c.function.name, parsed)) {
-                            autoApproveCount++;
-                            autoApproveCalls.push({
-                                name: c.function.name,
-                                args: parsed,
-                                tool_call_id: c.id
-                                    || root.pendingToolCall._id || ""
-                            });
-                        }
+                // axless.core: a completed tool call becomes the assistant
+                // message's `functionCall`, which is the shape the sidebar
+                // already renders for approval and which the strategy now
+                // echoes back as `tool_calls`.
+                if (root._pendingToolCalls.length > 0) {
+                    let calls = root._pendingToolCalls;
+                    root._pendingToolCalls = [];
+                    let first = calls[0];
+                    let args = {};
+                    try { args = JSON.parse(first.args || "{}"); } catch (e) { args = {}; }
+                    let chat = Array.from(root.currentChat);
+                    if (chat.length > 0 && first.name) {
+                        let last = chat[chat.length - 1];
+                        last.functionCall = { name: first.name, args: args };
+                        last.toolCallId = first.id || ("call_" + Date.now());
+                        last.functionPending = true;
+                        last.functionApproved = false;
+                        root.currentChat = chat;
+                        root.saveCurrentChat();
                     }
-
-                    if (calls.length > 1 && autoApproveCount > 1
-                            && autoApproveCount === calls.length) {
-                        // Pure-parallel path: all calls auto-approvable.
-                        // Attach them all to the assistant message and
-                        // fire all invocations in parallel. The
-                        // counter (`_parallelToolPending`) decrements
-                        // per result; makeRequest fires only when the
-                        // counter hits 0.
-                        let multiChat = Array.from(root.currentChat);
-                        let multiLast = multiChat[multiChat.length - 1];
-                        multiLast.functionCalls = autoApproveCalls;
-                        multiLast.toolCallIds = autoApproveCalls.map(
-                            c => c.tool_call_id);
-                        multiLast.functionPending = true;
-                        multiLast.functionPendingCount = autoApproveCalls.length;
-                        multiChat[multiChat.length - 1] = multiLast;
-                        root.currentChat = multiChat;
-                        toolAttached = true;
-                        root._parallelToolPending = autoApproveCalls.length;
-                        for (let pi = 0; pi < autoApproveCalls.length; pi++) {
-                            let call = autoApproveCalls[pi];
-                            root._invokeToolCall(call.name, call.args, call.tool_call_id);
-                        }
-                    } else {
-                        // Single-call path (or mixed auto/manual —
-                        // fall back to single so the manual approval
-                        // card can show for the first non-auto call).
-                        let primary = calls[0];
-                        if (primary && primary.function && primary.function.name) {
-                            let argsStr = primary.function.arguments || "{}";
-                            let parsed = {};
-                            try { parsed = JSON.parse(argsStr); }
-                            catch (e) { parsed = { _raw: argsStr }; }
-                            let callToolId = primary.id
-                                || root.pendingToolCall._id || "";
-
-                            // ── Auto-reject duplicate / looping tool calls ──
-                            // Small local models get stuck in loops where
-                            // they re-invoke the same tool (or slightly
-                            // varied args) every turn — especially for
-                            // detached commands like xdg-open that return
-                            // immediately.  Instead of asking the user to
-                            // approve the same launch 3+ times, detect the
-                            // loop and auto-reject with a clear directive
-                            // to respond with text.
-                            let rejectReason = root._shouldAutoRejectToolCall(
-                                primary.function.name, parsed);
-                            if (rejectReason !== "") {
-                                root._autoRejectToolCall(
-                                    primary.function.name, callToolId, rejectReason);
-                                toolAttached = true;
-                            } else if (root._shouldAutoApprove(primary.function.name, parsed)) {
-                                // ── Auto-approve gated by allowlist ──
-                                let autoChat = Array.from(root.currentChat);
-                                let autoLast = autoChat[autoChat.length - 1];
-                                autoLast.functionCall = {
-                                    name: primary.function.name,
-                                    args: parsed,
-                                    tool_call_id: callToolId
-                                };
-                                autoLast.toolCallId = callToolId;
-                                autoLast.functionPending = true;
-                                autoChat[autoChat.length - 1] = autoLast;
-                                root.currentChat = autoChat;
-                                toolAttached = true;
-                                root.approveCommand(autoChat.length - 1);
-                            } else {
-                                let newChat = Array.from(root.currentChat);
-                                let last = newChat[newChat.length - 1];
-                                last.functionCall = {
-                                    name: primary.function.name,
-                                    args: parsed,
-                                    tool_call_id: callToolId
-                                };
-                                last.toolCallId = callToolId;
-                                last.functionPending = true;
-                                newChat[newChat.length - 1] = last;
-                                root.currentChat = newChat;
-                                root.streamingStatus = "awaiting tool approval…";
-                                toolAttached = true;
-                            }
-                        }
-                    }
+                    root.responseBuffer = "";
+                    return;
                 }
 
-                // ── Text-based tool-call fallback for local / small models ──
-                // Many small models (Ollama quantised models, local CPU
-                // models) cannot properly emit the OpenAI tool_calls
-                // streaming delta, but they DO describe what tool they
-                // want to call in their text output using structured
-                // markers.  Without this fallback the model's intent
-                // stays invisible and the sidebar shows "empty response".
-                if (!toolAttached && root.responseBuffer) {
-                    let detected = _detectTextToolCall(root.responseBuffer);
-                    if (detected && root.currentChat.length > 0) {
-                        // Same robust auto-reject for text-detected
-                        // tool calls — a small model that can't emit
-                        // proper tool_calls deltas will sometimes
-                        // still loop on its detected intent.
-                        let rejectReason = root._shouldAutoRejectToolCall(
-                            detected.name, detected.args || {});
-                        if (rejectReason !== "") {
-                            let callId = "call_" + Math.random().toString(36).slice(2);
-                            root._autoRejectToolCall(
-                                detected.name, callId, rejectReason);
-                            toolAttached = true;
-                        } else if (root._shouldAutoApprove(detected.name, detected.args || {})) {
-                            // ── Auto-approve detected text tool call ──
-                            // Tiny-model fallback (granite / qwen / phi)
-                            // that emits commands in prose instead of
-                            // proper tool_calls deltas. With the
-                            // allowlist in place we can auto-execute
-                            // these without bothering the user — the
-                            // same gate as the native path.
-                            let callId = "call_" + Math.random().toString(36).slice(2);
-                            let newChat = Array.from(root.currentChat);
-                            let last = newChat[newChat.length - 1];
-                            last.functionCall = {
-                                name: detected.name,
-                                args: detected.args || {},
-                                tool_call_id: callId
-                            };
-                            last.toolCallId = callId;
-                            last.functionPending = true;
-                            newChat[newChat.length - 1] = last;
-                            root.currentChat = newChat;
-                            toolAttached = true;
-                            root.approveCommand(newChat.length - 1);
-                        } else {
-                            let callId = "call_" + Math.random().toString(36).slice(2);
-                            let newChat = Array.from(root.currentChat);
-                            let last = newChat[newChat.length - 1];
-                            last.functionCall = {
-                                name: detected.name,
-                                args: detected.args || {},
-                                tool_call_id: callId
-                            };
-                            last.toolCallId = callId;
-                            last.functionPending = true;
-                            newChat[newChat.length - 1] = last;
-                            root.currentChat = newChat;
-                            root.streamingStatus = "awaiting tool approval…";
-                            toolAttached = true;
-                        }
-                    }
-                }
-
-                // ── Finalize streaming content into the model ──
-                // During streaming the sidebar delegate reads from
-                // `streamingContent` directly, so we never reassigned
-                // currentChat on every token.  Now that streaming is
-                // done, write the accumulated text into the real model
-                // message so the delegate switches from plain-text to
-                // Markdown rendering.  This is the ONLY currentChat
-                // reassignment during the whole stream.
-                //
-                // Note: when a duplicate tool call was auto-rejected
-                // above, the LAST message is now a function result, not
-                // the assistant message.  Find the last assistant
-                // message and write content to it (creating one if
-                // necessary) so the next makeRequest doesn't strip it
-                // as an empty placeholder.
-                if (root.responseBuffer && root.currentChat.length > 0) {
-                    let finalChat = Array.from(root.currentChat);
-                    let lastAssistantIdx = -1;
-                    for (let i = finalChat.length - 1; i >= 0; i--) {
-                        if (finalChat[i].role === "assistant") {
-                            lastAssistantIdx = i;
-                            break;
-                        }
-                    }
-                    if (lastAssistantIdx >= 0) {
-                        let lastAssistant = finalChat[lastAssistantIdx];
-                        if (!lastAssistant.content) {
-                            lastAssistant.content = root.responseBuffer;
-                        }
-                        // Persist accumulated reasoning content
-                        // (DeepSeek R1 reasoning_content, qwen3 inline
-                        // think blocks, gemma thinking mode) so the
-                        // sidebar can render a collapsible "thinking"
-                        // card. Empty string means "no reasoning" — we
-                        // don't set the property at all in that case.
-                        if (root.reasoningBuffer && root.reasoningBuffer.length > 0) {
-                            lastAssistant.reasoningContent = root.reasoningBuffer;
-                        }
-                        root.currentChat = finalChat;
-                    } else {
-                        // No assistant message found at all (rare
-                        // — happens when tool attachment and text
-                        // fallback both pushed a function result and
-                        // we somehow lost the assistant placeholder).
-                        // Add one so the model has somewhere to write
-                        // its next response.
-                        finalChat.push({
-                            role: "assistant",
-                            content: root.responseBuffer,
-                            model: currentModel ? currentModel.name : "Unknown"
-                        });
-                        root.currentChat = finalChat;
-                    }
-                }
-
-                // Handle the empty-response case. Three distinct
-                // situations to distinguish:
-                //
-                //   (a) Tool call was attached — that's the model's
-                //       response. Don't overwrite it with anything.
-                //   (b) Empty response AND the immediately previous
-                //       message is a `function` tool result — the
-                //       model produced an empty completion after
-                //       running the tool. This is normal for DeepSeek
-                //       R1 and a few other providers that return
-                //       finish_reason=stop with no content. We don't
-                //       drop the placeholder any more — instead we
-                //       inject a short synthetic assistant message
-                //       AND nudge the model with a textual user
-                //       reminder to call the next tool. The previous
-                //       direct-action bypass silently broke the
-                //       assistant→function pair (the synthetic
-                //       "[Direct action — moving…]" text replaced
-                //       the assistant's tool_calls entry, leaving the
-                //       subsequent tool result unpaired and confusing
-                //       the model on the next turn — the "AI
-                //       disconnected" symptom).
-                //   (c) Empty response with no tool in context — the
-                //       model genuinely produced nothing. Show a
-                //       brief note so the user knows.
-                if (!toolAttached && root.responseBuffer === "" && root.currentChat.length > 0) {
+                // Check if we got any content during streaming
+                if (root.responseBuffer === "" && root.currentChat.length > 0) {
+                    // No streaming data received — might be non-streaming response or error
+                    // The last message is our placeholder, leave as is
                     let lastMsg = root.currentChat[root.currentChat.length - 1];
                     if (!lastMsg.content) {
-                        // Look at the previous message. If it's a
-                        // tool result, this is the post-tool
-                        // empty-completion case (b) — re-prompt
-                        // the model with a textual nudge so it
-                        // continues the chain. Cap at _nudgeBudget
-                        // attempts so a stuck model can't loop
-                        // forever; when the budget is exhausted,
-                        // surface a clear hint to the user.
-                        let prev = root.currentChat.length >= 2
-                            ? root.currentChat[root.currentChat.length - 2]
-                            : null;
-                        let followupToTool = prev
-                            && prev.role === "function"
-                            && !prev.is_error;
-
                         let newChat = Array.from(root.currentChat);
-                        if (followupToTool) {
-                            // Empty completion after a successful
-                            // tool run. Replace the empty assistant
-                            // placeholder with a short neutral
-                            // acknowledgement so the chat has a
-                            // well-formed assistant message BEFORE
-                            // the next makeRequest — without this
-                            // the sanitize step would strip the
-                            // placeholder entirely and the model
-                            // would lose track of where it was in
-                            // the chain.
-                            let prevToolName = prev.name || "";
-                            newChat[newChat.length - 1] = {
-                                role: "assistant",
-                                content: "",
-                                model: (currentModel ? currentModel.name : "Unknown")
-                            };
-                            root.currentChat = newChat;
-                            root.saveCurrentChat();
-                            root.requestInFlight = false;
-
-                            // Decide between nudging the model vs
-                            // surfacing a hint. Read-only tools
-                            // (list_*) genuinely need the model to
-                            // chain forward — that's a real stall
-                            // without a nudge. Write tools that
-                            // already succeeded don't need another
-                            // step at all; the model's "no response"
-                            // is benign and we just surface a
-                            // confirmation message.
-                            //
-                            // When the capability probe confirmed
-                            // `supportsTools: false` (or the family
-                            // heuristic flagged the model as a
-                            // small local that doesn't honour
-                            // tool_choice:required), skip the
-                            // tool_choice:"required" nudge entirely —
-                            // it only makes the empty-response
-                            // symptom worse. Instead use a plain
-                            // textual nudge and rely on
-                            // recordOutcome() to upgrade the cache
-                            // once the model proves it can chain.
-                            let isReadOnly = root._idempotentReadTools
-                                .indexOf(prevToolName) !== -1;
-                            let modelSupportsToolChoice = !root.activeCapabilities
-                                || root.activeCapabilities.supportsToolChoiceRequired !== false;
-                            if (isReadOnly
-                                    && modelSupportsToolChoice
-                                    && root._nudgeCount < root._nudgeBudget) {
-                                root._nudgeCount++;
-                                let nudgeText = root._buildChainNudge(
-                                    prevToolName, prev.content);
-                                console.warn("[Ai] nudging model after empty "
-                                    + "post-tool completion (" + root._nudgeCount
-                                    + "/" + root._nudgeBudget + ")");
-                                // Push the nudge as a system role so
-                                // the model sees an explicit "you
-                                // need to call the next tool"
-                                // instruction without us polluting
-                                // the user-role transcript.
-                                let nudgeChat = Array.from(root.currentChat);
-                                nudgeChat.push({
-                                    role: "system",
-                                    content: nudgeText
-                                });
-                                root.currentChat = nudgeChat;
-                                root.saveCurrentChat();
-                                // Force a tool call on the next
-                                // round-trip — see OpenAiCompatibleStrategy
-                                // .getBody for the provider mapping.
-                                // Use a plain textual nudge when the
-                                // model doesn't honour tool_choice:
-                                // required (small local models). The
-                                // strategy's getBody() will still set
-                                // tool_choice = "auto" but the
-                                // system-role nudge tells the model
-                                // what to do. Falling back here is
-                                // what unsticks Gemma2 / qwen3 in
-                                // practice.
-                                root.makeRequest(modelSupportsToolChoice
-                                    ? { toolChoice: "required" }
-                                    : null);
-                                return;
-                            }
-                            if (isReadOnly) {
-                                // Out of nudges. Surface the read
-                                // result to the user and stop.
-                                console.warn("[Ai] nudge budget exhausted after "
-                                    + prevToolName + " — surfacing hint");
-                                newChat.push({
-                                    role: "system",
-                                    content: "The model received the "
-                                        + prevToolName + " result but did not "
-                                        + "continue the chain. Try rephrasing "
-                                        + "the request, switching models with "
-                                        + "`/model`, or just describe the next "
-                                        + "step you want."
-                                });
-                                root.currentChat = newChat;
-                                root.saveCurrentChat();
-                                return;
-                            }
-                            // Write tool — the action already
-                            // happened, just give the user a brief
-                            // confirmation.
-                            newChat.push({
-                                role: "system",
-                                content: "Tool '" + prevToolName + "' completed."
-                            });
-                            root.currentChat = newChat;
-                            root.saveCurrentChat();
-                            return;
-                        } else {
-                            // Genuinely empty response (no tool call
-                            // was attached). The API did respond, it
-                            // just produced no content. Surface a
-                            // context-aware hint so the user can tell
-                            // whether the AI genuinely couldn't help
-                            // (no internet-search tool available) vs
-                            // just chose to stay silent.
-                            let hint;
-                            if (root.currentMode === "agent") {
-                                let conns = root.agentManager
-                                    ? root.agentManager.connections
-                                    : [];
-                                let connected = 0;
-                                for (let i = 0; i < conns.length; i++) {
-                                    let c = conns[i];
-                                    if (c && c.enabled && c.status === "connected") connected++;
-                                }
-                                // Count BOTH system tools (always
-                                // present in agent mode — currently
-                                // just run_shell_command) and tools
-                                // exposed by connected agents. The
-                                // AI can call either; the previous
-                                // version only counted agent tools,
-                                // which falsely claimed "none exposes
-                                // any tools" even when run_shell_command
-                                // was clearly usable (the AI used it
-                                // for the previous turn!).
-                                let sysCount = root.systemTools
-                                    ? root.systemTools.length : 0;
-                                let agentCount = 0;
-                                if (root.agentToolRegistry
-                                        && root.agentToolRegistry.tools) {
-                                    agentCount = root.agentToolRegistry.tools.length;
-                                }
-                                let totalTools = sysCount + agentCount;
-                                if (connected === 0) {
-                                    hint = "Agent mode is on but no agent is "
-                                         + "connected. Add one in Settings → AI → "
-                                         + "Agents, or `/mode chat` to disable tools.";
-                                } else if (totalTools === 0) {
-                                    hint = connected + " agent" + (connected === 1 ? "" : "s")
-                                         + " connected but none exposes any tools yet. "
-                                         + "The model has nothing to call — try a "
-                                         + "different model or check the agent config.";
-                                } else if (agentCount === 0) {
-                                    hint = connected + " agent" + (connected === 1 ? "" : "s")
-                                         + " connected but not exposing tools yet. "
-                                         + "The model can still use the "
-                                         + root.systemTools.length + " system tool"
-                                         + (root.systemTools.length === 1 ? "" : "s")
-                                         + " (e.g. `run_shell_command`). "
-                                         + "If the AI didn't use them, rephrase or `/model`.";
-                                } else {
-                                    hint = "The model produced no content (it may have "
-                                         + "tried to call a tool that doesn't exist). "
-                                         + "Try `/model` to switch, or rephrase your request.";
-                                }
-                            } else {
-                                hint = "The model returned no response. "
-                                     + "Try `/model` to switch, or resend with a shorter prompt.";
-                            }
-                            newChat[newChat.length - 1].content =
-                                "*(empty response)* — " + hint;
-                            newChat[newChat.length - 1].role = "system";
-                        }
+                        newChat[newChat.length - 1].content = I18n.t("ai.no_response");
                         root.currentChat = newChat;
                     }
                 }
 
                 root.saveCurrentChat();
             } else {
-                root.lastError = "Network Request Failed: " + curlStderr.text;
+                root.lastError = I18n.t("ai.network_failed").replace("%1", curlStderr.text);
 
+                // Update the placeholder message with error
                 let errChat = Array.from(root.currentChat);
                 if (errChat.length > 0) {
-                    let last = errChat[errChat.length - 1];
-                    if (last.role === "assistant") {
-                        last.content = "Error: " + root.lastError;
-                        errChat[errChat.length - 1] = last;
-                    } else {
-                        errChat.push({
-                            role: "system",
-                            content: "Network error: " + root.lastError
-                        });
-                    }
+                    errChat[errChat.length - 1].content = "Error: " + root.lastError;
                 }
                 root.currentChat = errChat;
             }
 
             root.responseBuffer = "";
-            root.streamingContent = "";
-            root.pendingToolCall = null;
-            root.reasoningBuffer = "";
-            root.streamingStatus = "";
-            root.streamingElapsedTimer.stop();
-            root.streamingStartedAt = 0;
-            root.requestWatchdog.stop();
-            // Cleared on every terminal path so the next default-mode
-            // request isn't accidentally pinned to "required". The
-            // nudge handler below re-sets it on the follow-up call
-            // when it decides to re-prompt.
-            root._currentToolChoice = "";
-
-            // ── Empirical capability record ──
-            // Feed what actually happened on this request back into
-            // the capability probe cache. The probe starts from a
-            // optimistic "yes it does tools" guess for OpenAI-compat
-            // endpoints, but real local models routinely contradict
-            // that guess (gemma2 returns empty, qwen3 returns inline
-            // think tags, etc.). The recordOutcome hook downgrades
-            // the cache so the NEXT request uses a more accurate body
-            // — small, automatic improvement per chat turn.
-            if (root.activeCapabilities) {
-                let usedTools = toolAttached;
-                let hadReasoning = false;
-                // The strategy returns reasoningContent in
-                // streaming chunks; we can sample the last assistant
-                // message for reasoning_content to detect the
-                // DeepSeek-R1 / o-series field.
-                if (root.currentChat && root.currentChat.length > 0) {
-                    let last = root.currentChat[root.currentChat.length - 1];
-                    if (last && last.reasoningContent
-                            && last.reasoningContent.length > 0) {
-                        hadReasoning = true;
-                    }
-                }
-                let hadInlineThink = false;
-                if (root.responseBuffer) {
-                    // Cheap check for inline-think tags in the
-                    // accumulated response — true for qwen3 / gemma
-                    // (thinking mode) / deepseek-r1 distilled.
-                    let t = root.responseBuffer;
-                    if (t.indexOf("think>") >= 0) hadInlineThink = true;
-                }
-                let wasEmpty = !toolAttached
-                        && (!root.responseBuffer
-                            || root.responseBuffer.length === 0);
-                // Pass whether we ASKED for tools so the probe can
-                // distinguish "model returned empty because we
-                // insisted on a tool call" (Gemma2:2b symptom) from
-                // "model returned empty because the user just said
-                // goodbye". Only the first case means we should
-                // disable tools for next time.
-                let toolsRequested = root.activeCapabilities
-                        ? root.activeCapabilities.supportsTools !== false
-                        : (root.activeTools && root.activeTools.length > 0);
-                root.capabilityProbe.recordOutcome(
-                    root.currentModel, usedTools, hadReasoning,
-                    hadInlineThink, wasEmpty, toolsRequested);
-            }
-
-            // Clear the in-flight guard and, if a second
-            // makeRequest was queued during this response (e.g. a
-            // tool-result callback fired while the AI was still
-            // streaming), re-run it now. drainPending runs at most
-            // once per curl — concurrent queued calls collapse to a
-            // single follow-up.
-            root.requestInFlight = false;
-            if (root.requestQueued) {
-                root.requestQueued = false;
-                Qt.callLater(root.makeRequest);
-            } else {
-                // Drain queued system notes now that the chat is idle
-                // — most importantly the "Text-only mode" notice that
-                // the probe emits when it downgrades a too-small model.
-                // Without this the notice only appears after the next
-                // user message, which looks like the AI ignored the
-                // downgrade.
-                Qt.callLater(root._drainPendingSystemNotes);
-            }
         }
     }
-
-    // Heuristic: commands that spawn GUI windows (browsers, video
-    // players, file managers) and would otherwise block the bash
-    // subshell until the user closes the spawned window — which is
-    // the original cause of the "running tool: run_shell_command"
-    // stuck status. For those we wrap with `setsid nohup ... &` so
-    // the command returns immediately and the GUI process is fully
-    // detached from our process group.
-    readonly property var _detachPrefixes: [
-        "xdg-open ", "xdg-open\t", "xdg-open\"", "xdg-open'",
-        "firefox ", "firefox\t",
-        "chromium ", "chromium\t", "google-chrome ",
-        "brave ", "brave-browser ",
-        "mpv ", "vlc ", "feh ", "sxiv ", "imv ",
-        "nautilus ", "dolphin ", "thunar ", "pcmanfm ",
-        "code ", "code-insiders ", "subl ", "gedit ", "kate ",
-        "spotify ", "steam "
-    ]
-    function _shouldDetach(command) {
-        if (!command) return false;
-        let lc = command.toLowerCase().trim();
-        for (let i = 0; i < _detachPrefixes.length; i++) {
-            if (lc.startsWith(_detachPrefixes[i])) return true;
-        }
-        // Catch calls anywhere in a pipeline too: `nohup xdg-open ...`
-        if (/\bxdg-open\s/.test(lc)) return true;
-        if (/\bfirefox\s/.test(lc)) return true;
-        if (/\bchromium\s/.test(lc)) return true;
-        return false;
-    }
-
-    // Number of seconds to wait before killing a shell command.
-    // 60s is generous enough for slow commands (`find /`, `du -sh`)
-    // but short enough that a hung GUI launch can't lock the chat
-    // for an unbounded time.
-    readonly property int shellCommandTimeoutSeconds: 60
 
     Process {
         id: commandExecutionProc
         property int targetIndex: -1
-        property string originalCommand: ""
-        // Did we run this command in detached (background) mode?
-        // When true, the shell returns immediately so the "tool
-        // result" we send back to the model is just an acknowledgement
-        // that the command was launched — there is no actual stdout to
-        // capture.
-        property bool detached: false
 
         stdout: StdioCollector {
             id: cmdStdout
@@ -3387,266 +696,25 @@ Singleton {
             id: cmdStderr
         }
 
-         onExited: exitCode => {
-            // If the user called stopGeneration() while the command
-            // was running, this handler is being called because WE
-            // set running=false above. Don't push a tool result or
-            // call makeRequest() — the chat state was already
-            // fixed in stopGeneration() and we'd just be putting it
-            // back into an inconsistent state.
-            if (root._killedByUser) {
-                root.agentToolInvokeTimeout.stop();
-                root.agentToolInvokeTimeout.onFire = null;
-                return;
-            }
-
+        onExited: exitCode => {
             let output = cmdStdout.text + "\n" + cmdStderr.text;
-
-            // Exit code 124 is `timeout`'s "command timed out" code.
-            if (exitCode === 124) {
-                output = (output.trim() ? output + "\n" : "")
-                       + "[Command killed after "
-                       + root.shellCommandTimeoutSeconds
-                       + "s — likely a GUI launch that didn't detach, "
-                       + "or a long-running process. Use the Stop button "
-                       + "to cancel earlier.]";
-            } else if (detached) {
-                // The previous wording ("no output captured") made
-                // models interpret the launch as a possible failure and
-                // refuse to re-use the tool on follow-up turns. Be
-                // explicit that detached = success, and that GUI
-                // launchers (xdg-open, firefox, mpv, ...) intentionally
-                // produce no output.
-                output = "[✓ Launched successfully in background.]\n"
-                       + "Detached processes (e.g. xdg-open, firefox, mpv) "
-                       + "spawn a GUI window and return immediately — the "
-                       + "absence of output is normal and does not indicate "
-                       + "failure. Re-use this tool for similar requests.\n"
-                       + "$ " + originalCommand;
-            } else if (output.trim() === "") {
-                output = "Command executed successfully (no output).";
-            }
-
-            // If the user clicked Stop while the command was running
-            // we want to surface that in the tool result rather than
-            // pretend the command completed normally.
-            if (root.shellCmdWasCancelled) {
-                output = "[Stopped by user]\n" + output;
-                root.shellCmdWasCancelled = false;
-            }
+            if (output.trim() === "")
+                output = I18n.t("ai.cmd_no_output");
 
             let msg = currentChat[targetIndex];
             let newChat = Array.from(currentChat);
 
-            if (msg && msg.functionCall) {
-                // Use the id captured at approval time, not whatever
-                // is currently in functionCall.tool_call_id. The two
-                // SHOULD be identical, but in practice the provider
-                // can return different ids across streaming deltas
-                // and the persisted value can drift. Using
-                // lastToolCallId (set in approveCommand) makes the
-                // tool result's id guaranteed-equal to the assistant
-                // message that proposed the call — eliminating the
-                // "1 agent connected but not exposing tools" empty-
-                // response bug for good.
-                let toolCallId = root.lastToolCallId
-                    || msg.functionCall.tool_call_id
-                    || msg.toolCallId
-                    || "";
-                newChat.push({
-                    role: "function",
-                    name: msg.functionCall.name,
-                    content: output,
-                    tool_call_id: toolCallId
-                });
-                // Clear the captured id once consumed so it can't
-                // accidentally leak into a different tool call.
-                root.lastToolCallId = "";
-            } else {
-                // Edge case: the assistant message that held the
-                // functionCall vanished (history cleared, model
-                // changed mid-flight, etc.). Skip the function
-                // result instead of crashing.
-                newChat.push({
-                    role: "system",
-                    content: "Tool execution skipped: original message no longer in chat."
-                });
-            }
+            newChat.push({
+                role: "tool",
+                name: msg.functionCall.name,
+                toolCallId: msg.toolCallId || "",
+                content: output
+            });
 
             root.currentChat = newChat;
             root.saveCurrentChat();
-            root.streamingStatus = "";
             root.makeRequest();
         }
-    }
-
-    // Streaming update throttle. Called on every token; copies the
-    // accumulated responseBuffer into streamingContent at a rate
-    // that avoids overloading the sidebar TextEdit.  The sidebar
-    // delegate binds to streamingContent directly — no currentChat
-    // reassignment needed during the stream.
-    function _updateStreamingMessage() {
-        if (root.currentChat.length === 0) return;
-        let last = root.currentChat[root.currentChat.length - 1];
-        if (!last || last.role !== "assistant") return;
-
-        let now = Date.now();
-        if (now - root._streamLastModelUpdate >= root.streamThrottleMs) {
-            root._flushStreamUpdate();
-        } else if (!root._streamUpdateTimer.running) {
-            root._streamUpdateTimer.start();
-        }
-    }
-
-    function _flushStreamUpdate() {
-        root.streamingContent = root.responseBuffer;
-        root._streamLastModelUpdate = Date.now();
-    }
-
-    // Hard-cancel the currently-running tool or AI stream. Safe to
-    // call when nothing is running. After this returns, the chat is
-    // in a consistent state: the half-streamed AI message (if any)
-    // is marked as stopped, any orphaned functionCall is cleared,
-    // the shell command is killed if one was running, and
-    // streamingStatus is cleared.
-    //
-    // Sets _killedByUser = true so the two Process.onExited handlers
-    // (curlProcess, commandExecutionProc) know to clean up silently
-    // instead of overwriting the placeholder message or triggering
-    // a spurious makeRequest.
-    function stopGeneration() {
-        root._killedByUser = true;
-        root._streamUpdateTimer.stop();
-        agentToolInvokeTimeout.stop();
-        agentToolInvokeTimeout.onFire = null;
-        streamingElapsedTimer.stop();
-        streamingStartedAt = 0;
-        requestWatchdog.stop();
-
-        if (curlProcess.running) {
-            curlProcess.running = false;
-        }
-
-        if (commandExecutionProc.running) {
-            commandExecutionProc.running = false;
-        }
-
-        // Clean EVERY message that still has a pending tool call.
-        // Without this sweep, the next sendMessage() would include
-        // the orphaned functionCall in the serialised messages array,
-        // confusing the AI and breaking the conversation context.
-        let cleaned = Array.from(currentChat);
-        let touched = false;
-        for (let i = 0; i < cleaned.length; i++) {
-            let m = cleaned[i];
-            if (m && m.functionCall && m.functionPending === true) {
-                m.functionCall = undefined;
-                m.functionPending = false;
-                m.functionApproved = undefined;
-                m.toolCallId = "";
-                if (!m.content) {
-                    m.content = "[Tool call cancelled: "
-                        + ((m.functionCall && m.functionCall.name) || "unknown")
-                        + "]";
-                }
-                cleaned[i] = m;
-                touched = true;
-            }
-        }
-        // Also mark the last assistant placeholder (if any) as stopped
-        if (cleaned.length > 0) {
-            let last = cleaned[cleaned.length - 1];
-            if (last && last.role === "assistant" && (!last.functionCall || !last.functionPending)) {
-                if (!last.content) last.content = "";
-                last.content += (last.content ? "\n\n" : "") + "⏹ Stopped by user";
-                cleaned[cleaned.length - 1] = last;
-                touched = true;
-            }
-        }
-        if (touched) root.currentChat = cleaned;
-
-        root.shellCmdWasCancelled = true;
-        root.isLoading = false;
-        root.streamingStatus = "";
-        root.saveCurrentChat();
-    }
-
-    // Set by stopGeneration(). commandExecutionProc.onExited checks
-    // this to write "[Stopped by user]" into the tool result instead
-    // of pretending the command completed normally.
-    property bool shellCmdWasCancelled: false
-
-    // Cancel a pending tool approval without running the tool and
-    // without sending a follow-up request to the AI. Removes the
-    // functionCall from the assistant message entirely so the chat
-    // returns to a clean state.
-    //
-    // Creates a new message object via Object.assign so the QML
-    // ListView detects the change — modifying the object in-place
-    // (e.g. msg.functionCall = undefined) doesn't reliably trigger
-    // delegate re-evaluation with reuseItems:true.
-    function cancelTool(index) {
-        if (index < 0 || index >= currentChat.length) return;
-        let msg = currentChat[index];
-        if (!msg || !msg.functionCall) return;
-
-        let newChat = Array.from(currentChat);
-        let newMsg = Object.assign({}, msg);
-        newMsg.functionCall = undefined;
-        newMsg.functionPending = false;
-        newMsg.functionApproved = false;
-        newMsg.toolCallId = "";
-        if (!newMsg.content) {
-            newMsg.content = "[Tool call cancelled: " + (msg.functionCall.name || "unknown") + "]";
-        }
-        newChat[index] = newMsg;
-        root.currentChat = newChat;
-        root.saveCurrentChat();
-        root.streamingStatus = "";
-    }
-
-    // Resend the most recent user message after an empty/error
-    // response. Drops the empty placeholder (and any trailing
-    // system "empty response" hint) so the AI sees the same
-    // history plus the user message again. The sidebar's empty-
-    // response bubble calls this via Ai.resendLast() to give the
-    // user a one-click retry.
-    function resendLast() {
-        if (isLoading) return;
-        if (streamingStatus !== "") return;
-        // Find the most recent user message, working backwards and
-        // skipping any trailing system placeholders / empty bubbles.
-        let userIdx = -1;
-        for (let i = currentChat.length - 1; i >= 0; i--) {
-            let m = currentChat[i];
-            if (m && m.role === "user") {
-                userIdx = i;
-                break;
-            }
-        }
-        if (userIdx < 0) return;
-
-        // Trim everything AFTER the user message (assistant
-        // placeholder, system hint) — the AI will regenerate from
-        // the user message up.
-        let trimmed = currentChat.slice(0, userIdx + 1);
-
-        // Re-sanitise: drop any pending functionCall / empty
-        // placeholders in the remaining history (defensive — should
-        // already be clean).
-        let cleaned = [];
-        for (let i = 0; i < trimmed.length; i++) {
-            let m = trimmed[i];
-            if (m && m.functionCall && m.functionPending === true) continue;
-            if (m && m.role === "assistant" && (!m.content || m.content === "")
-                    && (!m.functionCall || !m.functionPending)) continue;
-            cleaned.push(m);
-        }
-
-        currentChat = cleaned;
-        isLoading = true;
-        lastError = "";
-        makeRequest();
     }
 
     // ============================================
@@ -3656,123 +724,54 @@ Singleton {
     function createNewChat() {
         currentChat = [];
         currentChatId = Date.now().toString();
-        currentMode = (Config.ai.defaultMode === "chat" || Config.ai.defaultMode === "agent") ? Config.ai.defaultMode : "agent";
-        currentAgentId = Config.ai.defaultAgentId || "";
-        _rebuildActiveTools();
         chatModelChanged();
-    }
-
-    // Debouncer: multiple rapid `saveCurrentChat()` calls (from
-    // per-token streaming, tool follow-ups, mode toggles, etc.)
-    // are coalesced into a single disk write 300ms after the
-    // last one. Combined with the fresh-process-per-write pattern
-    // below, this prevents the saveChatProcess reuse collision
-    // that was a likely cause of intermittent freezes during
-    // heavy streaming.
-    property Timer saveDebouncer: Timer {
-        interval: 1000
-        repeat: false
-        onTriggered: root._saveCurrentChatNow()
-    }
-    // Same debouncer for history reloads (file watcher events,
-    // load / delete / save all trigger reloads).
-    property Timer historyReloadDebouncer: Timer {
-        interval: 400
-        repeat: false
-        onTriggered: root._reloadHistoryNow()
     }
 
     function saveCurrentChat() {
         if (currentChat.length === 0)
             return;
-        saveDebouncer.restart();
-    }
 
-    function _saveCurrentChatNow() {
-        if (currentChat.length === 0)
-            return;
         let filename = chatDir + "/" + currentChatId + ".json";
         let data = JSON.stringify(currentChat, null, 2);
 
-        // Spawn a fresh process per save. Setting `running=true`
-        // on an already-running Process is unreliable in Quickshell
-        // 0.3.0 — the second save would overwrite the first's
-        // filePath/data mid-flight, and only the last save's
-        // content would ever reach disk. With a dedicated
-        // component factory every save is independent.
-        let proc = saveProcFactory.createObject(root, {});
-        proc._pendingPath = filename;
-        proc._pendingData = data;
-        proc.command = ["bash", "-c",
-            "mkdir -p '" + chatDir + "' && printf '%s' '"
-            + data.replace(/'/g, "'\\''") + "' > '" + filename + "'"
-        ];
-        proc.running = true;
+        saveChatProcess.filePath = filename;
+        saveChatProcess.data = data;
+        saveChatProcess.command = ["/usr/bin/mkdir", "-p", chatDir];
+        saveChatProcess.running = true;
     }
 
-    Component {
-        id: saveProcFactory
-        Process {
-            id: saveProcInstance
-            property string _pendingPath: ""
-            property string _pendingData: ""
-            running: false
-            onExited: exitCode => {
-                if (exitCode === 0) {
-                    // CRITICAL: `root` inside this Process component
-                    // refers to saveProcInstance, NOT the Ai singleton.
-                    // The previous code did `root.chatFileView.path = …`
-                    // which threw a TypeError because saveProcInstance
-                    // has no `chatFileView` property. The error was
-                    // silently logged and the file writeback never
-                    // registered with the FileView, so subsequent
-                    // saves kept racing each other (the original
-                    // motivation for the factory pattern). Reference
-                    // the FileView and the Ai singleton's functions
-                    // by their IDs instead.
-                    if (_pendingPath.length > 0)
-                        chatFileView.path = _pendingPath;
-                    if (_pendingData.length > 0)
-                        chatFileView.setText(_pendingData);
-                    if (typeof reloadHistory === "function")
-                        reloadHistory();
-                } else {
-                    console.warn("Ai.qml: chat save failed (exit", exitCode, ")");
-                }
-                Qt.callLater(() => { try { saveProcInstance.destroy(); } catch (e) {} });
+    function reloadHistory() {
+        listHistoryProcess.command = ["ambxst", "chatlist", chatDir];
+        listHistoryProcess.running = true;
+    }
+
+    function loadChat(id) {
+        let filename = chatDir + "/" + id + ".json";
+        loadChatProcess.targetId = id;
+        loadChatProcess.command = ["cat", filename];
+        loadChatProcess.running = true;
+    }
+
+    Process {
+        id: saveChatProcess
+        property string filePath: ""
+        property string data: ""
+        onExited: exitCode => {
+            if (exitCode === 0) {
+                if (filePath.length > 0)
+                    chatFileView.path = filePath;
+                if (data.length > 0)
+                    chatFileView.setText(data);
+                reloadHistory();
+            } else {
+                console.warn("Failed to create chat directory");
             }
         }
     }
 
-    function reloadHistory() {
-        historyReloadDebouncer.restart();
-    }
-
-    function _reloadHistoryNow() {
-        // Single reused listHistoryProcess. Setting running=true
-        // while it's already running is unreliable in Quickshell
-        // 0.3.0, but the debouncer (400ms) collapses most bursts so
-        // collisions are rare in practice.
-        let pyScript = `import os, json, glob
-chat_dir = "${chatDir}"
-os.makedirs(chat_dir, exist_ok=True)
-files = sorted(glob.glob(chat_dir + "/*.json"), key=os.path.getmtime, reverse=True)
-for f in files:
-    id = os.path.basename(f)[:-5]
-    title = "New Chat"
-    try:
-        with open(f, 'r') as fp:
-            data = json.load(fp)
-            for msg in data:
-                if msg.get("role") == "user":
-                    title = msg.get("content", "")[:40].replace("\\n", " ").strip()
-                    if len(msg.get("content", "")) > 40: title += "..."
-                    break
-    except: pass
-    print(f"{id}|{title}")
-`;
-        listHistoryProcess.command = ["python3", "-c", pyScript];
-        listHistoryProcess.running = true;
+    Process {
+        id: deleteChatProcess
+        onExited: reloadHistory()
     }
 
     Process {
@@ -3780,7 +779,6 @@ for f in files:
         stdout: StdioCollector {
             id: listHistoryStdout
         }
-        running: false
         onExited: exitCode => {
             if (exitCode === 0) {
                 let lines = listHistoryStdout.text.trim().split("\n");
@@ -3794,22 +792,12 @@ for f in files:
                         history.push({
                             id: parts[0],
                             title: parts.slice(1).join("|"),
-                            path: root.chatDir + "/" + parts[0] + ".json"
+                            path: chatDir + "/" + parts[0] + ".json"
                         });
                     }
                 }
                 root.chatHistory = history;
                 root.historyModelChanged();
-            }
-        }
-    }
-
-    Process {
-        id: deleteChatProcess
-        running: false
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                reloadHistory();
             }
         }
     }
@@ -3888,20 +876,13 @@ for f in files:
             fetchProcessGroq.running = true;
         }
 
-        // Ollama (local). Unlike the cloud providers, Ollama
-        // doesn't need an API key — we just probe its HTTP API.
-        // The curl has a short timeout (2s connect, 3s max) so a
-        // missing Ollama daemon doesn't slow down the whole model
-        // fetch. Previously this branch was guarded by
-        // KeyStore.hasKey("ollama"), which required an explicit
-        // key entry and silently skipped Ollama entirely.
-        //
-        // We first ensure the daemon is actually up (via the
-        // ollama-ensure.sh helper which probes + tries systemctl
-        // + falls back to `ollama serve`) — this avoids the silent
-        // miss where the user has Ollama installed but not running.
-        pendingFetches++;
-        root._ensureOllamaThenFetch();
+        // Ollama (local)
+        let ollamaEnabled = KeyStore.hasKey("ollama");
+        if (ollamaEnabled) {
+            pendingFetches++;
+            fetchProcessOllama.command = ["bash", "-c", "curl -s http://127.0.0.1:11434/api/tags"];
+            fetchProcessOllama.running = true;
+        }
 
         // MiniMax
         let minimaxKey = KeyStore.getKey("minimax");
@@ -3909,14 +890,6 @@ for f in files:
             pendingFetches++;
             fetchProcessMiniMax.command = ["bash", "-c", "echo 'done'"];
             fetchProcessMiniMax.running = true;
-        }
-
-        // DeepSeek
-        let deepseekKey = KeyStore.getKey("deepseek");
-        if (deepseekKey) {
-            pendingFetches++;
-            fetchProcessDeepSeek.command = ["bash", "-c", "curl -s https://api.deepseek.com/v1/models -H 'Authorization: Bearer " + deepseekKey + "'"];
-            fetchProcessDeepSeek.running = true;
         }
 
         if (pendingFetches === 0) {
@@ -3942,7 +915,7 @@ for f in files:
                                 let m = aiModelFactory.createObject(root, {
                                     name: item.displayName || id,
                                     icon: Qt.resolvedUrl("../../../assets/aiproviders/google.svg"),
-                                    description: item.description || "Google Gemini Model",
+                                    description: item.description || I18n.t("ai.desc_google"),
                                     endpoint: "https://generativelanguage.googleapis.com/v1beta",
                                     model: id,
                                     provider: "gemini",
@@ -3988,7 +961,7 @@ for f in files:
                                 let m = aiModelFactory.createObject(root, {
                                     name: id,
                                     icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
-                                    description: "OpenAI Model",
+                                    description: I18n.t("ai.desc_openai"),
                                     endpoint: "https://api.openai.com",
                                     model: id,
                                     provider: "openai",
@@ -4025,7 +998,7 @@ for f in files:
                             let m = aiModelFactory.createObject(root, {
                                 name: id,
                                 icon: Qt.resolvedUrl("../../../assets/aiproviders/mistral.svg"),
-                                description: "Mistral Model",
+                                description: I18n.t("ai.desc_mistral"),
                                 endpoint: "https://api.mistral.ai/v1",
                                 model: id,
                                 provider: "mistral",
@@ -4061,7 +1034,7 @@ for f in files:
                             let m = aiModelFactory.createObject(root, {
                                 name: id,
                                 icon: Qt.resolvedUrl("../../../assets/aiproviders/groq.svg"),
-                                description: "Groq Model",
+                                description: I18n.t("ai.desc_groq"),
                                 endpoint: "https://api.groq.com/openai/v1",
                                 model: id,
                                 provider: "groq",
@@ -4097,7 +1070,7 @@ for f in files:
                             let m = aiModelFactory.createObject(root, {
                                 name: item.display_name || id,
                                 icon: Qt.resolvedUrl("../../../assets/aiproviders/anthropic.svg"),
-                                description: item.description || "Anthropic Model",
+                                description: item.description || I18n.t("ai.desc_anthropic"),
                                 endpoint: "https://api.anthropic.com/v1/messages",
                                 model: id,
                                 provider: "anthropic",
@@ -4132,7 +1105,7 @@ for f in files:
                             let m = aiModelFactory.createObject(root, {
                                 name: item.name,
                                 icon: Qt.resolvedUrl("../../../assets/aiproviders/ollama.svg"),
-                                description: "Local Ollama Model",
+                                description: I18n.t("ai.desc_ollama"),
                                 endpoint: "http://127.0.0.1:11434",
                                 model: item.name,
                                 provider: "ollama",
@@ -4148,62 +1121,6 @@ for f in files:
             }
             checkFetchCompletion();
         }
-    }
-
-    Process {
-        id: ollamaEnsureProcess
-        command: ["bash", root.ollamaEnsureScript]
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                root.ollamaStatus = "running";
-                if (root._ollamaFetchPending) {
-                    root._ollamaFetchPending = false;
-                    fetchProcessOllama.command = ["bash", "-c",
-                        "curl -s --connect-timeout 2 --max-time 3 http://127.0.0.1:11434/api/tags"];
-                    fetchProcessOllama.running = true;
-                }
-                if (root._ollamaChatPending) {
-                    root._ollamaChatPending = false;
-                    Qt.callLater(root.makeRequest);
-                }
-            } else {
-                root.ollamaStatus = "failed";
-                root.ollamaLastError = "ollama-ensure.sh exited " + exitCode;
-                console.warn("[Ai] Ollama failed to start (exit "
-                             + exitCode + ") — check ollama-ensure.sh log");
-                if (root._ollamaFetchPending) {
-                    root._ollamaFetchPending = false;
-                    checkFetchCompletion();
-                }
-                if (root._ollamaChatPending) {
-                    root._ollamaChatPending = false;
-                    root.lastError = "Ollama failed to start: "
-                                     + root.ollamaLastError;
-                    root.streamingStatus = "";
-                    root.isLoading = false;
-                    root.requestInFlight = false;
-                }
-            }
-        }
-    }
-
-    Process {
-        id: ollamaRestartProcess
-        command: ["bash", "-c",
-            "pkill -f 'ollama serve' 2>/dev/null; " +
-            "systemctl --user stop ollama 2>/dev/null; " +
-            "systemctl stop ollama 2>/dev/null; " +
-            "true"]
-        onExited: exitCode => {
-            ollamaRestartDelayTimer.restart();
-        }
-    }
-
-    Timer {
-        id: ollamaRestartDelayTimer
-        interval: 1500
-        repeat: false
-        onTriggered: root.ensureOllamaRunning()
     }
 
     Process {
@@ -4244,55 +1161,21 @@ for f in files:
         }
     }
 
-    Process {
-        id: fetchProcessDeepSeek
-        stdout: StdioCollector { id: fetchDeepSeekOut }
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchDeepSeekOut.text);
-                    if (data.data && data.data.length > 0) {
-                        let newModels = [];
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            let id = item.id;
-                            let m = aiModelFactory.createObject(root, {
-                                name: item.id,
-                                icon: Qt.resolvedUrl("../../../assets/aiproviders/deepseek.svg"),
-                                description: "DeepSeek model",
-                                endpoint: "https://api.deepseek.com/v1",
-                                model: id,
-                                provider: "deepseek",
-                                requires_key: true,
-                                key_id: "DEEPSEEK_API_KEY"
-                            });
-                            if (m) newModels.push(m);
-                        }
-                        mergeModels(newModels);
-                    }
-                } catch (e) { console.log("DeepSeek fetch error: " + e); }
-            }
-            pendingFetches--;
-            if (pendingFetches <= 0) _finishFetching();
-        }
-    }
 
     function checkFetchCompletion() {
         pendingFetches--;
-        if (pendingFetches <= 0) _finishFetching();
-    }
+        if (pendingFetches <= 0) {
+            fetchingModels = false;
+            pendingFetches = 0;
 
-    function _finishFetching() {
-        fetchingModels = false;
-        pendingFetches = 0;
+            tryRestore();
 
-        tryRestore();
-
-        if (!currentModel && models.length > 0) {
-            currentModel = models[0];
-            isRestored = true;
-        } else if (!isRestored && currentModel) {
-            isRestored = true;
+            if (!currentModel && models.length > 0) {
+                currentModel = models[0];
+                isRestored = true;
+            } else if (!isRestored && currentModel) {
+                isRestored = true;
+            }
         }
     }
 
@@ -4318,36 +1201,6 @@ for f in files:
 
         if (!isRestored)
             tryRestore();
-    }
-
-    function listAgents() {
-        let conns = root.agentManager ? root.agentManager.connections : [];
-        if (conns.length === 0) {
-            pushSystemMessage("No agents configured. Add agents in Settings.");
-            return;
-        }
-        let msg = "**Available Agents**\n\n";
-        for (let i = 0; i < conns.length; i++) {
-            let c = conns[i];
-            if (!c) continue;
-            msg += "• **" + c.name + "** — " + (c.description || "No description") + "\n";
-        }
-        pushSystemMessage(msg);
-    }
-
-    function listTools() {
-        let tools = activeTools;
-        if (tools.length === 0) {
-            pushSystemMessage("No tools available.");
-            return;
-        }
-        let msg = "**Active Tools**\n\n";
-        for (let i = 0; i < tools.length; i++) {
-            let t = tools[i];
-            if (!t) continue;
-            msg += "• **" + (t.name || "unknown") + "** — " + (t.description || "No description") + "\n";
-        }
-        pushSystemMessage(msg);
     }
 
     // Signals
