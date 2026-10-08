@@ -159,6 +159,45 @@ Singleton {
     // so nothing ever executed. These hold the call being assembled and the
     // registry of tools the connected agents advertise.
     property var _pendingToolCalls: []
+
+    // axless.core: chat vs agent. In chat mode no tools are advertised, so
+    // the sidebar's toggle is not cosmetic - it changes what the model is
+    // offered. currentAgentId narrows the tool set to one connected agent.
+    signal modeChanged()
+    signal agentChanged()
+    property string currentMode: "agent"
+    property string currentAgentId: ""
+
+    function setMode(mode) {
+        if (mode !== "chat" && mode !== "agent")
+            return;
+        if (currentMode === mode)
+            return;
+        currentMode = mode;
+        modeChanged();
+    }
+
+    function setAgent(id) {
+        let next = id || "";
+        if (currentAgentId === next)
+            return;
+        currentAgentId = next;
+        agentChanged();
+    }
+
+    // How many agents are connected right now, for the sidebar badge.
+    readonly property int connectedAgents: {
+        let reg = root.agentToolRegistry;
+        if (!reg || !reg.tools)
+            return 0;
+        let ids = {};
+        for (let i = 0; i < reg.tools.length; i++) {
+            let a = reg.tools[i] && reg.tools[i]._agentId;
+            if (a) ids[a] = true;
+        }
+        return Object.keys(ids).length;
+    }
+
     property AgentToolRegistry agentToolRegistry: AgentToolRegistry {}
     property AgentManager agentManager: AgentManager {
         toolRegistry: root.agentToolRegistry
@@ -213,6 +252,8 @@ Singleton {
     // axless.core: the registry only exposes tools whose agent is actually
     // connected, so the model is never told about a tool nobody can serve.
     property var systemTools: {
+        if (root.currentMode !== "agent")
+            return [];
         let t = [
         {
             name: "run_shell_command",
@@ -231,8 +272,15 @@ Singleton {
         ];
         let reg = root.agentToolRegistry;
         if (reg && reg.tools) {
-            for (let i = 0; i < reg.tools.length; i++)
-                t.push(reg.tools[i]);
+            for (let i = 0; i < reg.tools.length; i++) {
+                let tool = reg.tools[i];
+                if (!tool)
+                    continue;
+                if (root.currentAgentId !== ""
+                        && tool._agentId !== root.currentAgentId)
+                    continue;
+                t.push(tool);
+            }
         }
         return t;
     }

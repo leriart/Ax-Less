@@ -1,0 +1,52 @@
+diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
+index 292f58c..0517ed1 100644
+--- a/modules/sidebar/AssistantSidebar.qml
++++ b/modules/sidebar/AssistantSidebar.qml
+@@ -278,6 +278,47 @@ Item {
+                             }
+                         }
+ 
++                        // axless.core: chat / agent mode. Agent mode advertises
++                        // the shell tool plus every tool the connected agents
++                        // provide; chat mode sends none. Click cycles.
++                        Button {
++                            Layout.preferredWidth: 32
++                            Layout.preferredHeight: 32
++                            flat: true
++                            padding: 0
++
++                            contentItem: Text {
++                                text: Ai.currentMode === "agent" ? Icons.robot : Icons.chatCenteredDots
++                                font.family: Icons.font
++                                font.pixelSize: 16
++                                color: Ai.currentMode === "agent"
++                                    ? (Ai.connectedAgents > 0 ? Styling.srItem("overprimary") : Colors.overSurface)
++                                    : Colors.overSurface
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                            }
++
++                            background: StyledRect {
++                                variant: parent.hovered ? "focus" : "common"
++                                radius: Styling.radius(4)
++                                opacity: parent.hovered ? 1 : 0
++                                Behavior on opacity {
++                                    NumberAnimation {
++                                        duration: Config.animDuration / 4
++                                    }
++                                }
++                            }
++
++                            onClicked: Ai.setMode(Ai.currentMode === "agent" ? "chat" : "agent")
++
++                            ToolTip.visible: hovered
++                            ToolTip.text: Ai.currentMode === "agent"
++                                ? (Ai.connectedAgents > 0
++                                    ? "Agent mode · " + Ai.connectedAgents + " connected"
++                                    : "Agent mode · no agents connected")
++                                : "Chat mode · no tools"
++                        }
++
+                         Item {
+                             Layout.fillWidth: true
+                         }

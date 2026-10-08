@@ -1,0 +1,79 @@
+diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
+index c6f4df7..4baf83a 100644
+--- a/modules/widgets/config/AiPanel.qml
++++ b/modules/widgets/config/AiPanel.qml
+@@ -37,6 +37,74 @@ Item {
+                 Layout.bottomMargin: 8
+             }
+ 
++            // axless.core: connected agents. Their tools are merged into the
++            // request in agent mode; in chat mode none are offered.
++            ColumnLayout {
++                Layout.fillWidth: true
++                spacing: 6
++
++                Text {
++                    text: "Agents"
++                    font.family: Config.theme.font
++                    font.pixelSize: 18
++                    font.weight: Font.Bold
++                    color: Colors.overSurface
++                }
++
++                Text {
++                    Layout.fillWidth: true
++                    wrapMode: Text.WordWrap
++                    text: Ai.connectedAgents > 0
++                        ? Ai.connectedAgents + " connected \u2014 their tools are offered to the model in agent mode."
++                        : "No agents connected. Profiles live in ~/.local/share/ambxst/agents/."
++                    font.family: Config.theme.font
++                    font.pixelSize: Config.theme.fontSize - 2
++                    color: Colors.outline
++                }
++
++                Repeater {
++                    model: {
++                        let names = {};
++                        let reg = Ai.agentToolRegistry;
++                        if (reg && reg.tools) {
++                            for (let i = 0; i < reg.tools.length; i++) {
++                                let a = reg.tools[i] && reg.tools[i]._agentId;
++                                if (a) names[a] = true;
++                            }
++                        }
++                        return Object.keys(names);
++                    }
++
++                    delegate: StyledRect {
++                        required property string modelData
++                        Layout.fillWidth: true
++                        variant: "internalbg"
++                        radius: Styling.radius(4)
++                        implicitHeight: 40
++
++                        Text {
++                            anchors.left: parent.left
++                            anchors.leftMargin: 12
++                            anchors.verticalCenter: parent.verticalCenter
++                            text: modelData
++                            font.family: Config.theme.font
++                            font.pixelSize: Config.theme.fontSize - 1
++                            color: Colors.overSurface
++                        }
++
++                        Text {
++                            anchors.right: parent.right
++                            anchors.rightMargin: 12
++                            anchors.verticalCenter: parent.verticalCenter
++                            text: "connected"
++                            font.family: Config.theme.font
++                            font.pixelSize: Config.theme.fontSize - 3
++                            color: Colors.success
++                        }
++                    }
++                }
++            }
++
+             // Providers
+             Repeater {
+                 model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax"]

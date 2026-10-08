@@ -379,6 +379,14 @@
     {
       "type": "patch",
       "source": "patches/hax-launcher.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/sidebar-agent-mode.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/aipanel-agents.patch"
     }
   ]
 }
