@@ -112,6 +112,11 @@
     },
     {
       "type": "overlay",
+      "source": "payload/modules/services/TouchpadConfig.qml",
+      "target": "modules/services/TouchpadConfig.qml"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/BindCooldown.qml",
       "target": "modules/services/BindCooldown.qml"
     },
@@ -570,7 +575,7 @@
     },
     {
       "type": "patch",
-      "source": "patches/compositor-actions-i18n.patch"
+      "source": "patches/compositor-extra-i18n.patch"
     }
   ]
 }

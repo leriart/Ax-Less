@@ -20,39 +20,6 @@ Item {
 
     property string currentSection: ""
 
-    component ActionRow: StyledRect {
-        id: actionRow
-        required property string label
-        signal triggered()
-        property bool isHovered: false
-
-        variant: isHovered ? "focus" : "pane"
-        Layout.fillWidth: true
-        Layout.preferredHeight: 44
-        radius: Styling.radius(0)
-
-        Text {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-            text: actionRow.label
-            font.family: Config.theme.font
-            font.pixelSize: Styling.fontSize(0)
-            color: Colors.overBackground
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: actionRow.isHovered = true
-            onExited: actionRow.isHovered = false
-            onClicked: actionRow.triggered()
-        }
-    }
-
     component SectionButton: StyledRect {
         id: sectionBtn
         required property string text
@@ -796,13 +763,21 @@ Item {
                                                     sectionId: "advanced"
                                                     visible: CompositorKeywords.supports("advanced")
                                                     }
+
+
+
                                                     SectionButton {
-                                                        objectName: "sect_actions"
-                                                        text: I18n.t("compositor.actions")
-                                                        sectionId: "actions"
-                                                        visible: CompositorKeywords.hasActions
+                                                        objectName: "sect_cooldown"
+                                                        text: I18n.t("compositor.cooldown")
+                                                        sectionId: "cooldown"
                                                     }
 
+                                                    SectionButton {
+                                                        objectName: "sect_touchpad"
+                                                        text: I18n.t("compositor.touchpad")
+                                                        sectionId: "touchpad"
+                                                        visible: TouchpadConfig.supported
+                                                    }
 
                                                     // Output configuration. Always offered:
                                                     // every supported compositor exposes a
@@ -2139,15 +2114,15 @@ Item {
                             }
 
                             // ============================================================
-                            // ACTIONS  (axless.core) - runtime compositor actions
+                            // COOLDOWN  (axless.core)
                             // ============================================================
                             ColumnLayout {
-                                visible: root.currentSection === "actions"
+                                visible: root.currentSection === "cooldown"
                                 Layout.fillWidth: true
                                 spacing: 8
 
                                 Text {
-                                    text: I18n.t("compositor.actions")
+                                    text: I18n.t("compositor.cooldown")
                                     font.family: Config.theme.font
                                     font.pixelSize: Styling.fontSize(-1)
                                     font.weight: Font.Medium
@@ -2155,34 +2130,84 @@ Item {
                                     Layout.bottomMargin: -4
                                 }
 
-                                Repeater {
-                                    model: CompositorKeywords.actionGroups
-                                    delegate: ColumnLayout {
-                                        id: actionGroup
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        spacing: 4
+                                ToggleRow {
+                                    label: I18n.t("compositor.cooldown.enabled")
+                                    checked: BindCooldown.cooldownMs > 0
+                                    onToggled: v => ModsService.setSetting("axless.core", "bindCooldown", v ? 25 : 0)
+                                }
 
-                                        Text {
-                                            text: I18n.t(actionGroup.modelData.label)
-                                            font.family: Config.theme.font
-                                            font.pixelSize: Styling.fontSize(-2)
-                                            font.weight: Font.Medium
-                                            color: Colors.overSurfaceVariant
-                                            Layout.topMargin: 6
-                                        }
+                                NumberInputRow {
+                                    label: I18n.t("compositor.cooldown.ms")
+                                    value: BindCooldown.cooldownMs
+                                    minValue: 0
+                                    maxValue: 1000
+                                    visible: BindCooldown.cooldownMs > 0
+                                    onValueEdited: v => ModsService.setSetting("axless.core", "bindCooldown", v)
+                                }
 
-                                        Repeater {
-                                            model: actionGroup.modelData.items
-                                            delegate: ActionRow {
-                                                required property var modelData
-                                                label: I18n.t(modelData.label)
-                                                onTriggered: CompositorKeywords.runAction(modelData.id)
-                                            }
-                                        }
-                                    }
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    text: I18n.t("compositor.cooldown.hint")
+                                    color: Colors.overSurfaceVariant
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-2)
                                 }
                             }
+
+                            // ============================================================
+                            // TOUCHPAD  (axless.core, niri)
+                            // ============================================================
+                            ColumnLayout {
+                                visible: root.currentSection === "touchpad"
+                                Layout.fillWidth: true
+                                spacing: 8
+                                onVisibleChanged: if (visible) TouchpadConfig.refresh()
+
+                                Text {
+                                    text: I18n.t("compositor.touchpad")
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-1)
+                                    font.weight: Font.Medium
+                                    color: Colors.overSurfaceVariant
+                                    Layout.bottomMargin: -4
+                                }
+
+                                ToggleRow {
+                                    label: I18n.t("compositor.touchpad.tap")
+                                    checked: TouchpadConfig.tap
+                                    onToggled: v => TouchpadConfig.set("tap", v)
+                                }
+                                ToggleRow {
+                                    label: I18n.t("compositor.touchpad.natural_scroll")
+                                    checked: TouchpadConfig.naturalScroll
+                                    onToggled: v => TouchpadConfig.set("naturalScroll", v)
+                                }
+                                ToggleRow {
+                                    label: I18n.t("compositor.touchpad.middle_emulation")
+                                    checked: TouchpadConfig.middleEmulation
+                                    onToggled: v => TouchpadConfig.set("middleEmulation", v)
+                                }
+                                DecimalInputRow {
+                                    label: I18n.t("compositor.touchpad.accel_speed")
+                                    value: TouchpadConfig.accelSpeed
+                                    onValueEdited: v => TouchpadConfig.set("accelSpeed", v)
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    text: TouchpadConfig.lastError !== "" ? TouchpadConfig.lastError
+                                          : I18n.t("compositor.touchpad.hint")
+                                    color: TouchpadConfig.lastError !== "" ? Colors.error : Colors.overSurfaceVariant
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-2)
+                                }
+                            }
+
+
+                            // ============================================================
+                            // ACTIONS  (axless.core) - runtime compositor actions
+
 
                     }
 

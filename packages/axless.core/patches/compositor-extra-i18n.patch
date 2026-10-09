@@ -1,0 +1,94 @@
+diff --git a/translations/en.json b/translations/en.json
+index 82ed048..faef459 100644
+--- a/translations/en.json
++++ b/translations/en.json
+@@ -287,7 +287,6 @@
+   "compositor.offset_x": "Offset X",
+   "compositor.offset_y": "Offset Y",
+   "compositor.opacity": "Opacity",
+-  "compositor.opacity": "Opacity",
+   "compositor.right_click_remove": "Right click to remove",
+   "compositor.rounding": "Rounding",
+   "compositor.shadows": "Shadows",
+@@ -1009,5 +1008,15 @@
+   "wifi.secured": "Secured",
+   "wifi.title": "Wi-Fi",
+   "wifi.tooltip_off": "Wi-Fi: Off",
+-  "wifi.tooltip_on": "Wi-Fi: On"
++  "wifi.tooltip_on": "Wi-Fi: On",
++  "compositor.cooldown": "Cooldown",
++  "compositor.cooldown.enabled": "Global bind cooldown",
++  "compositor.cooldown.ms": "Cooldown (ms)",
++  "compositor.cooldown.hint": "Minimum interval between two runs of the same shell action. Applies to binds that go through the shell; compositor-native binds are unaffected. 0 disables it.",
++  "compositor.touchpad": "Touchpad",
++  "compositor.touchpad.tap": "Tap to click",
++  "compositor.touchpad.natural_scroll": "Natural scrolling",
++  "compositor.touchpad.middle_emulation": "Middle button emulation",
++  "compositor.touchpad.accel_speed": "Acceleration speed",
++  "compositor.touchpad.hint": "These settings are written to ~/.config/niri/config.kdl and reloaded. niri has no runtime touchpad interface, so they are applied by editing the config. Every change is validated with `niri validate` before it is written."
+ }
+diff --git a/translations/es.json b/translations/es.json
+index 45eed60..d3cbcb1 100644
+--- a/translations/es.json
++++ b/translations/es.json
+@@ -40,7 +40,7 @@
+   "ai.enter_api_key": "Ingresar clave API...",
+   "ai.env_variable": "la variable de entorno",
+   "ai.hello_user": "Hola, %1.",
+-  "ai.help_message": "🤖 **Comandos del asistente**\n\n**`/new`**\nInicia un nuevo contexto de conversación.\n\n**`/model [nombre]`**\nCambia el modelo de AI activo.\n- **Lista de modelos:** Escribe `/model` sin argumentos.\n- **Cambiar:** Escribe `/model gemini` o `/model mistral`.\n\n**`/help`**\nMuestra este mensaje de ayuda.\n\n💡 **Consejos:**\n- **Editar:** Haz clic en el ícono de lápiz en cualquier mensaje.\n- **Regenerar:** Haz clic en el ícono de actualizar para obtener una nueva respuesta.\n- **Copiar:** Usa el botón de copiar para código o texto.",
++  "ai.help_message": "🤖 **Comandos del asístente**\n\n**`/new`**\nInicia un nuevo contexto de conversación.\n\n**`/model [nombre]`**\nCambia el modelo de AI activo.\n- **Lista de modelos:** Escribe `/model` sin argumentos.\n- **Cambiar:** Escribe `/model gemini` o `/model mistral`.\n\n**`/help`**\nMuestra este mensaje de ayuda.\n\n💡 **Consejos:**\n- **Editar:** Haz clic en el ícono de lápiz en cualquier mensaje.\n- **Regenerar:** Haz clic en el ícono de actualizar para obtener una nueva respuesta.\n- **Copiar:** Usa el botón de copiar para código o texto.",
+   "ai.message": "Mensaje al AI...",
+   "ai.model_not_found": "Modelo '%1' no encontrado.",
+   "ai.network_failed": "Error de red: %1",
+@@ -287,7 +287,6 @@
+   "compositor.offset_x": "Desplazamiento X",
+   "compositor.offset_y": "Desplazamiento Y",
+   "compositor.opacity": "Opacidad",
+-  "compositor.opacity": "Opacidad",
+   "compositor.right_click_remove": "Clic derecho para eliminar",
+   "compositor.rounding": "Redondeo",
+   "compositor.shadows": "Sombras",
+@@ -369,7 +368,7 @@
+   "input.tp_middle_emulation": "Emular botón central",
+   "input.tp_natural_scroll": "Desplazamiento natural",
+   "input.tp_scroll_factor": "Factor de desplazamiento",
+-  "input.tp_tap_button_map": "Mapa de botones por toque",
++  "input.tp_tap_button_map": "Mapa de botónes por toque",
+   "input.tp_tap_to_click": "Toque para hacer clic",
+   "language.auto": "Auto",
+   "language.auto_detected": "Auto (%1)",
+@@ -625,7 +624,7 @@
+   "settings.audio_effects": "Efectos de audio",
+   "settings.audio_mixer": "Mezclador de audio",
+   "settings.binds": "Atajos",
+-  "settings.binds.assistant": "Atajo del asistente",
++  "settings.binds.assistant": "Atajo del asístente",
+   "settings.binds.clipboard": "Atajo del portapapeles",
+   "settings.binds.dashboard": "Atajo del panel",
+   "settings.binds.emoji": "Atajo de emoji",
+@@ -876,7 +875,7 @@
+   "system.performance.window_preview_desc": "Mostrar miniaturas de ventanas en la vista general",
+   "system.performance.pause_wallpapers_fullscreen_desc": "Pausa los fondos animados cuando una ventana en pantalla completa cubre la pantalla o el modo juego está activo",
+   "system.prefixes.clipboard": "Portapapeles",
+-  "system.prefixes.description": "Atajos de teclado para acciones rápidas en el lanzador",
++  "system.prefixes.description": "Atajos de teclado para acciónes rápidas en el lanzador",
+   "system.prefixes.emoji": "Emoji",
+   "system.prefixes.notes": "Notas",
+   "system.prefixes.tmux": "Tmux",
+@@ -1009,5 +1008,15 @@
+   "wifi.secured": "Segura",
+   "wifi.title": "Wi-Fi",
+   "wifi.tooltip_off": "Wi-Fi: Desactivado",
+-  "wifi.tooltip_on": "Wi-Fi: Activado"
++  "wifi.tooltip_on": "Wi-Fi: Activado",
++  "compositor.cooldown": "Tiempo de espera",
++  "compositor.cooldown.enabled": "Tiempo de espera global de atajos",
++  "compositor.cooldown.ms": "Tiempo de espera (ms)",
++  "compositor.cooldown.hint": "Intervalo mínimo entre dos ejecuciones de la misma acción del shell. Se aplica a los atajos que pasan por el shell; los nativos del compositor no se ven afectados. 0 lo desactiva.",
++  "compositor.touchpad": "Touchpad",
++  "compositor.touchpad.tap": "Tocar para hacer clic",
++  "compositor.touchpad.natural_scroll": "Desplazamiento natural",
++  "compositor.touchpad.middle_emulation": "Emulación del botón central",
++  "compositor.touchpad.accel_speed": "Velocidad de aceleración",
++  "compositor.touchpad.hint": "Estos ajustes se escriben en ~/.config/niri/config.kdl y se recargan. niri no tiene interfaz de touchpad en tiempo de ejecución, así que se aplican editando la config. Cada cambio se valida con `niri validate` antes de escribirse."
+ }
