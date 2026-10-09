@@ -15,6 +15,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Paths are given relative to this directory (payload/mcp). The manifest ships
+# the stdio bridge as payload/scripts/mcp_stdio_bridge, which from here is
+# ../scripts - NOT mcp/scripts. Getting that wrong silently left the shipped
+# binary untouched, so it is spelled out once, here.
+BRIDGE_OUT="../scripts/mcp_stdio_bridge"
+
 GOFLAGS_BUILD=(-buildvcs=false -trimpath -ldflags "-s -w")
 # -buildvcs=false matters here. These binaries are committed, and Go otherwise
 # stamps each one with the git revision and a vcs.modified flag. Committing a
@@ -34,18 +40,15 @@ echo "==> opencode bridge"
 (cd opencode-bridge && CGO_ENABLED=0 go build "${GOFLAGS_BUILD[@]}" -o ../opencode/server .)
 
 echo "==> mcp stdio bridge"
-# NOTE the path: from bridge/, ../scripts is mcp/scripts, but the manifest ships
-# payload/scripts/mcp_stdio_bridge. Writing to the wrong directory meant this
-# binary was never actually rebuilt - it stayed the old hand-built 4.4 MB
-# artifact with the build machine's source path embedded, while the three
-# servers were correctly trimmed and stripped.
-(cd bridge && CGO_ENABLED=0 go build "${GOFLAGS_BUILD[@]}" -o ../../scripts/mcp_stdio_bridge .)
+# BRIDGE_OUT is relative to payload/mcp; the subshell is in payload/mcp/bridge,
+# so one more .. is needed.
+(cd bridge && CGO_ENABLED=0 go build "${GOFLAGS_BUILD[@]}" -o "../$BRIDGE_OUT" .)
 
 echo "==> vetting"
 (cd nothingclaw-go && go vet ./... && go test ./...)
 
 echo
 echo "built:"
-for b in nothingclaw/server openclaw/server opencode/server ../../scripts/mcp_stdio_bridge; do
+for b in nothingclaw/server openclaw/server opencode/server "$BRIDGE_OUT"; do
     printf '  %10s  %s\n' "$(stat -c %s "$b" | numfmt --to=iec)" "$b"
 done
