@@ -547,6 +547,10 @@
     {
       "type": "patch",
       "source": "patches/click-outside-fix.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/backdrop-dismiss.patch"
     }
   ]
 }

@@ -1,0 +1,29 @@
+diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
+index 20b0020..90b83f9 100644
+--- a/modules/shell/UnifiedShellPanel.qml
++++ b/modules/shell/UnifiedShellPanel.qml
+@@ -187,6 +187,24 @@ PanelWindow {
+ 
+         onClicked: {
+             FocusGrabManager.clearTopGrab();
++
++            // axless.core: dismiss the open notch module here, instead of
++            // hoping the top FocusGrab's callback does it.
++            //
++            // clearTopGrab() pops exactly one grab, and several grabs do not
++            // close a module in their callback at all: ScreenshotTool and
++            // ScreenrecordTool have no onCleared, BarPopup only closes its own
++            // popup, and SpotlightView only closes the spotlight. If one of
++            // those sat on top of the stack, an outside click cleared an
++            // unrelated grab and the dashboard stayed open.
++            //
++            // Escape never had this problem because it calls setActiveModule
++            // directly - which is exactly why Escape closed the dashboard and
++            // clicking outside did not.
++            if (notchContent.screenNotchOpen) {
++                Visibilities.setActiveModule("");
++            }
++
+             if (assistantSidebar.active && assistantSidebar.wantsFocus) {
+                 assistantSidebar.wantsFocus = false;
+             }
