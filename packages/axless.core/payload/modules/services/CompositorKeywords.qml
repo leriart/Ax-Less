@@ -293,7 +293,39 @@ QtObject {
         mango: []
     })
 
-    readonly property var actionList: actions[compositor] || []
+    // Actions that work identically on Hyprland, niri and mango, because they
+    // go through axctl, which is the abstraction Ambxst itself is built on.
+    // These are the ones that must not be per-compositor: without them a mango
+    // user got an empty Actions section, and a Hyprland user only got the nine
+    // hand-written dispatchers.
+    //
+    // `axctl window ...` / `workspace ...` / `monitor ...` / `layout ...` /
+    // `darkmode ...` are the compositor-agnostic verbs (verified against
+    // `axctl --help` v0.0.28 and run live on niri). Anything genuinely
+    // compositor-specific stays in the `actions` table below.
+    readonly property var commonActions: [
+        { id: "common.focus-left", group: "focus", label: "compositor.action.focus_left", argv: ["axctl", "window", "focus-dir", "l"] },
+        { id: "common.focus-right", group: "focus", label: "compositor.action.focus_right", argv: ["axctl", "window", "focus-dir", "r"] },
+        { id: "common.focus-up", group: "focus", label: "compositor.action.focus_up", argv: ["axctl", "window", "focus-dir", "u"] },
+        { id: "common.focus-down", group: "focus", label: "compositor.action.focus_down", argv: ["axctl", "window", "focus-dir", "d"] },
+        { id: "common.close", group: "window", label: "compositor.action.close", argv: ["axctl", "window", "close"] },
+        { id: "common.floating", group: "floating", label: "compositor.action.toggle_floating", argv: ["axctl", "window", "toggle-floating"] },
+        { id: "common.fullscreen-on", group: "window", label: "compositor.action.fullscreen_on", argv: ["axctl", "window", "fullscreen", "1"] },
+        { id: "common.fullscreen-off", group: "window", label: "compositor.action.fullscreen_off", argv: ["axctl", "window", "fullscreen", "0"] },
+        { id: "common.maximize-on", group: "layout", label: "compositor.action.maximize_on", argv: ["axctl", "window", "maximize", "1"] },
+        { id: "common.maximize-off", group: "layout", label: "compositor.action.maximize_off", argv: ["axctl", "window", "maximize", "0"] },
+        { id: "common.pin-on", group: "window", label: "compositor.action.pin_on", argv: ["axctl", "window", "pin", "1"] },
+        { id: "common.pin-off", group: "window", label: "compositor.action.pin_off", argv: ["axctl", "window", "pin", "0"] },
+        { id: "common.layout-next", group: "layout", label: "compositor.action.layout_next", argv: ["axctl", "layout", "next"] },
+        { id: "common.layout-prev", group: "layout", label: "compositor.action.layout_prev", argv: ["axctl", "layout", "prev"] },
+        { id: "common.kbd-next", group: "session", label: "compositor.action.keyboard_next", argv: ["axctl", "system", "switch-keyboard-layout", "next"] },
+        { id: "common.kbd-prev", group: "session", label: "compositor.action.keyboard_prev", argv: ["axctl", "system", "switch-keyboard-layout", "prev"] },
+        { id: "common.darkmode", group: "session", label: "compositor.action.darkmode", argv: ["axctl", "darkmode", "toggle"] }
+    ]
+
+    // The common set first (the useful basics, identical everywhere), then
+    // whatever is specific to the running compositor.
+    readonly property var actionList: commonActions.concat(actions[compositor] || [])
     readonly property bool hasActions: actionList.length > 0
 
     // actionList grouped for the panel, preserving first-seen order. Each
