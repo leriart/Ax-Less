@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..a6301c5 100644
+index 292f58c..9ea2ead 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -43,18 +43,26 @@ index 292f58c..a6301c5 100644
          }
      }
  
-@@ -98,6 +99,23 @@ Item {
+@@ -98,6 +99,31 @@ Item {
          }
      }
  
-+    // axless.core: clicking anywhere in the sidebar must re-request keyboard
-+    // interactivity. An outside click sets wantsFocus=false (the layer surface
-+    // drops to keyboardFocus None) while the input can keep activeFocus, so a
-+    // plain click never restored typing. A tap re-arms wantsFocus and the
-+    // input's focus change does the same.
-+    TapHandler {
-+        onTapped: root.wantsFocus = true
-+    }
++    // axless.core: NO full-screen TapHandler here.
++    //
++    // There used to be one, to re-arm wantsFocus on a tap. The problem is that
++    // `root` fills the whole screen (it is a child of UnifiedShellPanel and
++    // anchors.fill: parent), and a TapHandler accepts the gesture it
++    // recognises. So it swallowed every click on the screen - including the
++    // ones meant for UnifiedShellPanel's click-outside backdrop, which sits
++    // BELOW it at z: -1. Nothing outside the sidebar could be clicked: the
++    // notch dashboard, the bar popups and the spotlight all ignored clicks
++    // outside them, while Escape (keyboard, a different path) still worked.
++    // It had no `enabled` guard either, so it did this even with the sidebar
++    // closed.
++    //
++    // It was also redundant: the MouseArea above re-arms wantsFocus on every
++    // press, and it sets accepted = false so the event still reaches whatever
++    // is underneath.
 +
 +    Connections {
 +        target: inputField
@@ -67,7 +75,7 @@ index 292f58c..a6301c5 100644
      MouseArea {
          id: resizeHandle
          width: 8
-@@ -278,6 +296,191 @@ Item {
+@@ -278,6 +304,191 @@ Item {
                              }
                          }
  
@@ -259,7 +267,7 @@ index 292f58c..a6301c5 100644
                          Item {
                              Layout.fillWidth: true
                          }
-@@ -313,6 +516,218 @@ Item {
+@@ -313,6 +524,218 @@ Item {
                          }
                      }
  
@@ -478,7 +486,7 @@ index 292f58c..a6301c5 100644
                      Rectangle {
                          anchors.bottom: parent.bottom
                          width: parent.width
-@@ -617,6 +1032,46 @@ Item {
+@@ -617,6 +1040,46 @@ Item {
                              }
                          }
                          property bool isWelcome: Ai.currentChat.length === 0
@@ -525,7 +533,7 @@ index 292f58c..a6301c5 100644
  
                          ColumnLayout {
                              anchors.bottom: inputContainer.top
-@@ -685,9 +1140,41 @@ Item {
+@@ -685,9 +1148,41 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -568,7 +576,7 @@ index 292f58c..a6301c5 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -853,7 +1340,11 @@ Item {
+@@ -853,7 +1348,11 @@ Item {
  
                                              StyledRect {
                                                  id: bubble
@@ -581,7 +589,7 @@ index 292f58c..a6301c5 100644
                                                  height: bubbleContent.implicitHeight + 24
  
                                                  anchors.right: isUser ? parent.right : undefined
-@@ -875,68 +1366,50 @@ Item {
+@@ -875,68 +1374,50 @@ Item {
                                                          visible: !messageDelegate.isEditing && !bubbleContentText.visible
                                                          spacing: 8
  
@@ -693,7 +701,7 @@ index 292f58c..a6301c5 100644
                                                                  }
                                                              }
                                                          }
-@@ -945,7 +1418,20 @@ Item {
+@@ -945,7 +1426,20 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -715,7 +723,7 @@ index 292f58c..a6301c5 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1439,28 @@ Item {
+@@ -953,7 +1447,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -745,7 +753,7 @@ index 292f58c..a6301c5 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1476,9 @@ Item {
+@@ -969,7 +1484,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -756,7 +764,7 @@ index 292f58c..a6301c5 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1486,29 @@ Item {
+@@ -977,16 +1494,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -789,7 +797,7 @@ index 292f58c..a6301c5 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1561,25 @@ Item {
+@@ -1039,6 +1569,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -815,7 +823,7 @@ index 292f58c..a6301c5 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1644,25 @@ Item {
+@@ -1103,6 +1652,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -841,7 +849,7 @@ index 292f58c..a6301c5 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1726,121 @@ Item {
+@@ -1166,6 +1734,121 @@ Item {
                              }
                          }
  
