@@ -1,0 +1,26 @@
+diff --git a/config/KeybindActions.js b/config/KeybindActions.js
+index 063e83b..f948390 100644
+--- a/config/KeybindActions.js
++++ b/config/KeybindActions.js
+@@ -109,15 +109,15 @@ var ACTION_CATALOG = [
+         return "movecoltoworkspace " + String(args.index || "").trim();
+     } },
+ 
+-    { id: "media.play-pause", label: "Play/Pause", category: "Media", dispatcher: "exec", argument: "playerctl play-pause" },
++    { id: "media.play-pause", label: "Play/Pause", category: "Media", dispatcher: "exec", argument: "ambxst run media-play-pause" },
+     { id: "media.play-pause-locked", label: "Play/Pause (Locked)", category: "Media", dispatcher: "exec", argument: "playerctl play-pause", flags: "l" },
+-    { id: "media.prev", label: "Previous Track", category: "Media", dispatcher: "exec", argument: "playerctl previous" },
+-    { id: "media.next", label: "Next Track", category: "Media", dispatcher: "exec", argument: "playerctl next" },
++    { id: "media.prev", label: "Previous Track", category: "Media", dispatcher: "exec", argument: "ambxst run media-prev" },
++    { id: "media.next", label: "Next Track", category: "Media", dispatcher: "exec", argument: "ambxst run media-next" },
+     { id: "media.stop-locked", label: "Stop Playback (Locked)", category: "Media", dispatcher: "exec", argument: "playerctl stop", flags: "l" },
+ 
+-    { id: "audio.volume-up", label: "Volume Up", category: "Audio", dispatcher: "exec", argument: "wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 10%+", flags: "le" },
+-    { id: "audio.volume-down", label: "Volume Down", category: "Audio", dispatcher: "exec", argument: "wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 10%-", flags: "le" },
+-    { id: "audio.mute-toggle", label: "Mute Audio", category: "Audio", dispatcher: "exec", argument: "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle", flags: "le" },
++    { id: "audio.volume-up", label: "Volume Up", category: "Audio", dispatcher: "exec", argument: "ambxst run volume-up", flags: "le" },
++    { id: "audio.volume-down", label: "Volume Down", category: "Audio", dispatcher: "exec", argument: "ambxst run volume-down", flags: "le" },
++    { id: "audio.mute-toggle", label: "Mute Audio", category: "Audio", dispatcher: "exec", argument: "ambxst run volume-mute", flags: "le" },
+ 
+     { id: "brightness.up", label: "Brightness Up", category: "Brightness", dispatcher: "exec", argument: "sh -c 'echo brightness-up > \"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ambxst_ipc.pipe\"'", flags: "le" },
+     { id: "brightness.down", label: "Brightness Down", category: "Brightness", dispatcher: "exec", argument: "sh -c 'echo brightness-down > \"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ambxst_ipc.pipe\"'", flags: "le" },
