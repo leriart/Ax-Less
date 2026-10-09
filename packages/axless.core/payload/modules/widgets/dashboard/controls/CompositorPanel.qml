@@ -20,6 +20,39 @@ Item {
 
     property string currentSection: ""
 
+    component ActionRow: StyledRect {
+        id: actionRow
+        required property string label
+        signal triggered()
+        property bool isHovered: false
+
+        variant: isHovered ? "focus" : "pane"
+        Layout.fillWidth: true
+        Layout.preferredHeight: 44
+        radius: Styling.radius(0)
+
+        Text {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            text: actionRow.label
+            font.family: Config.theme.font
+            font.pixelSize: Styling.fontSize(0)
+            color: Colors.overBackground
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onEntered: actionRow.isHovered = true
+            onExited: actionRow.isHovered = false
+            onClicked: actionRow.triggered()
+        }
+    }
+
     component SectionButton: StyledRect {
         id: sectionBtn
         required property string text
@@ -759,6 +792,13 @@ Item {
                                                     sectionId: "advanced"
                                                     visible: CompositorKeywords.supports("advanced")
                                                     }
+                                                    SectionButton {
+                                                        objectName: "sect_actions"
+                                                        text: I18n.t("compositor.actions")
+                                                        sectionId: "actions"
+                                                        visible: CompositorKeywords.hasActions
+                                                    }
+
 
                                                     // Output configuration. Always offered:
                                                     // every supported compositor exposes a
@@ -2093,6 +2133,34 @@ Item {
                                 }
                             }
                             }
+
+                            // ============================================================
+                            // ACTIONS  (axless.core) - runtime compositor actions
+                            // ============================================================
+                            ColumnLayout {
+                                visible: root.currentSection === "actions"
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Text {
+                                    text: I18n.t("compositor.actions")
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-1)
+                                    font.weight: Font.Medium
+                                    color: Colors.overSurfaceVariant
+                                    Layout.bottomMargin: -4
+                                }
+
+                                Repeater {
+                                    model: CompositorKeywords.actionList
+                                    delegate: ActionRow {
+                                        required property var modelData
+                                        label: I18n.t(modelData.label)
+                                        onTriggered: CompositorKeywords.runAction(modelData.id)
+                                    }
+                                }
+                            }
+
                     }
 
                     // ═══════════════════════════════════════════════════════════════

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ambxst.dev/schemas/mod-settings-v1.json",
+  "version": 1,
+  "fields": [
+    {
+      "key": "bindCooldown",
+      "label": "Keybind cooldown (ms)",
+      "description": "Minimum interval between two invocations of the same shell action. A repeated key or an accidental double tap inside this window is ignored, which stops actions like the launcher or the dashboard from firing twice. Applies to every action that goes through the shell (most Ambxst binds); compositor-native binds like focus or workspace never reach the shell and are not affected. 0 disables it.",
+      "type": "integer",
+      "default": 25,
+      "minimum": 0,
+      "maximum": 1000
+    }
+  ]
+}

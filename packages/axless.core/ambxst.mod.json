@@ -45,6 +45,9 @@
     "Runs shell commands, file searches, system actions (lock / suspend / reboot / poweroff) and plugin scripts from the Hax launcher",
     "Replaces the compositor settings panel with one that shows only what the running compositor supports"
   ],
+  "settings": {
+    "schema": "settings.json"
+  },
   "operations": [
     {
       "type": "overlay",
@@ -106,6 +109,11 @@
       "type": "overlay",
       "source": "payload/modules/services/PerMonitorConfig.qml",
       "target": "modules/services/PerMonitorConfig.qml"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/BindCooldown.qml",
+      "target": "modules/services/BindCooldown.qml"
     },
     {
       "type": "overlay",
@@ -555,6 +563,10 @@
     {
       "type": "patch",
       "source": "patches/sidebar-nonmodal.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/bind-cooldown.patch"
     }
   ]
 }

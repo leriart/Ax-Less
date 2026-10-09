@@ -144,6 +144,83 @@ QtObject {
         mango: {}
     })
 
+    // ── Runtime actions ─────────────────────────────────────────────────
+    //
+    // Separate from the config keywords above. A keyword changes how the
+    // compositor behaves from now on; an action does something once. These are
+    // the useful, no-argument actions each compositor can perform right now,
+    // so the panel can offer them regardless of whether the compositor has a
+    // runtime *config* interface.
+    //
+    // That distinction is the reason this table exists: niri has no runtime
+    // config at all (its KDL is static), so `sections` is empty for it - but
+    // `niri msg action` is a full runtime action interface, and it is what the
+    // user is on. Every name below was taken from `niri msg action --help` on
+    // this machine, not guessed.
+    //
+    // Mango speaks the sway IPC protocol through mangoctl, which is not
+    // installed here, so its list is left empty rather than invented. The shape
+    // is ready for it.
+    readonly property var actions: ({
+        hyprland: [
+            { id: "toggle-floating", label: "compositor.action.toggle_floating", argv: ["hyprctl", "dispatch", "togglefloating"] },
+            { id: "fullscreen", label: "compositor.action.fullscreen", argv: ["hyprctl", "dispatch", "fullscreen", "0"] },
+            { id: "close", label: "compositor.action.close", argv: ["hyprctl", "dispatch", "killactive"] },
+            { id: "pseudo", label: "compositor.action.pseudo", argv: ["hyprctl", "dispatch", "pseudo"] },
+            { id: "split", label: "compositor.action.split", argv: ["hyprctl", "dispatch", "togglesplit"] },
+            { id: "cycle", label: "compositor.action.cycle", argv: ["hyprctl", "dispatch", "cyclenext"] },
+            { id: "special", label: "compositor.action.special", argv: ["hyprctl", "dispatch", "togglespecialworkspace"] },
+            { id: "center", label: "compositor.action.center", argv: ["hyprctl", "dispatch", "centerwindow"] },
+            { id: "reload", label: "compositor.action.reload", argv: ["hyprctl", "reload", "config-only"] }
+        ],
+        niri: [
+            { id: "toggle-floating", label: "compositor.action.toggle_floating", argv: ["niri", "msg", "action", "toggle-window-floating"] },
+            { id: "fullscreen", label: "compositor.action.fullscreen", argv: ["niri", "msg", "action", "fullscreen-window"] },
+            { id: "close", label: "compositor.action.close", argv: ["niri", "msg", "action", "close-window"] },
+            { id: "overview", label: "compositor.action.overview", argv: ["niri", "msg", "action", "toggle-overview"] },
+            { id: "center", label: "compositor.action.center", argv: ["niri", "msg", "action", "center-column"] },
+            { id: "center-visible", label: "compositor.action.center_visible", argv: ["niri", "msg", "action", "center-visible-columns"] },
+            { id: "expand", label: "compositor.action.expand", argv: ["niri", "msg", "action", "expand-column-to-available-width"] },
+            { id: "preset-width", label: "compositor.action.preset_width", argv: ["niri", "msg", "action", "switch-preset-column-width"] },
+            { id: "consume", label: "compositor.action.consume", argv: ["niri", "msg", "action", "consume-window-into-column"] },
+            { id: "tabbed", label: "compositor.action.tabbed", argv: ["niri", "msg", "action", "toggle-column-tabbed-display"] },
+            { id: "screenshot-screen", label: "compositor.action.screenshot_screen", argv: ["niri", "msg", "action", "screenshot-screen"] },
+            { id: "screenshot-window", label: "compositor.action.screenshot_window", argv: ["niri", "msg", "action", "screenshot-window"] },
+            { id: "dpms-off", label: "compositor.action.dpms_off", argv: ["niri", "msg", "action", "power-off-monitors"] }
+        ],
+        mango: []
+    })
+
+    readonly property var actionList: actions[compositor] || []
+    readonly property bool hasActions: actionList.length > 0
+
+    // Run one action by id. Returns false when the id is unknown or there are
+    // no actions, so a caller can report honestly.
+    function runAction(actionId, onDone) {
+        const list = actionList;
+        let found = null;
+        for (let i = 0; i < list.length; i++) {
+            if (list[i].id === actionId) {
+                found = list[i];
+                break;
+            }
+        }
+        if (!found) {
+            root.lastError = qsTr("Unknown compositor action");
+            if (onDone)
+                onDone(false, "");
+            return false;
+        }
+        root.lastError = "";
+        _run(found.argv, (ok, out, err) => {
+            if (!ok)
+                root.lastError = (err || out || "").trim();
+            if (onDone)
+                onDone(ok, out);
+        });
+        return true;
+    }
+
     // Sections Ambxst writes for every compositor through its own TOML path.
     // Always offered, whatever the compositor. `general` is here because
     // gaps, border size and rounding reach every compositor that axctl

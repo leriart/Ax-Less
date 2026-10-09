@@ -1,0 +1,23 @@
+diff --git a/modules/services/GlobalShortcuts.qml b/modules/services/GlobalShortcuts.qml
+index 8f53307..845477c 100644
+--- a/modules/services/GlobalShortcuts.qml
++++ b/modules/services/GlobalShortcuts.qml
+@@ -35,6 +35,18 @@ QtObject {
+     }
+ 
+     function run(command) {
++        // axless.core: the global key/bind cooldown. Everything actionable that
++        // the shell handles - a keybind over IPC, the launcher, another part of
++        // the shell calling run() directly - arrives here, so gating this one
++        // function covers all of it. The interval comes from the mod setting
++        // `bindCooldown` (default 25 ms); 0 disables it.
++        //
++        // Compositor-native binds (focus, move, workspace, resize) never reach
++        // the shell at all, so they are unaffected by design.
++        if (!BindCooldown.gate(command)) {
++            console.log("IPC run command dropped by cooldown:", command);
++            return;
++        }
+         console.log("IPC run command received:", command);
+         switch (command) {
+             // Launcher (Standalone Notch Module)
