@@ -1,8 +1,8 @@
 diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
-index 097d51e..b9e2eab 100644
+index 097d51e..41b1d1d 100644
 --- a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
 +++ b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
-@@ -14,6 +14,29 @@ FocusScope {
+@@ -14,6 +14,33 @@ FocusScope {
  
      // Propiedades personalizadas para la funcionalidad del componente.
      property string searchText: ""
@@ -14,25 +14,29 @@ index 097d51e..b9e2eab 100644
 +    // immediate text; the filter catches up once typing pauses, which is both
 +    // cheaper and what the user expects to see anyway.
 +    property string _searchRaw: ""
-+    property bool _searchIsActive: false
 +
 +    Timer {
 +        id: searchDebounce
 +        interval: 180
 +        repeat: false
 +        onTriggered: {
-+            root.searchText = root._searchRaw;
-+            if (root._searchRaw.length > 0 && root.filteredWallpapers.length > 0) {
-+                root.setSelectedIndex(0);
++            // NOTE: the root's id is wallpapersTabRoot, not root. Using `root`
++            // here threw a ReferenceError on every fire, so searchText was
++            // never assigned and the filter silently did nothing at all -
++            // typing in the box had no effect.
++            wallpapersTabRoot.searchText = wallpapersTabRoot._searchRaw;
++            if (wallpapersTabRoot._searchRaw.length > 0
++                    && wallpapersTabRoot.filteredWallpapers.length > 0) {
++                wallpapersTabRoot.setSelectedIndex(0);
 +            } else {
-+                root.setSelectedIndex(-1);
++                wallpapersTabRoot.setSelectedIndex(-1);
 +            }
 +        }
 +    }
      property int selectedIndex: GlobalStates.wallpaperSelectedIndex
  
      // Función para actualizar el índice seleccionado de forma centralizada
-@@ -175,9 +198,31 @@ FocusScope {
+@@ -175,9 +202,31 @@ FocusScope {
          return filteredWallpapers.indexOf(currentWallpaper);
      }
  
@@ -65,7 +69,7 @@ index 097d51e..b9e2eab 100644
      }
  
      // Actualizar subcarpetas cuando la pestaña se haga visible
-@@ -188,11 +233,12 @@ FocusScope {
+@@ -188,11 +237,12 @@ FocusScope {
                  GlobalStates.wallpaperManager.scanSubfolders();
              }
              // Reposicionar al wallpaper actual cuando se hace visible
@@ -80,26 +84,47 @@ index 097d51e..b9e2eab 100644
      Timer {
          id: centerTimer
          interval: 50
-@@ -212,9 +258,16 @@ FocusScope {
+@@ -212,9 +262,37 @@ FocusScope {
  
          // Filtrar por texto de búsqueda
          if (searchText.length > 0) {
-+            // axless.core: needle hoisted out of the callback, and
-+            // lastIndexOf instead of split().pop(). The old form lowercased
-+            // the needle and split each path *inside* the callback, which is
-+            // two string allocations per entry - roughly 18,000 per keystroke
-+            // over a wallpaper list this size, all thrown away immediately.
-+            const needle = searchText.toLowerCase();
++            // axless.core: three things the original did not do.
++            //
++            //  1. The needle was lowercased and each path split *inside* the
++            //     callback - two string allocations per entry, ~18,000 per
++            //     keystroke over a list this size, all thrown away. The terms
++            //     are computed once, before the loop.
++            //  2. It matched only the file name, so a subfolder was not
++            //     searchable: typing "anime" or "videos" found nothing. It now
++            //     matches the path below the wallpaper root.
++            //  3. Every whitespace-separated term must match, so "anime blue"
++            //     narrows the list instead of matching nothing.
++            //
++            // The wallpaper root itself is stripped first on purpose: it
++            // contains the user's home directory, and without stripping it
++            // almost any query would match the "/home/<user>/Pictures" prefix.
++            const terms = searchText.toLowerCase().split(/\s+/).filter(function (t) {
++                return t.length > 0;
++            });
++            const rootDir = GlobalStates.wallpaperManager.wallpaperDir || "";
++            const prefix = rootDir === "" ? "" : (rootDir.slice(-1) === "/" ? rootDir : rootDir + "/");
++
              wallpapers = wallpapers.filter(function (path) {
 -                const fileName = path.split('/').pop().toLowerCase();
 -                return fileName.includes(searchText.toLowerCase());
-+                const slash = path.lastIndexOf("/");
-+                const fileName = (slash === -1 ? path : path.slice(slash + 1)).toLowerCase();
-+                return fileName.includes(needle);
++                const rel = (prefix !== "" && path.indexOf(prefix) === 0)
++                    ? path.slice(prefix.length)
++                    : path;
++                const hay = rel.toLowerCase();
++                for (let i = 0; i < terms.length; i++) {
++                    if (hay.indexOf(terms[i]) === -1)
++                        return false;
++                }
++                return true;
              });
          }
  
-@@ -267,11 +320,16 @@ FocusScope {
+@@ -267,11 +345,16 @@ FocusScope {
  
                  // Manejo de eventos de búsqueda y teclado.
                  onSearchTextChanged: text => {
@@ -120,7 +145,7 @@ index 097d51e..b9e2eab 100644
                      }
                  }
  
-@@ -1345,7 +1403,10 @@ FocusScope {
+@@ -1345,7 +1428,10 @@ FocusScope {
      Component {
          id: staticImageComponent
          Image {
@@ -132,7 +157,7 @@ index 097d51e..b9e2eab 100644
              source: {
                  if (!parent.sourceFile || !GlobalStates.wallpaperManager)
                      return "";
-@@ -1362,8 +1423,22 @@ FocusScope {
+@@ -1362,8 +1448,22 @@ FocusScope {
              // grid open re-decodes all 621 thumbs and the global pixmap cache
              // retains the (old) decoded entries, growing per open instead of
              // reusing them.
