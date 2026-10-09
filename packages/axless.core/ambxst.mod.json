@@ -551,6 +551,10 @@
     {
       "type": "patch",
       "source": "patches/backdrop-dismiss.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/sidebar-nonmodal.patch"
     }
   ]
 }

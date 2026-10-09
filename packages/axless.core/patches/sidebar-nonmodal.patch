@@ -1,0 +1,53 @@
+diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
+index 90b83f9..2e0c84e 100644
+--- a/modules/shell/UnifiedShellPanel.qml
++++ b/modules/shell/UnifiedShellPanel.qml
+@@ -34,12 +34,14 @@ PanelWindow {
+         if (notchContent.screenNotchOpen) {
+             return WlrKeyboardFocus.Exclusive;
+         }
+-        // axless.core: take the keyboard exclusively while the assistant is
+-        // open. OnDemand/None did not reliably deliver keys to the sidebar, so
+-        // typing stopped working. Close the sidebar (toggle key) to type in
+-        // other apps.
++        // axless.core: the assistant sidebar is NOT modal, so it asks for the
++        // keyboard OnDemand rather than Exclusive. That is the focus-follows-
++        // click model: clicking the sidebar gives it the keyboard, clicking an
++        // application hands the keyboard back to that application. Exclusive
++        // would keep every keystroke here until the sidebar was closed, which
++        // is why typing in an app while the sidebar was open was impossible.
+         if (assistantSidebar.active) {
+-            return WlrKeyboardFocus.Exclusive;
++            return WlrKeyboardFocus.OnDemand;
+         }
+         return WlrKeyboardFocus.None;
+     }
+@@ -55,11 +57,23 @@ PanelWindow {
+     // input mask expands to the whole screen, which is what puts a clickable
+     // backdrop behind the shell.
+     //
+-    // Nothing else registers a FocusGrab for the assistant sidebar, so with the
+-    // clause gone and the notch closed, needsFullScreenInput was false and the
+-    // backdrop invisible: clicking anywhere else could not dismiss the sidebar,
+-    // and nothing caught the click. The keyboard fix does not depend on this.
+-    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab || (assistantSidebar.active && assistantSidebar.wantsFocus)
++    // The assistant sidebar is deliberately excluded again, and this time it
++    // stays excluded.
++    //
++    // This flag is only about the POINTER: it decides whether the panel's input
++    // region grows to the whole screen. The keyboard is a separate mechanism
++    // (WlrLayershell.keyboardFocus, above) and does not depend on it.
++    //
++    // Capturing the full screen for the sidebar meant every click went to the
++    // shell first - so a click meant for an application was swallowed, and the
++    // user had to click twice before the application saw anything. Keeping the
++    // mask at the shell's own hitboxes lets the pointer reach applications
++    // directly on the first click.
++    //
++    // The cost is that the sidebar has no click-outside backdrop. It does not
++    // need one: it is non-modal and is dismissed with its toggle key, which is
++    // the behaviour the user asked for.
++    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab
+ 
+     readonly property bool barEnabled: {
+         if (!Config.barReady) return false;
