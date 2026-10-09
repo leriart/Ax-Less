@@ -159,6 +159,13 @@
     },
     {
       "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/ApiStrategy.qml",
+      "target": "modules/services/ai/strategies/ApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "5b15e5ff0029b8b67520d3c951be3cae3c92b369300778a5d0fa86fea5bf787e"
+    },
+    {
+      "type": "overlay",
       "source": "payload/modules/services/ai/strategies/OpenAiCompatibleStrategy.qml",
       "target": "modules/services/ai/strategies/OpenAiCompatibleStrategy.qml"
     },

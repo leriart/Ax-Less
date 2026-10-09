@@ -705,10 +705,20 @@ Singleton {
         if (!strategy)
             return;
         const cached = capabilityProbe.cachedFor(model);
-        if (cached)
-            strategy.activeCapabilities = cached;
-        if (!cached)
+        if (cached) {
+            // Guarded: `activeCapabilities` lives on the strategy base class.
+            // If that base is ever missing from the generation (it was), a bare
+            // assignment throws "Cannot assign to non-existent property" and
+            // takes the whole request with it - on the second request for a
+            // model, once a probe has cached something. Cheap insurance.
+            try {
+                strategy.activeCapabilities = cached;
+            } catch (e) {
+                // Base strategy does not expose it; the probe stays advisory.
+            }
+        } else {
             capabilityProbe.probe(model, apiKey);
+        }
     }
 
     // Feed back what actually happened, so a model that never returns a
