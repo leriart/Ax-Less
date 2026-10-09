@@ -163,36 +163,165 @@ QtObject {
     // is ready for it.
     readonly property var actions: ({
         hyprland: [
-            { id: "toggle-floating", label: "compositor.action.toggle_floating", argv: ["hyprctl", "dispatch", "togglefloating"] },
-            { id: "fullscreen", label: "compositor.action.fullscreen", argv: ["hyprctl", "dispatch", "fullscreen", "0"] },
-            { id: "close", label: "compositor.action.close", argv: ["hyprctl", "dispatch", "killactive"] },
-            { id: "pseudo", label: "compositor.action.pseudo", argv: ["hyprctl", "dispatch", "pseudo"] },
-            { id: "split", label: "compositor.action.split", argv: ["hyprctl", "dispatch", "togglesplit"] },
-            { id: "cycle", label: "compositor.action.cycle", argv: ["hyprctl", "dispatch", "cyclenext"] },
-            { id: "special", label: "compositor.action.special", argv: ["hyprctl", "dispatch", "togglespecialworkspace"] },
-            { id: "center", label: "compositor.action.center", argv: ["hyprctl", "dispatch", "centerwindow"] },
-            { id: "reload", label: "compositor.action.reload", argv: ["hyprctl", "reload", "config-only"] }
+            { id: "toggle-floating", group: "floating", label: "compositor.action.toggle_floating", argv: ["hyprctl", "dispatch", "togglefloating"] },
+            { id: "fullscreen", group: "window", label: "compositor.action.fullscreen", argv: ["hyprctl", "dispatch", "fullscreen", "0"] },
+            { id: "close", group: "window", label: "compositor.action.close", argv: ["hyprctl", "dispatch", "killactive"] },
+            { id: "pseudo", group: "layout", label: "compositor.action.pseudo", argv: ["hyprctl", "dispatch", "pseudo"] },
+            { id: "split", group: "layout", label: "compositor.action.split", argv: ["hyprctl", "dispatch", "togglesplit"] },
+            { id: "cycle", group: "focus", label: "compositor.action.cycle", argv: ["hyprctl", "dispatch", "cyclenext"] },
+            { id: "special", group: "session", label: "compositor.action.special", argv: ["hyprctl", "dispatch", "togglespecialworkspace"] },
+            { id: "center", group: "layout", label: "compositor.action.center", argv: ["hyprctl", "dispatch", "centerwindow"] },
+            { id: "reload", group: "session", label: "compositor.action.reload", argv: ["hyprctl", "reload", "config-only"] }
         ],
         niri: [
-            { id: "toggle-floating", label: "compositor.action.toggle_floating", argv: ["niri", "msg", "action", "toggle-window-floating"] },
-            { id: "fullscreen", label: "compositor.action.fullscreen", argv: ["niri", "msg", "action", "fullscreen-window"] },
-            { id: "close", label: "compositor.action.close", argv: ["niri", "msg", "action", "close-window"] },
-            { id: "overview", label: "compositor.action.overview", argv: ["niri", "msg", "action", "toggle-overview"] },
-            { id: "center", label: "compositor.action.center", argv: ["niri", "msg", "action", "center-column"] },
-            { id: "center-visible", label: "compositor.action.center_visible", argv: ["niri", "msg", "action", "center-visible-columns"] },
-            { id: "expand", label: "compositor.action.expand", argv: ["niri", "msg", "action", "expand-column-to-available-width"] },
-            { id: "preset-width", label: "compositor.action.preset_width", argv: ["niri", "msg", "action", "switch-preset-column-width"] },
-            { id: "consume", label: "compositor.action.consume", argv: ["niri", "msg", "action", "consume-window-into-column"] },
-            { id: "tabbed", label: "compositor.action.tabbed", argv: ["niri", "msg", "action", "toggle-column-tabbed-display"] },
-            { id: "screenshot-screen", label: "compositor.action.screenshot_screen", argv: ["niri", "msg", "action", "screenshot-screen"] },
-            { id: "screenshot-window", label: "compositor.action.screenshot_window", argv: ["niri", "msg", "action", "screenshot-window"] },
-            { id: "dpms-off", label: "compositor.action.dpms_off", argv: ["niri", "msg", "action", "power-off-monitors"] }
+            { id: "close-window", group: "window", label: "compositor.action.close_window", argv: ["niri", "msg", "action", "close-window"] },
+            { id: "fullscreen-window", group: "window", label: "compositor.action.fullscreen_window", argv: ["niri", "msg", "action", "fullscreen-window"] },
+            { id: "debug-toggle-opaque-regions", group: "window", label: "compositor.action.debug_toggle_opaque_regions", argv: ["niri", "msg", "action", "debug-toggle-opaque-regions"] },
+            { id: "debug-toggle-damage", group: "window", label: "compositor.action.debug_toggle_damage", argv: ["niri", "msg", "action", "debug-toggle-damage"] },
+            { id: "clear-dynamic-cast-target", group: "window", label: "compositor.action.clear_dynamic_cast_target", argv: ["niri", "msg", "action", "clear-dynamic-cast-target"] },
+            { id: "unset-window-urgent", group: "window", label: "compositor.action.unset_window_urgent", argv: ["niri", "msg", "action", "unset-window-urgent"] },
+            { id: "focus-window-previous", group: "focus", label: "compositor.action.focus_window_previous", argv: ["niri", "msg", "action", "focus-window-previous"] },
+            { id: "focus-column-left", group: "focus", label: "compositor.action.focus_column_left", argv: ["niri", "msg", "action", "focus-column-left"] },
+            { id: "focus-column-right", group: "focus", label: "compositor.action.focus_column_right", argv: ["niri", "msg", "action", "focus-column-right"] },
+            { id: "focus-column-first", group: "focus", label: "compositor.action.focus_column_first", argv: ["niri", "msg", "action", "focus-column-first"] },
+            { id: "focus-column-last", group: "focus", label: "compositor.action.focus_column_last", argv: ["niri", "msg", "action", "focus-column-last"] },
+            { id: "focus-column-right-or-first", group: "focus", label: "compositor.action.focus_column_right_or_first", argv: ["niri", "msg", "action", "focus-column-right-or-first"] },
+            { id: "focus-column-left-or-last", group: "focus", label: "compositor.action.focus_column_left_or_last", argv: ["niri", "msg", "action", "focus-column-left-or-last"] },
+            { id: "focus-window-or-monitor-up", group: "focus", label: "compositor.action.focus_window_or_monitor_up", argv: ["niri", "msg", "action", "focus-window-or-monitor-up"] },
+            { id: "focus-window-or-monitor-down", group: "focus", label: "compositor.action.focus_window_or_monitor_down", argv: ["niri", "msg", "action", "focus-window-or-monitor-down"] },
+            { id: "focus-column-or-monitor-left", group: "focus", label: "compositor.action.focus_column_or_monitor_left", argv: ["niri", "msg", "action", "focus-column-or-monitor-left"] },
+            { id: "focus-column-or-monitor-right", group: "focus", label: "compositor.action.focus_column_or_monitor_right", argv: ["niri", "msg", "action", "focus-column-or-monitor-right"] },
+            { id: "focus-window-down", group: "focus", label: "compositor.action.focus_window_down", argv: ["niri", "msg", "action", "focus-window-down"] },
+            { id: "focus-window-up", group: "focus", label: "compositor.action.focus_window_up", argv: ["niri", "msg", "action", "focus-window-up"] },
+            { id: "focus-window-down-or-column-left", group: "focus", label: "compositor.action.focus_window_down_or_column_left", argv: ["niri", "msg", "action", "focus-window-down-or-column-left"] },
+            { id: "focus-window-down-or-column-right", group: "focus", label: "compositor.action.focus_window_down_or_column_right", argv: ["niri", "msg", "action", "focus-window-down-or-column-right"] },
+            { id: "focus-window-up-or-column-left", group: "focus", label: "compositor.action.focus_window_up_or_column_left", argv: ["niri", "msg", "action", "focus-window-up-or-column-left"] },
+            { id: "focus-window-up-or-column-right", group: "focus", label: "compositor.action.focus_window_up_or_column_right", argv: ["niri", "msg", "action", "focus-window-up-or-column-right"] },
+            { id: "focus-window-or-workspace-down", group: "focus", label: "compositor.action.focus_window_or_workspace_down", argv: ["niri", "msg", "action", "focus-window-or-workspace-down"] },
+            { id: "focus-window-or-workspace-up", group: "focus", label: "compositor.action.focus_window_or_workspace_up", argv: ["niri", "msg", "action", "focus-window-or-workspace-up"] },
+            { id: "focus-window-top", group: "focus", label: "compositor.action.focus_window_top", argv: ["niri", "msg", "action", "focus-window-top"] },
+            { id: "focus-window-bottom", group: "focus", label: "compositor.action.focus_window_bottom", argv: ["niri", "msg", "action", "focus-window-bottom"] },
+            { id: "focus-window-down-or-top", group: "focus", label: "compositor.action.focus_window_down_or_top", argv: ["niri", "msg", "action", "focus-window-down-or-top"] },
+            { id: "focus-window-up-or-bottom", group: "focus", label: "compositor.action.focus_window_up_or_bottom", argv: ["niri", "msg", "action", "focus-window-up-or-bottom"] },
+            { id: "focus-workspace-down", group: "focus", label: "compositor.action.focus_workspace_down", argv: ["niri", "msg", "action", "focus-workspace-down"] },
+            { id: "focus-workspace-up", group: "focus", label: "compositor.action.focus_workspace_up", argv: ["niri", "msg", "action", "focus-workspace-up"] },
+            { id: "focus-workspace-previous", group: "focus", label: "compositor.action.focus_workspace_previous", argv: ["niri", "msg", "action", "focus-workspace-previous"] },
+            { id: "focus-monitor-left", group: "focus", label: "compositor.action.focus_monitor_left", argv: ["niri", "msg", "action", "focus-monitor-left"] },
+            { id: "focus-monitor-right", group: "focus", label: "compositor.action.focus_monitor_right", argv: ["niri", "msg", "action", "focus-monitor-right"] },
+            { id: "focus-monitor-down", group: "focus", label: "compositor.action.focus_monitor_down", argv: ["niri", "msg", "action", "focus-monitor-down"] },
+            { id: "focus-monitor-up", group: "focus", label: "compositor.action.focus_monitor_up", argv: ["niri", "msg", "action", "focus-monitor-up"] },
+            { id: "focus-monitor-previous", group: "focus", label: "compositor.action.focus_monitor_previous", argv: ["niri", "msg", "action", "focus-monitor-previous"] },
+            { id: "focus-monitor-next", group: "focus", label: "compositor.action.focus_monitor_next", argv: ["niri", "msg", "action", "focus-monitor-next"] },
+            { id: "focus-floating", group: "focus", label: "compositor.action.focus_floating", argv: ["niri", "msg", "action", "focus-floating"] },
+            { id: "focus-tiling", group: "focus", label: "compositor.action.focus_tiling", argv: ["niri", "msg", "action", "focus-tiling"] },
+            { id: "move-column-left", group: "move", label: "compositor.action.move_column_left", argv: ["niri", "msg", "action", "move-column-left"] },
+            { id: "move-column-right", group: "move", label: "compositor.action.move_column_right", argv: ["niri", "msg", "action", "move-column-right"] },
+            { id: "move-column-to-first", group: "move", label: "compositor.action.move_column_to_first", argv: ["niri", "msg", "action", "move-column-to-first"] },
+            { id: "move-column-to-last", group: "move", label: "compositor.action.move_column_to_last", argv: ["niri", "msg", "action", "move-column-to-last"] },
+            { id: "move-column-left-or-to-monitor-left", group: "move", label: "compositor.action.move_column_left_or_to_monitor_left", argv: ["niri", "msg", "action", "move-column-left-or-to-monitor-left"] },
+            { id: "move-column-right-or-to-monitor-right", group: "move", label: "compositor.action.move_column_right_or_to_monitor_right", argv: ["niri", "msg", "action", "move-column-right-or-to-monitor-right"] },
+            { id: "move-window-down", group: "move", label: "compositor.action.move_window_down", argv: ["niri", "msg", "action", "move-window-down"] },
+            { id: "move-window-up", group: "move", label: "compositor.action.move_window_up", argv: ["niri", "msg", "action", "move-window-up"] },
+            { id: "move-window-down-or-to-workspace-down", group: "move", label: "compositor.action.move_window_down_or_to_workspace_down", argv: ["niri", "msg", "action", "move-window-down-or-to-workspace-down"] },
+            { id: "move-window-up-or-to-workspace-up", group: "move", label: "compositor.action.move_window_up_or_to_workspace_up", argv: ["niri", "msg", "action", "move-window-up-or-to-workspace-up"] },
+            { id: "move-window-to-workspace-down", group: "move", label: "compositor.action.move_window_to_workspace_down", argv: ["niri", "msg", "action", "move-window-to-workspace-down"] },
+            { id: "move-window-to-workspace-up", group: "move", label: "compositor.action.move_window_to_workspace_up", argv: ["niri", "msg", "action", "move-window-to-workspace-up"] },
+            { id: "move-column-to-workspace-down", group: "move", label: "compositor.action.move_column_to_workspace_down", argv: ["niri", "msg", "action", "move-column-to-workspace-down"] },
+            { id: "move-column-to-workspace-up", group: "move", label: "compositor.action.move_column_to_workspace_up", argv: ["niri", "msg", "action", "move-column-to-workspace-up"] },
+            { id: "move-workspace-down", group: "move", label: "compositor.action.move_workspace_down", argv: ["niri", "msg", "action", "move-workspace-down"] },
+            { id: "move-workspace-up", group: "move", label: "compositor.action.move_workspace_up", argv: ["niri", "msg", "action", "move-workspace-up"] },
+            { id: "move-window-to-monitor-left", group: "move", label: "compositor.action.move_window_to_monitor_left", argv: ["niri", "msg", "action", "move-window-to-monitor-left"] },
+            { id: "move-window-to-monitor-right", group: "move", label: "compositor.action.move_window_to_monitor_right", argv: ["niri", "msg", "action", "move-window-to-monitor-right"] },
+            { id: "move-window-to-monitor-down", group: "move", label: "compositor.action.move_window_to_monitor_down", argv: ["niri", "msg", "action", "move-window-to-monitor-down"] },
+            { id: "move-window-to-monitor-up", group: "move", label: "compositor.action.move_window_to_monitor_up", argv: ["niri", "msg", "action", "move-window-to-monitor-up"] },
+            { id: "move-window-to-monitor-previous", group: "move", label: "compositor.action.move_window_to_monitor_previous", argv: ["niri", "msg", "action", "move-window-to-monitor-previous"] },
+            { id: "move-window-to-monitor-next", group: "move", label: "compositor.action.move_window_to_monitor_next", argv: ["niri", "msg", "action", "move-window-to-monitor-next"] },
+            { id: "move-column-to-monitor-left", group: "move", label: "compositor.action.move_column_to_monitor_left", argv: ["niri", "msg", "action", "move-column-to-monitor-left"] },
+            { id: "move-column-to-monitor-right", group: "move", label: "compositor.action.move_column_to_monitor_right", argv: ["niri", "msg", "action", "move-column-to-monitor-right"] },
+            { id: "move-column-to-monitor-down", group: "move", label: "compositor.action.move_column_to_monitor_down", argv: ["niri", "msg", "action", "move-column-to-monitor-down"] },
+            { id: "move-column-to-monitor-up", group: "move", label: "compositor.action.move_column_to_monitor_up", argv: ["niri", "msg", "action", "move-column-to-monitor-up"] },
+            { id: "move-column-to-monitor-previous", group: "move", label: "compositor.action.move_column_to_monitor_previous", argv: ["niri", "msg", "action", "move-column-to-monitor-previous"] },
+            { id: "move-column-to-monitor-next", group: "move", label: "compositor.action.move_column_to_monitor_next", argv: ["niri", "msg", "action", "move-column-to-monitor-next"] },
+            { id: "move-workspace-to-monitor-left", group: "move", label: "compositor.action.move_workspace_to_monitor_left", argv: ["niri", "msg", "action", "move-workspace-to-monitor-left"] },
+            { id: "move-workspace-to-monitor-right", group: "move", label: "compositor.action.move_workspace_to_monitor_right", argv: ["niri", "msg", "action", "move-workspace-to-monitor-right"] },
+            { id: "move-workspace-to-monitor-down", group: "move", label: "compositor.action.move_workspace_to_monitor_down", argv: ["niri", "msg", "action", "move-workspace-to-monitor-down"] },
+            { id: "move-workspace-to-monitor-up", group: "move", label: "compositor.action.move_workspace_to_monitor_up", argv: ["niri", "msg", "action", "move-workspace-to-monitor-up"] },
+            { id: "move-workspace-to-monitor-previous", group: "move", label: "compositor.action.move_workspace_to_monitor_previous", argv: ["niri", "msg", "action", "move-workspace-to-monitor-previous"] },
+            { id: "move-workspace-to-monitor-next", group: "move", label: "compositor.action.move_workspace_to_monitor_next", argv: ["niri", "msg", "action", "move-workspace-to-monitor-next"] },
+            { id: "move-window-to-floating", group: "move", label: "compositor.action.move_window_to_floating", argv: ["niri", "msg", "action", "move-window-to-floating"] },
+            { id: "move-window-to-tiling", group: "move", label: "compositor.action.move_window_to_tiling", argv: ["niri", "msg", "action", "move-window-to-tiling"] },
+            { id: "consume-or-expel-window-left", group: "layout", label: "compositor.action.consume_or_expel_window_left", argv: ["niri", "msg", "action", "consume-or-expel-window-left"] },
+            { id: "consume-or-expel-window-right", group: "layout", label: "compositor.action.consume_or_expel_window_right", argv: ["niri", "msg", "action", "consume-or-expel-window-right"] },
+            { id: "consume-window-into-column", group: "layout", label: "compositor.action.consume_window_into_column", argv: ["niri", "msg", "action", "consume-window-into-column"] },
+            { id: "expel-window-from-column", group: "layout", label: "compositor.action.expel_window_from_column", argv: ["niri", "msg", "action", "expel-window-from-column"] },
+            { id: "swap-window-right", group: "layout", label: "compositor.action.swap_window_right", argv: ["niri", "msg", "action", "swap-window-right"] },
+            { id: "swap-window-left", group: "layout", label: "compositor.action.swap_window_left", argv: ["niri", "msg", "action", "swap-window-left"] },
+            { id: "toggle-column-tabbed-display", group: "layout", label: "compositor.action.toggle_column_tabbed_display", argv: ["niri", "msg", "action", "toggle-column-tabbed-display"] },
+            { id: "center-column", group: "layout", label: "compositor.action.center_column", argv: ["niri", "msg", "action", "center-column"] },
+            { id: "center-window", group: "layout", label: "compositor.action.center_window", argv: ["niri", "msg", "action", "center-window"] },
+            { id: "center-visible-columns", group: "layout", label: "compositor.action.center_visible_columns", argv: ["niri", "msg", "action", "center-visible-columns"] },
+            { id: "reset-window-height", group: "layout", label: "compositor.action.reset_window_height", argv: ["niri", "msg", "action", "reset-window-height"] },
+            { id: "switch-preset-column-width", group: "layout", label: "compositor.action.switch_preset_column_width", argv: ["niri", "msg", "action", "switch-preset-column-width"] },
+            { id: "switch-preset-column-width-back", group: "layout", label: "compositor.action.switch_preset_column_width_back", argv: ["niri", "msg", "action", "switch-preset-column-width-back"] },
+            { id: "switch-preset-window-width", group: "layout", label: "compositor.action.switch_preset_window_width", argv: ["niri", "msg", "action", "switch-preset-window-width"] },
+            { id: "switch-preset-window-width-back", group: "layout", label: "compositor.action.switch_preset_window_width_back", argv: ["niri", "msg", "action", "switch-preset-window-width-back"] },
+            { id: "switch-preset-window-height", group: "layout", label: "compositor.action.switch_preset_window_height", argv: ["niri", "msg", "action", "switch-preset-window-height"] },
+            { id: "switch-preset-window-height-back", group: "layout", label: "compositor.action.switch_preset_window_height_back", argv: ["niri", "msg", "action", "switch-preset-window-height-back"] },
+            { id: "maximize-column", group: "layout", label: "compositor.action.maximize_column", argv: ["niri", "msg", "action", "maximize-column"] },
+            { id: "maximize-window-to-edges", group: "layout", label: "compositor.action.maximize_window_to_edges", argv: ["niri", "msg", "action", "maximize-window-to-edges"] },
+            { id: "expand-column-to-available-width", group: "layout", label: "compositor.action.expand_column_to_available_width", argv: ["niri", "msg", "action", "expand-column-to-available-width"] },
+            { id: "switch-layout", group: "layout", label: "compositor.action.switch_layout", argv: ["niri", "msg", "action", "switch-layout"] },
+            { id: "toggle-window-floating", group: "floating", label: "compositor.action.toggle_window_floating", argv: ["niri", "msg", "action", "toggle-window-floating"] },
+            { id: "switch-focus-between-floating-and-tiling", group: "floating", label: "compositor.action.switch_focus_between_floating_and_tiling", argv: ["niri", "msg", "action", "switch-focus-between-floating-and-tiling"] },
+            { id: "toggle-keyboard-shortcuts-inhibit", group: "toggle", label: "compositor.action.toggle_keyboard_shortcuts_inhibit", argv: ["niri", "msg", "action", "toggle-keyboard-shortcuts-inhibit"] },
+            { id: "toggle-windowed-fullscreen", group: "toggle", label: "compositor.action.toggle_windowed_fullscreen", argv: ["niri", "msg", "action", "toggle-windowed-fullscreen"] },
+            { id: "show-hotkey-overlay", group: "toggle", label: "compositor.action.show_hotkey_overlay", argv: ["niri", "msg", "action", "show-hotkey-overlay"] },
+            { id: "toggle-debug-tint", group: "toggle", label: "compositor.action.toggle_debug_tint", argv: ["niri", "msg", "action", "toggle-debug-tint"] },
+            { id: "toggle-window-rule-opacity", group: "toggle", label: "compositor.action.toggle_window_rule_opacity", argv: ["niri", "msg", "action", "toggle-window-rule-opacity"] },
+            { id: "toggle-overview", group: "toggle", label: "compositor.action.toggle_overview", argv: ["niri", "msg", "action", "toggle-overview"] },
+            { id: "toggle-window-urgent", group: "toggle", label: "compositor.action.toggle_window_urgent", argv: ["niri", "msg", "action", "toggle-window-urgent"] },
+            { id: "screenshot", group: "capture", label: "compositor.action.screenshot", argv: ["niri", "msg", "action", "screenshot"] },
+            { id: "screenshot-screen", group: "capture", label: "compositor.action.screenshot_screen", argv: ["niri", "msg", "action", "screenshot-screen"] },
+            { id: "screenshot-window", group: "capture", label: "compositor.action.screenshot_window", argv: ["niri", "msg", "action", "screenshot-window"] },
+            { id: "power-off-monitors", group: "session", label: "compositor.action.power_off_monitors", argv: ["niri", "msg", "action", "power-off-monitors"] },
+            { id: "power-on-monitors", group: "session", label: "compositor.action.power_on_monitors", argv: ["niri", "msg", "action", "power-on-monitors"] },
+            { id: "do-screen-transition", group: "session", label: "compositor.action.do_screen_transition", argv: ["niri", "msg", "action", "do-screen-transition"] },
+            { id: "stop-cast", group: "session", label: "compositor.action.stop_cast", argv: ["niri", "msg", "action", "stop-cast"] },
+            { id: "open-overview", group: "session", label: "compositor.action.open_overview", argv: ["niri", "msg", "action", "open-overview"] },
+            { id: "close-overview", group: "session", label: "compositor.action.close_overview", argv: ["niri", "msg", "action", "close-overview"] },
         ],
         mango: []
     })
 
     readonly property var actionList: actions[compositor] || []
     readonly property bool hasActions: actionList.length > 0
+
+    // actionList grouped for the panel, preserving first-seen order. Each
+    // entry is { id, label, items }, so the UI can render a header per group
+    // instead of a flat wall of buttons.
+    readonly property var actionGroups: {
+        const list = actionList;
+        const order = [];
+        const by = {};
+        for (let i = 0; i < list.length; i++) {
+            const it = list[i];
+            const g = it.group ? it.group : "other";
+            if (!by[g]) {
+                by[g] = [];
+                order.push(g);
+            }
+            by[g].push(it);
+        }
+        const out = [];
+        for (let i = 0; i < order.length; i++) {
+            out.push({
+                id: order[i],
+                label: "compositor.group." + order[i],
+                items: by[order[i]]
+            });
+        }
+        return out;
+    }
 
     // Run one action by id. Returns false when the id is unknown or there are
     // no actions, so a caller can report honestly.

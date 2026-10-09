@@ -2152,11 +2152,30 @@ Item {
                                 }
 
                                 Repeater {
-                                    model: CompositorKeywords.actionList
-                                    delegate: ActionRow {
+                                    model: CompositorKeywords.actionGroups
+                                    delegate: ColumnLayout {
+                                        id: actionGroup
                                         required property var modelData
-                                        label: I18n.t(modelData.label)
-                                        onTriggered: CompositorKeywords.runAction(modelData.id)
+                                        Layout.fillWidth: true
+                                        spacing: 4
+
+                                        Text {
+                                            text: I18n.t(actionGroup.modelData.label)
+                                            font.family: Config.theme.font
+                                            font.pixelSize: Styling.fontSize(-2)
+                                            font.weight: Font.Medium
+                                            color: Colors.overSurfaceVariant
+                                            Layout.topMargin: 6
+                                        }
+
+                                        Repeater {
+                                            model: actionGroup.modelData.items
+                                            delegate: ActionRow {
+                                                required property var modelData
+                                                label: I18n.t(modelData.label)
+                                                onTriggered: CompositorKeywords.runAction(modelData.id)
+                                            }
+                                        }
                                     }
                                 }
                             }
