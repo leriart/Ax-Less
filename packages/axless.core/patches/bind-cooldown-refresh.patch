@@ -1,0 +1,14 @@
+diff --git a/modules/services/GlobalShortcuts.qml b/modules/services/GlobalShortcuts.qml
+index 430d517..e420049 100644
+--- a/modules/services/GlobalShortcuts.qml
++++ b/modules/services/GlobalShortcuts.qml
+@@ -124,6 +124,9 @@ QtObject {
+     // route it into the same runner. `ambxst toggle <target>` pushes a
+     // separate "ui.toggle" event with its own state-flipping switch.
+     Component.onCompleted: {
++        // axless.core: BindCooldown's own Component.onCompleted does not fire,
++        // so the persisted cooldown is read from here instead.
++        BindCooldown.refresh();
+         BackendService.addSubscription(["ui"], (service, data) => {
+             if (typeof data !== "string" || data === "")
+                 return;

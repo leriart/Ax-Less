@@ -1,6 +1,7 @@
 pragma Singleton
 
 import QtQuick
+import Quickshell
 import qs.modules.services
 
 /*
@@ -57,7 +58,10 @@ QtObject {
         }
     }
 
-    Component.onCompleted: {
+    // Read the persisted value. Called from GlobalShortcuts' own
+    // Component.onCompleted, because this singleton's does not fire reliably
+    // here - which is why a reload used to drop the value back to 25.
+    function refresh() {
         ModsService.getSettings("axless.core", function (settings, error) {
             if (error || !settings || !settings.values)
                 return;
@@ -70,6 +74,8 @@ QtObject {
         });
     }
 
+    Component.onCompleted: root.refresh()
+
     /*
         Returns true when `command` may run now, false when it is still within
         its cooldown window.
@@ -80,14 +86,16 @@ QtObject {
     */
     function gate(command) {
         const ms = Math.max(0, Math.round(cooldownMs));
+
         if (ms <= 0)
             return true;
 
         const now = Date.now();
         const key = String(command);
         const last = root._lastAccepted[key];
-        if (last !== undefined && (now - last) < ms)
+        if (last !== undefined && (now - last) < ms) {
             return false;
+        }
 
         // Copy-on-write on a plain object: `property var` only notifies when
         // the reference changes, and this map stays tiny (one entry per

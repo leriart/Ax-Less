@@ -580,6 +580,10 @@
     {
       "type": "patch",
       "source": "patches/bind-cooldown-toggle.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/bind-cooldown-refresh.patch"
     }
   ]
 }
