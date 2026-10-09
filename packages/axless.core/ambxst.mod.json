@@ -584,14 +584,6 @@
     {
       "type": "patch",
       "source": "patches/bind-cooldown-refresh.patch"
-    },
-    {
-      "type": "patch",
-      "source": "patches/volume-through-shell.patch"
-    },
-    {
-      "type": "patch",
-      "source": "patches/volume-bind-catalog.patch"
     }
   ]
 }
