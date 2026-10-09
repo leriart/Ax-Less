@@ -567,6 +567,10 @@
     {
       "type": "patch",
       "source": "patches/bind-cooldown.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/compositor-actions-i18n.patch"
     }
   ]
 }
