@@ -387,9 +387,36 @@ QtObject {
     // gaps, border size and rounding reach every compositor that axctl
     // generates a config for, even though a few extra Hyprland-only rows
     // also live in that section.
-    readonly property var tomlSections: ["general", "colors", "shadows", "blur"]
+    // Which of Ambxst's own appearance sections actually reach each compositor.
+    //
+    // This is not guesswork and not `axctl system get-capabilities`, which
+    // reports blur and shadows as true even on niri. It is read off the config
+    // axctl actually generates for each one (~/.local/share/ambxst/niri.kdl,
+    // hyprland.lua, mango.conf), where axctl emits an explicit
+    // "// Not supported in <compositor>" comment for every key it drops:
+    //
+    //   niri     emits layout.gaps (inner only), border, geometry-corner-radius
+    //            and comments out outer gaps, opacity, blur and shadow as
+    //            "not supported in niri static config".
+    //   mango    emits gappih/gappiv/gappoh/gappov, borderpx, border_radius,
+    //            focused_opacity/unfocused_opacity, blur and shadows.
+    //   hyprland drops nothing.
+    //
+    // So showing Blur on niri is showing a control that writes a value the
+    // compositor never reads. Sections absent here are hidden by the panel.
+    readonly property var tomlSectionSupport: ({
+        hyprland: ["general", "colors", "shadows", "blur", "opacity"],
+        niri:     ["general", "colors"],
+        mango:    ["general", "colors", "shadows", "blur", "opacity"]
+    })
 
+    // A section is offered when either Ambxst writes it for this compositor
+    // (tomlSectionSupport) or it has Hyprland runtime keywords behind it.
     function supports(sectionId) {
+        const toml = tomlSectionSupport[compositor];
+        if (toml && toml.indexOf(sectionId) >= 0)
+            return true;
+
         const forThis = sections[compositor];
         if (!forThis)
             return false;

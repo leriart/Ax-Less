@@ -733,21 +733,25 @@ Item {
                                 objectName: "sect_general"
                                 text: I18n.t("compositor.general")
                                 sectionId: "general"
+                                visible: CompositorKeywords.supports("general")
                             }
                             SectionButton {
                                 objectName: "sect_colors"
                                 text: I18n.t("compositor.colors")
                                 sectionId: "colors"
+                                visible: CompositorKeywords.supports("colors")
                             }
                             SectionButton {
                                 objectName: "sect_shadows"
                                 text: I18n.t("compositor.shadows")
                                 sectionId: "shadows"
+                                visible: CompositorKeywords.supports("shadows")
                             }
                             SectionButton {
                                 objectName: "sect_blur"
                                 text: I18n.t("compositor.blur")
                                 sectionId: "blur"
+                                visible: CompositorKeywords.supports("blur")
                             }
 
                                                     SectionButton {
@@ -813,7 +817,7 @@ Item {
 
                         // General Section
                         ColumnLayout {
-                            visible: root.currentSection === "general"
+                            visible: root.currentSection === "general" && CompositorKeywords.supports("general")
                             Layout.fillWidth: true
                             spacing: 8
 
@@ -926,7 +930,7 @@ Item {
 
                         // Colors Section
                         ColumnLayout {
-                            visible: root.currentSection === "colors"
+                            visible: root.currentSection === "colors" && CompositorKeywords.supports("colors")
                             Layout.fillWidth: true
                             spacing: 8
 
@@ -979,7 +983,7 @@ Item {
 
                         // Shadows Section
                         ColumnLayout {
-                            visible: root.currentSection === "shadows"
+                            visible: root.currentSection === "shadows" && CompositorKeywords.supports("shadows")
                             Layout.fillWidth: true
                             spacing: 8
 
@@ -1119,7 +1123,7 @@ Item {
 
                         // Blur Section
                         ColumnLayout {
-                            visible: root.currentSection === "blur"
+                            visible: root.currentSection === "blur" && CompositorKeywords.supports("blur")
                             Layout.fillWidth: true
                             spacing: 8
 
