@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..70e9035 100644
+index 292f58c..685f6b4 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -553,7 +553,54 @@ index 292f58c..70e9035 100644
  
                          ColumnLayout {
                              anchors.bottom: inputContainer.top
-@@ -685,9 +1160,41 @@ Item {
+@@ -673,10 +1148,43 @@ Item {
+ 
+                                 bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
+ 
++                                // axless.core: smooth follow. This used to
++                                // jump to the end only when a message was
++                                // added, so a streaming answer grew below the
++                                // fold while the view sat still. The bottom is
++                                // now tracked with a short animation in the
++                                // shell's own style, and only while the user is
++                                // already at the bottom, so scrolling up to
++                                // read is never yanked back.
++                                property bool _atBottom: true
++                                readonly property int _followDuration: Math.max(80, Math.min(Config.animDuration, 200))
++
++                                function _scrollToEnd(smooth) {
++                                    const target = Math.max(0, contentHeight - height);
++                                    if (Math.abs(contentY - target) < 1)
++                                        return;
++                                    if (smooth) {
++                                        followAnim.to = target;
++                                        followAnim.restart();
++                                    } else {
++                                        contentY = target;
++                                    }
++                                }
++
++                                NumberAnimation {
++                                    id: followAnim
++                                    target: chatView
++                                    property: "contentY"
++                                    duration: chatView._followDuration
++                                    easing.type: Easing.OutCubic
++                                }
++
++                                onMovementEnded: _atBottom = atYEnd
++                                onContentHeightChanged: if (_atBottom) _scrollToEnd(true)
++
+                                 onCountChanged: {
+-                                    Qt.callLater(() => {
+-                                        positionViewAtEnd();
+-                                    });
++                                    _atBottom = true;
++                                    Qt.callLater(() => _scrollToEnd(true));
+                                 }
+ 
+                                 delegate: Item {
+@@ -685,9 +1193,41 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -596,7 +643,7 @@ index 292f58c..70e9035 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -853,7 +1360,11 @@ Item {
+@@ -853,7 +1393,11 @@ Item {
  
                                              StyledRect {
                                                  id: bubble
@@ -609,7 +656,7 @@ index 292f58c..70e9035 100644
                                                  height: bubbleContent.implicitHeight + 24
  
                                                  anchors.right: isUser ? parent.right : undefined
-@@ -875,68 +1386,50 @@ Item {
+@@ -875,68 +1419,50 @@ Item {
                                                          visible: !messageDelegate.isEditing && !bubbleContentText.visible
                                                          spacing: 8
  
@@ -721,7 +768,7 @@ index 292f58c..70e9035 100644
                                                                  }
                                                              }
                                                          }
-@@ -945,7 +1438,20 @@ Item {
+@@ -945,7 +1471,20 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -743,7 +790,7 @@ index 292f58c..70e9035 100644
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1459,28 @@ Item {
+@@ -953,7 +1492,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -773,7 +820,7 @@ index 292f58c..70e9035 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1496,9 @@ Item {
+@@ -969,7 +1529,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -784,7 +831,7 @@ index 292f58c..70e9035 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1506,29 @@ Item {
+@@ -977,16 +1539,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -817,7 +864,7 @@ index 292f58c..70e9035 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1581,25 @@ Item {
+@@ -1039,6 +1614,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -843,7 +890,7 @@ index 292f58c..70e9035 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1664,25 @@ Item {
+@@ -1103,6 +1697,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -869,7 +916,7 @@ index 292f58c..70e9035 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1746,121 @@ Item {
+@@ -1166,6 +1779,121 @@ Item {
                              }
                          }
  
