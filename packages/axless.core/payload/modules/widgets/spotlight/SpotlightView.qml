@@ -3181,6 +3181,13 @@ PanelWindow {
     // Command execution
     // --------------------------------------------------------------
 
+    // shQuote wraps a value in single quotes for safe use inside a shell
+    // command. Package names and URLs reach runCmd from parsed output and from
+    // user input alike, so they must never be interpolated bare.
+    function shQuote(s) {
+        return "'" + String(s).replace(/'/g, "'\\''") + "'";
+    }
+
     function runCmd(cmd) {
         cancelCmdProcess();
         if (cmd.trim().length === 0) return;
@@ -3725,7 +3732,8 @@ PanelWindow {
                     description: "pacman -Syu — actualizar todos los paquetes",
                     icon: Icons.notepad, type: "info",
                     exec: function() {
-                        runCmd('echo "F200607" | sudo -S rm -f /var/lib/pacman/db.lck 2>/dev/null; echo "F200607" | sudo -S pacman -Syu --noconfirm --overwrite "*"');
+                        var syncScript = 'rm -f /var/lib/pacman/db.lck 2>/dev/null; pacman -Syu --noconfirm --overwrite "*"';
+                        runCmd("pkexec bash -c " + shQuote(syncScript));
                     }
                 });
                 results = newResults;
@@ -3741,7 +3749,7 @@ PanelWindow {
                         name: "Remove \"" + rmPkg + "\"",
                         description: "sudo pacman -R " + rmPkg,
                         icon: Icons.notepad, type: "info",
-                        exec: function() { runCmd('echo "F200607" | sudo -S pacman -R --noconfirm ' + rmPkg); }
+                        exec: function() { runCmd("pkexec pacman -R --noconfirm " + shQuote(rmPkg)); }
                     });
                 }
                 results = newResults;
@@ -3760,7 +3768,7 @@ PanelWindow {
                     name: "Install \"" + pmPkg + "\" (pacman)",
                     description: "sudo pacman -S " + pmPkg,
                     icon: Icons.notepad, type: "info",
-                    exec: function() { runCmd('echo "F200607" | sudo -S pacman -S --noconfirm ' + pmPkg); }
+                    exec: function() { runCmd("pkexec pacman -S --noconfirm " + shQuote(pmPkg)); }
                 });
                 results = newResults;
                 return;
@@ -3772,7 +3780,7 @@ PanelWindow {
                     name: "Install \"" + yyPkg + "\" (AUR/yay)",
                     description: "yay -S " + yyPkg,
                     icon: Icons.notepad, type: "info",
-                    exec: function() { runCmd('echo "F200607" | sudo -S yay -S --noconfirm ' + yyPkg); }
+                    exec: function() { runCmd("pkexec yay -S --noconfirm " + shQuote(yyPkg)); }
                 });
                 results = newResults;
                 return;
@@ -5157,7 +5165,7 @@ PanelWindow {
                         var sudoP = section === "pacman" ? "pacman" : "";
                         addPkg(pkg, desc, gestor,
                             sudoP
-                                ? "echo 'F200607' | sudo -S " + sudoP + " -S --noconfirm " + pkg
+                                ? "pkexec " + sudoP + " -S --noconfirm " + shQuote(pkg)
                                 : "yay -S --noconfirm " + pkg);
                     }
                 }

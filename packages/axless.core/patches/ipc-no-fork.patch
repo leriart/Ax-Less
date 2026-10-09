@@ -1,0 +1,88 @@
+diff --git a/modules/services/CompositorTomlWriter.qml b/modules/services/CompositorTomlWriter.qml
+index 982e115..edceaec 100644
+--- a/modules/services/CompositorTomlWriter.qml
++++ b/modules/services/CompositorTomlWriter.qml
+@@ -4,6 +4,7 @@ import Quickshell
+ import Quickshell.Io
+ import qs.config
+ import qs.modules.globals
++import qs.modules.services
+ 
+ /**
+  * CompositorTomlWriter - Thin IPC client.
+@@ -281,23 +282,28 @@ Singleton {
+         console.warn("CompositorTomlWriter: daemon unreachable, wrote fallback [target] only");
+     }
+ 
++    // axless.core: coalesce writes. About 49 Connections sites call callWrite,
++    // and a settings slider mutates its bound property on every mouse-move
++    // event, so dragging one slider used to fork a whole ambxst CLI process
++    // (a ~30 MB binary) dozens of times per second. 150 ms is below the point
++    // where a human notices the compositor lagging behind a setting.
+     function callWrite() {
+-        const payload = JSON.stringify(gatherInput());
+-        // The daemon exposes a unix socket; Quickshell.Io.Process doesn't
+-        // speak the JSON-RPC framing directly, so we run the ambxst CLI
+-        // with a transient request. If the daemon is down (e.g. socket
+-        // file is stale), the CLI exits with code 1; we then fall back
+-        // to a minimal direct write so axctl still has a valid TOML
+-        // to watch and the rest of the shell keeps working.
+-        ipcProcess.command = ["ambxst", "ipc", "call", "compositor.write", payload];
+-        ipcProcess.exited.connect(function(code) {
+-            if (code !== 0) {
+-                console.warn("CompositorTomlWriter: daemon call failed, using fallback");
+-                fallbackWrite();
+-            }
+-        });
+-        ipcProcess.running = true;
+-        console.log("CompositorTomlWriter: requested compositor.write via ambxst CLI");
++        _writeDebounce.restart();
++    }
++
++    Timer {
++        id: _writeDebounce
++        interval: 150
++        onTriggered: root.writeNow()
++    }
++
++    function writeNow() {
++        // axless.core: BackendService already speaks the daemon's unix socket
++        // framing, so this is a direct request-response frame rather than
++        // spawning a process. The other ~52 compositor writes in this shell
++        // (CompositorConfig.applyCompositorConfig) already go through it.
++        BackendService.notify("compositor.write", gatherInput());
++        console.log("CompositorTomlWriter: requested compositor.write via BackendService");
+     }
+ 
+     // Tracks whether the QML's keybind adapter is ready. We hold the
+diff --git a/modules/services/IdleMonitor.qml b/modules/services/IdleMonitor.qml
+index 1c4807e..e1f182f 100644
+--- a/modules/services/IdleMonitor.qml
++++ b/modules/services/IdleMonitor.qml
+@@ -149,7 +149,11 @@ Item {
+     Timer {
+         id: mediaCheckTimer
+         interval: 5000
+-        running: true
++        // axless.core: this was running unconditionally for the whole life of
++        // the shell and forked `sh -c axctl system media-inhibit-check` every
++        // five seconds - 17,280 process spawns a day - to clear a flag that is
++        // only meaningful while an idle monitor exists.
++        running: root.enabled && root.timeout > 0
+         repeat: true
+         onTriggered: root._checkMediaInhibitor()
+     }
+@@ -164,8 +168,11 @@ Item {
+         var respect = respectInhibitors ? 1 : 0;
+         var en = enabled ? 1 : 0;
+ 
+-        var cmd = "axctl system idle-monitor-update " + _monitorId + " " + timeoutMs + " " + respect + " " + en;
+-        _updateProcess.command = ["sh", "-c", cmd];
++        // axless.core: argv instead of `sh -c`. Same command, one less fork
++        // and no shell to quote.
++        _updateProcess.command = ["axctl", "system", "idle-monitor-update",
++                                  String(_monitorId), String(timeoutMs),
++                                  String(respect), String(en)];
+         _updateProcess.running = true;
+     }
+ 

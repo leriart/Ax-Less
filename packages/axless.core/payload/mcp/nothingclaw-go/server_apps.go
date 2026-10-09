@@ -303,11 +303,14 @@ func runQuick(name string, args ...string) (string, error) {
 		out, runErr = cmd.Output()
 		close(done)
 	}()
+	timer := time.NewTimer(8 * time.Second)
+	defer timer.Stop()
 	select {
 	case <-done:
 		return string(out), runErr
-	case <-time.After(8 * time.Second):
+	case <-timer.C:
 		_ = cmd.Process.Kill()
+		go func() { <-done }()
 		return "", errTimeout
 	}
 }

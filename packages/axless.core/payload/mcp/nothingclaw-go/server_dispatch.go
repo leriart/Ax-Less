@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -263,9 +264,16 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 		if program == "" {
 			return errContent("launch_program needs program_name")
 		}
-		ok := fireAndForget([]string{"bash", "-c", "nohup " + program + " >/dev/null 2>&1 &"})
-		if ok {
-			return okContent("Launched '" + program + "' in the background.")
+		// exec argv directly whenever the line is a plain command, so a
+		// model-supplied program string can never append shell syntax.
+		if argv, ok := shellWords(program); ok {
+			if fireAndForget(argv) {
+				return okContent("Launched '" + program + "' in the background.")
+			}
+			return errContent("Failed to launch '" + program + "'.")
+		}
+		if program != "" && fireAndForget([]string{"bash", "-c", "exec " + program + " >/dev/null 2>&1 &"}) {
+			return okContent("Launched '" + program + "' in the background (via shell).")
 		}
 		return errContent("Failed to launch '" + program + "'.")
 
@@ -279,7 +287,10 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 		return runShell(cmd, 180, "")
 
 	case "list_installed_apps":
-		catalog := getAppsCatalog(true)
+		// Honour the 60s TTL instead of forcing a rebuild on every call:
+		// a forced rebuild spawns flatpak and snap and reads every .desktop
+		// file, and an agent typically calls this once per turn.
+		catalog := getAppsCatalog(boolArg(args, "force_refresh", false))
 		filter := strArg(args, "filter", "")
 		if filter != "" {
 			needle := strings.ToLower(filter)
@@ -314,7 +325,7 @@ func invokeTool(name string, arguments map[string]any, ctx *requestContext) map[
 		info := map[string]any{
 			"tier": ctx.Tier, "model_name": ctx.ModelName, "model_host": ctx.ModelHost,
 			"context_window": ctx.ContextWindow, "tool_budget_tokens": ctx.ToolBudget,
-			"input_budget_tokens": ctx.InputBudget,
+			"input_budget_tokens":     ctx.InputBudget,
 			"tools_available_in_tier": tierNamesOr(ctx.Tier),
 			"tier_budgets":            defaultToolResultBudget,
 		}
@@ -532,8 +543,19 @@ func screenshotTool(args map[string]any) map[string]any {
 	return errContent("no screenshot tool found (install grim for Wayland, or maim/scrot for X11).")
 }
 
-func guard(f func() map[string]any) map[string]any {
-	defer func() {}()
+// guard converts a panic inside a tool handler into a normal tool error.
+// The previous version deferred an empty function, which is not a recover:
+// the panic unwound past it, run() returned a nil map, and the agent loop
+// then handed the model the literal string "<nil>".
+func guard(f func() map[string]any) (result map[string]any) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			result = map[string]any{
+				"content": "",
+				"error":   fmt.Sprintf("tool panicked: %v", rec),
+			}
+		}
+	}()
 	return f()
 }
 
@@ -672,15 +694,20 @@ func moveWindows(args map[string]any) map[string]any {
 		}
 	}
 	moved = verified
-	time.Sleep(200 * time.Millisecond)
-	retry := snapshotWorkspaces()
+	// Only pay the compositor settle delay when there is actually something to
+	// re-check; the common all-success path used to block the handler 200ms
+	// and then take a third snapshot for nothing.
 	finalFailures := []map[string]any{}
-	for _, e := range failures {
-		wid := fmt.Sprint(e["window_id"])
-		if actual, ok := retry[wid]; ok && fmt.Sprint(actual) == fmt.Sprint(e["workspace_id"]) {
-			moved = append(moved, map[string]any{"window_id": wid, "workspace_id": e["workspace_id"]})
-		} else {
-			finalFailures = append(finalFailures, e)
+	if len(failures) > 0 {
+		time.Sleep(200 * time.Millisecond)
+		retry := snapshotWorkspaces()
+		for _, e := range failures {
+			wid := fmt.Sprint(e["window_id"])
+			if actual, ok := retry[wid]; ok && fmt.Sprint(actual) == fmt.Sprint(e["workspace_id"]) {
+				moved = append(moved, map[string]any{"window_id": wid, "workspace_id": e["workspace_id"]})
+			} else {
+				finalFailures = append(finalFailures, e)
+			}
 		}
 	}
 
@@ -706,6 +733,45 @@ func snapshotWorkspaces() map[string]any {
 	return snap
 }
 
+// wsListCache memoises the workspace list for a couple of seconds. Resolving
+// a workspace by name used to spawn one `axctl workspace list` per lookup,
+// which is N spawns for a batch move_windows call.
+var (
+	wsListMu     sync.Mutex
+	wsListAt     time.Time
+	wsListByName map[string]string
+)
+
+func workspaceIDByName() map[string]string {
+	wsListMu.Lock()
+	defer wsListMu.Unlock()
+	if wsListByName != nil && time.Since(wsListAt) < 2*time.Second {
+		return wsListByName
+	}
+	lr := runAxctl([]string{"workspace", "list"}, 5*time.Second)
+	if lr["error"] != nil {
+		return nil
+	}
+	var workspaces []any
+	if json.Unmarshal([]byte(toString(lr["content"])), &workspaces) != nil {
+		return nil
+	}
+	m := make(map[string]string, len(workspaces))
+	for _, w := range workspaces {
+		wm, ok := w.(map[string]any)
+		if !ok {
+			continue
+		}
+		wid := fmt.Sprint(wm["id"])
+		if name := fmt.Sprint(wm["name"]); name != "" && name != "<nil>" {
+			m[strings.ToLower(name)] = wid
+		}
+	}
+	wsListByName = m
+	wsListAt = time.Now()
+	return m
+}
+
 func resolveWorkspaceID(ws string) string {
 	s := strings.TrimSpace(ws)
 	if s == "" {
@@ -714,27 +780,8 @@ func resolveWorkspaceID(ws string) string {
 	if _, err := parseUint8(s); err == nil {
 		return s
 	}
-	lr := runAxctl([]string{"workspace", "list"}, 5*time.Second)
-	if lr["error"] != nil {
-		return ws
-	}
-	var workspaces []any
-	if json.Unmarshal([]byte(toString(lr["content"])), &workspaces) != nil {
-		return ws
-	}
-	for _, w := range workspaces {
-		m, ok := w.(map[string]any)
-		if !ok {
-			continue
-		}
-		wid := fmt.Sprint(m["id"])
-		wname := fmt.Sprint(m["name"])
-		if wid == s {
-			return s
-		}
-		if wname == s {
-			return wid
-		}
+	if id, ok := workspaceIDByName()[strings.ToLower(s)]; ok && id != "" {
+		return id
 	}
 	return ws
 }
@@ -841,12 +888,20 @@ func openApp(args map[string]any) map[string]any {
 	}
 	cmd, _ := match["command"].(string)
 	cmd = stripExecPlaceholders(cmd)
-	if !fireAndForget([]string{"bash", "-c", "nohup " + cmd + " >/dev/null 2>&1 &"}) {
-		return errContent("Failed to launch")
+	// Prefer exec'ing the parsed argv: an Exec= line that cannot be tokenised
+	// (pipes, field codes, substitutions) goes to gio, which applies the
+	// desktop-entry quoting rules for us instead of a hand-rolled shell.
+	if argv, ok := shellWords(cmd); ok && fireAndForget(argv) {
+		name, _ := match["name"].(string)
+		source, _ := match["source"].(string)
+		return okContent("Opened '" + name + "' (" + source + "). Use list_windows to see the new window.")
 	}
-	name, _ := match["name"].(string)
-	source, _ := match["source"].(string)
-	return okContent("Opened '" + name + "' (" + source + "). Use list_windows to see the new window.")
+	if _, err := exec.LookPath("gio"); err == nil && fireAndForget([]string{"gio", "launch", cmd}) {
+		name, _ := match["name"].(string)
+		source, _ := match["source"].(string)
+		return okContent("Opened '" + name + "' (" + source + ") via gio. Use list_windows to see the new window.")
+	}
+	return errContent("Failed to launch: " + cmd)
 }
 
 func closeApp(args map[string]any) map[string]any {

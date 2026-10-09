@@ -1,0 +1,120 @@
+diff --git a/modules/widgets/dashboard/wallpapers/Wallpaper.qml b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+index a3f5a86..3dc8f90 100644
+--- a/modules/widgets/dashboard/wallpapers/Wallpaper.qml
++++ b/modules/widgets/dashboard/wallpapers/Wallpaper.qml
+@@ -374,6 +374,11 @@ PanelWindow {
+     function scanSubfolders() {
+         if (!wallpaperDir)
+             return;
++        // axless.core: WallpapersTab calls this every time the section
++        // becomes visible. If a full rescan is already in flight it will
++        // refresh the subfolder list anyway, so this fork is pure waste.
++        if (_scanInFlight)
++            return;
+         // Explicitly update command with current wallpaperDir
+         var cmd = ["find", "-L", wallpaperDir, "-mindepth", "1", "-name", ".*", "-prune", "-o", "-type", "d", "-print"];
+         scanSubfoldersProcess.command = cmd;
+@@ -916,6 +921,51 @@ PanelWindow {
+         }
+     }
+ 
++    // ── axless.core: coalesced rescan ──────────────────────────────────
++    //
++    // There is one watcher for the wallpaper root plus one per subdirectory,
++    // and Quickshell's FileView.watchChanges also watches the *parent* of its
++    // path. So every subdirectory watcher is watching the wallpaper root too,
++    // and a single file appearing or disappearing at the root fires all of
++    // them at once. Each one used to kick off its own `find -L` over the
++    // whole tree, plus a second `find -d`, plus a thumbnail regeneration.
++    //
++    // With a wallpaper library of any size that turned one file operation into
++    // dozens of concurrent tree walks over tens of thousands of entries, all
++    // competing with the GUI thread for CPU - which is what made opening this
++    // section feel like the machine was stalling.
++    //
++    // Now every watcher funnels through one coalescing point: a scan already
++    // in flight is never restarted, and requests arriving while it runs
++    // collapse into a single follow-up pass.
++    property bool _scanInFlight: false
++    property bool _scanAgain: false
++
++    function requestRescan(reason) {
++        if (_scanInFlight) {
++            _scanAgain = true;
++            return;
++        }
++        _scanInFlight = true;
++        scanWallpapers.running = true;
++        scanSubfoldersProcess.running = true;
++    }
++
++    function _rescanSettled() {
++        _scanInFlight = false;
++        if (_scanAgain) {
++            _scanAgain = false;
++            requestRescan("coalesced follow-up");
++        }
++    }
++
++    function requestThumbnailRegen() {
++        if (delayedThumbnailGen.running)
++            delayedThumbnailGen.restart();
++        else
++            delayedThumbnailGen.start();
++    }
++
+     // Directory watcher using FileView to monitor the wallpaper directory
+     FileView {
+         id: directoryWatcher
+@@ -927,13 +977,9 @@ PanelWindow {
+             if (wallpaperDir === "")
+                 return;
+             console.log("Wallpaper directory changed, rescanning...");
+-            scanWallpapers.running = true;
+-            scanSubfoldersProcess.running = true;
++            requestRescan("root directory");
+             // Regenerar thumbnails si hay nuevos videos (delayed)
+-            if (delayedThumbnailGen.running)
+-                delayedThumbnailGen.restart();
+-            else
+-                delayedThumbnailGen.start();
++            requestThumbnailRegen();
+         }
+ 
+         // Remove onLoadFailed to prevent premature fallback activation
+@@ -949,14 +995,10 @@ PanelWindow {
+             printErrors: false
+             onFileChanged: {
+                 console.log("Subdirectory content changed (" + path + "), rescanning...");
+-                scanWallpapers.running = true;
+-                scanSubfoldersProcess.running = true;
++                requestRescan("subdirectory");
+ 
+                 // Regenerar thumbnails (delayed)
+-                if (delayedThumbnailGen.running)
+-                    delayedThumbnailGen.restart();
+-                else
+-                    delayedThumbnailGen.start();
++                requestThumbnailRegen();
+             }
+         }
+     }
+@@ -996,9 +1038,18 @@ PanelWindow {
+             if (running && wallpaperDir === "") {
+                 console.log("Blocking scanWallpapers because wallpaperDir is empty");
+                 running = false;
++                // axless.core: release the coalescing lock; the guard above
++                // means the scan never actually starts.
++                _rescanSettled();
+             }
+         }
+ 
++        onExited: {
++            // axless.core: one full tree walk finished; let a pending
++            // follow-up through if anything changed while it was running.
++            _rescanSettled();
++        }
++
+         stdout: StdioCollector {
+             onStreamFinished: {
+                 var files = text.trim().split("\n").filter(function (f) {

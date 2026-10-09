@@ -1,0 +1,159 @@
+diff --git a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
+index 097d51e..b9e2eab 100644
+--- a/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
++++ b/modules/widgets/dashboard/wallpapers/WallpapersTab.qml
+@@ -14,6 +14,29 @@ FocusScope {
+ 
+     // Propiedades personalizadas para la funcionalidad del componente.
+     property string searchText: ""
++
++    // axless.core: searchText feeds a binding over the whole wallpaper list,
++    // so assigning it on every keystroke rebuilt the array, reset the GridView
++    // model, destroyed and re-incubated every visible delegate and re-decoded
++    // its thumbnail - once per character typed. The input keeps its own
++    // immediate text; the filter catches up once typing pauses, which is both
++    // cheaper and what the user expects to see anyway.
++    property string _searchRaw: ""
++    property bool _searchIsActive: false
++
++    Timer {
++        id: searchDebounce
++        interval: 180
++        repeat: false
++        onTriggered: {
++            root.searchText = root._searchRaw;
++            if (root._searchRaw.length > 0 && root.filteredWallpapers.length > 0) {
++                root.setSelectedIndex(0);
++            } else {
++                root.setSelectedIndex(-1);
++            }
++        }
++    }
+     property int selectedIndex: GlobalStates.wallpaperSelectedIndex
+ 
+     // Función para actualizar el índice seleccionado de forma centralizada
+@@ -175,9 +198,31 @@ FocusScope {
+         return filteredWallpapers.indexOf(currentWallpaper);
+     }
+ 
++    // axless.core: centre on the current wallpaper *before* the tab is ever
++    // painted.
++    //
++    // The old code waited 50 ms, so the first frames rendered row 0 and then
++    // the grid jumped to the row holding the current wallpaper - hundreds of
++    // rows away. Every visible delegate was released and re-created in that
++    // single frame, with their thumbnails re-decoded on top of it, and the
++    // jump itself was visible as a blank flash.
++    //
++    // Qt.callLater runs after layout but before the frame is rendered, so the
++    // grid is already in the right place the first time anything is drawn.
++    // The timer stays as a fallback for the case where the GridView has no
++    // size yet.
++    function _centerNow() {
++        if (wallpaperGrid.height <= 0) {
++            centerTimer.start();
++            return;
++        }
++        centerCurrentWallpaper();
++        focusSearch();
++    }
++
+     // Llama a focusSearch una vez que el componente se ha completado.
+     Component.onCompleted: {
+-        centerTimer.start();
++        Qt.callLater(_centerNow);
+     }
+ 
+     // Actualizar subcarpetas cuando la pestaña se haga visible
+@@ -188,11 +233,12 @@ FocusScope {
+                 GlobalStates.wallpaperManager.scanSubfolders();
+             }
+             // Reposicionar al wallpaper actual cuando se hace visible
+-            centerTimer.restart();
++            Qt.callLater(_centerNow);
+         }
+     }
+ 
+-    // Timer para asegurar que el centrado ocurre después de que el GridView esté listo
++    // Respaldo: solo se dispara si el GridView todavía no tenía tamaño en el
++    // primer callLater.
+     Timer {
+         id: centerTimer
+         interval: 50
+@@ -212,9 +258,16 @@ FocusScope {
+ 
+         // Filtrar por texto de búsqueda
+         if (searchText.length > 0) {
++            // axless.core: needle hoisted out of the callback, and
++            // lastIndexOf instead of split().pop(). The old form lowercased
++            // the needle and split each path *inside* the callback, which is
++            // two string allocations per entry - roughly 18,000 per keystroke
++            // over a wallpaper list this size, all thrown away immediately.
++            const needle = searchText.toLowerCase();
+             wallpapers = wallpapers.filter(function (path) {
+-                const fileName = path.split('/').pop().toLowerCase();
+-                return fileName.includes(searchText.toLowerCase());
++                const slash = path.lastIndexOf("/");
++                const fileName = (slash === -1 ? path : path.slice(slash + 1)).toLowerCase();
++                return fileName.includes(needle);
+             });
+         }
+ 
+@@ -267,11 +320,16 @@ FocusScope {
+ 
+                 // Manejo de eventos de búsqueda y teclado.
+                 onSearchTextChanged: text => {
+-                    searchText = text;
+-                    if (text.length > 0 && filteredWallpapers.length > 0) {
+-                        setSelectedIndex(0);
+-                    } else {
++                    // axless.core: see _searchRaw. Clearing is applied at
++                    // once (no debounce) so emptying the box feels immediate;
++                    // anything else waits for the pause.
++                    _searchRaw = text;
++                    if (text.length === 0) {
++                        searchDebounce.stop();
++                        searchText = "";
+                         setSelectedIndex(-1);
++                    } else {
++                        searchDebounce.restart();
+                     }
+                 }
+ 
+@@ -1345,7 +1403,10 @@ FocusScope {
+     Component {
+         id: staticImageComponent
+         Image {
+-            mipmap: true
++            // axless.core: mipmap only pays off when the decode is larger than
++            // the render size. sourceSize now pins the decode to the
++            // thumbnail's native 140px, so a mipmap chain was pure overhead.
++            mipmap: false
+             source: {
+                 if (!parent.sourceFile || !GlobalStates.wallpaperManager)
+                     return "";
+@@ -1362,8 +1423,22 @@ FocusScope {
+             // grid open re-decodes all 621 thumbs and the global pixmap cache
+             // retains the (old) decoded entries, growing per open instead of
+             // reusing them.
+-            sourceSize.width: wallpaperGridContainer.cellSize
+-            sourceSize.height: wallpaperGridContainer.cellSize
++            // axless.core: NOT bound to cellSize.
++            //
++            // cellSize derives from the dashboard width, which animates over
++            // Config.animDuration on every tab switch. In Qt, assigning
++            // sourceSize calls QQuickImageBase::load(), which drops the
++            // pending pixmap and re-requests the texture - and both
++            // sub-properties fire, so every visible thumbnail reloaded twice
++            // per animation frame. Over a 300 ms transition that is on the
++            // order of two thousand texture reloads for one tab change.
++            //
++            // Thumbnails are written at 140x140 (see `ambxst thumbs`), so
++            // asking for the native size costs nothing extra, is exact (no
++            // resampling) and never changes.
++            readonly property int thumbDecodeSize: Math.max(140, Math.ceil(wallpaperGridContainer.cellSize / 16) * 16)
++            sourceSize.width: thumbDecodeSize
++            sourceSize.height: thumbDecodeSize
+ 
+             // No hay fallback al original para evitar carga excesiva
+             onStatusChanged: {

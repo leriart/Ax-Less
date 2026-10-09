@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -24,49 +23,12 @@ import (
 // ---- HTML -> text ----
 
 var (
-	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-	reTags        = regexp.MustCompile(`<[^>]+>`)
-	reSpaces      = regexp.MustCompile(`[ \t]+`)
-	reBlankLines  = regexp.MustCompile(`\n\s*\n+`)
-	reTitleTag    = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	reComment    = regexp.MustCompile(`(?s)<!--.*?-->`)
+	reTags       = regexp.MustCompile(`<[^>]+>`)
+	reSpaces     = regexp.MustCompile(`[ \t]+`)
+	reBlankLines = regexp.MustCompile(`\n\s*\n+`)
+	reTitleTag   = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 )
-
-func htmlToText(htmlText string) (string, string) {
-	if htmlText == "" {
-		return "", ""
-	}
-	title := ""
-	if m := reTitleTag.FindStringSubmatch(htmlText); m != nil {
-		title = strings.TrimSpace(reTags.ReplaceAllString(m[1], " "))
-	}
-	text := htmlText
-	for _, tag := range []string{"script", "style", "noscript", "svg", "iframe",
-		"canvas", "video", "audio", "form"} {
-		re := regexp.MustCompile(`(?is)<` + tag + `\b[^>]*>.*?</` + tag + `>`)
-		text = re.ReplaceAllString(text, "\n")
-	}
-	text = reComment.ReplaceAllString(text, " ")
-	// Block-level tags become newlines so paragraphs stay separated.
-	for _, tag := range []string{"p", "div", "section", "article", "header",
-		"footer", "nav", "aside", "main", "li", "ul", "ol", "tr", "table",
-		"blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "br", "hr"} {
-		text = regexp.MustCompile(`(?i)</?`+tag+`\b[^>]*>`).ReplaceAllString(text, "\n")
-	}
-	text = reTags.ReplaceAllString(text, " ")
-	text = html.UnescapeString(text)
-	lines := []string{}
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(reSpaces.ReplaceAllString(line, " "))
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	text = strings.Join(lines, "\n")
-	if len(title) > 300 {
-		title = title[:300]
-	}
-	return title, text
-}
 
 // ---- public web URL guard ----
 
@@ -128,6 +90,11 @@ func parseUint8(s string) (int, error) {
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
+// httpBodyCap bounds every generic GET. fetchURL has its own larger cap; this
+// one previously used io.ReadAll with no limit, so a hostile or broken endpoint
+// could drive the bridge out of memory.
+const httpBodyCap = 2 << 20 // 2 MiB
+
 func httpGet(rawURL string, headers map[string]string) (string, string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
@@ -141,7 +108,7 @@ func httpGet(rawURL string, headers map[string]string) (string, string, error) {
 		return "", "", err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, httpBodyCap))
 	if err != nil {
 		return "", "", err
 	}
@@ -501,44 +468,6 @@ func chunkText(text string, maxChars int) []string {
 	return chunks
 }
 
-func scoreChunks(queryTerms []string, chunks []map[string]any, docLens []int, avgDL float64) []float64 {
-	n := len(chunks)
-	scores := make([]float64, n)
-	dfFor := func(qt string) int {
-		df := 0
-		for _, c := range chunks {
-			terms, _ := c["terms"].(map[string]int)
-			if _, ok := terms[qt]; ok {
-				df++
-			}
-		}
-		return df
-	}
-	seen := map[string]bool{}
-	for _, qt := range queryTerms {
-		if seen[qt] {
-			continue
-		}
-		seen[qt] = true
-		df := dfFor(qt)
-		if df == 0 {
-			continue
-		}
-		idf := math.Log(1 + (float64(n-df)+0.5)/(float64(df)+0.5))
-		for i, c := range chunks {
-			terms, _ := c["terms"].(map[string]int)
-			tf := terms[qt]
-			if tf == 0 {
-				continue
-			}
-			norm := 1 + math.Log(1+float64(tf))
-			dlNorm := 1 / (1 + 0.3*(float64(docLens[i])/math.Max(avgDL, 1)-1))
-			scores[i] += idf * norm * dlNorm
-		}
-	}
-	return scores
-}
-
 func manageRag(args map[string]any, ctx *requestContext) map[string]any {
 	action := strArg(args, "action", "")
 	if action == "" {
@@ -609,9 +538,11 @@ func manageRag(args map[string]any, ctx *requestContext) map[string]any {
 			return errContent("remove_directory needs a directory path")
 		}
 		directory = expandAbs(directory)
-		if err := os.Remove(ragIndexPath(directory)); err != nil {
+		idxPath := ragIndexPath(directory)
+		if err := os.Remove(idxPath); err != nil {
 			return errContent("No RAG index for: " + directory)
 		}
+		invalidateRag(idxPath)
 		return okContent("Removed RAG index for: " + directory)
 
 	case "search":
@@ -623,74 +554,16 @@ func manageRag(args map[string]any, ctx *requestContext) map[string]any {
 		if topK <= 0 || topK > 50 {
 			topK = 5
 		}
-		entries, err := os.ReadDir(ragSearchDir)
-		if err != nil {
+		if _, err := os.ReadDir(ragSearchDir); err != nil {
 			return errContent("No RAG indexes yet. Use add_directory first.")
 		}
 		queryTerms := tokenize(query)
 		if len(queryTerms) == 0 {
 			return errContent("Query has no indexable terms.")
 		}
-		var allChunks []map[string]any
-		var chunkToIndex []string
-		names := []string{}
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".json") {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, fn := range names {
-			data, err := os.ReadFile(filepath.Join(ragSearchDir, fn))
-			if err != nil {
-				continue
-			}
-			var idx map[string]any
-			if json.Unmarshal(data, &idx) != nil {
-				continue
-			}
-			files, _ := idx["files"].(map[string]any)
-			dir, _ := idx["directory"].(string)
-			for _, f := range files {
-				fm, _ := f.(map[string]any)
-				chs, _ := fm["chunks"].([]any)
-				for _, c := range chs {
-					cm, _ := c.(map[string]any)
-					allChunks = append(allChunks, cm)
-					chunkToIndex = append(chunkToIndex, dir)
-				}
-			}
-		}
-		if len(allChunks) == 0 {
+		ranked := searchRag(ragIndexFiles(ragSearchDir), queryTerms, topK)
+		if len(ranked) == 0 {
 			return errContent("RAG index is empty - add a directory first.")
-		}
-		docLens := make([]int, len(allChunks))
-		sum := 0
-		for i, c := range allChunks {
-			l, _ := c["len"].(int)
-			if l == 0 {
-				if f, ok := c["len"].(float64); ok {
-					l = int(f)
-				}
-			}
-			if l == 0 {
-				l = 1
-			}
-			docLens[i] = l
-			sum += l
-		}
-		scores := scoreChunks(queryTerms, allChunks, docLens, float64(sum)/float64(max(len(docLens), 1)))
-		type rank struct {
-			idx   int
-			score float64
-		}
-		ranked := make([]rank, len(scores))
-		for i, s := range scores {
-			ranked[i] = rank{i, s}
-		}
-		sort.Slice(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
-		if len(ranked) > topK {
-			ranked = ranked[:topK]
 		}
 		perChunkCap := ctx.ToolBudget * 4 / max(len(ranked), 1)
 		if perChunkCap < 400 {
@@ -703,11 +576,10 @@ func manageRag(args map[string]any, ctx *requestContext) map[string]any {
 		hits := 0
 		budgetLeft := ctx.ToolBudget
 		for i, r := range ranked {
-			if r.score <= 0 || budgetLeft <= 0 {
+			if r.Score <= 0 || budgetLeft <= 0 {
 				break
 			}
-			chunk := allChunks[r.idx]
-			text, _ := chunk["text"].(string)
+			text := r.Chunk.Text
 			if len(text) > perChunkCap {
 				cut := strings.LastIndex(text[:perChunkCap], " ")
 				if cut > 0 {
@@ -721,9 +593,8 @@ func manageRag(args map[string]any, ctx *requestContext) map[string]any {
 				continue
 			}
 			budgetLeft -= approxTokens
-			chunkID, _ := chunk["id"].(string)
-			lines = append(lines, fmt.Sprintf("[%d] score=%.3f  %s", i+1, r.score, chunkID))
-			lines = append(lines, "    dir: "+chunkToIndex[r.idx])
+			lines = append(lines, fmt.Sprintf("[%d] score=%.3f  %s", i+1, r.Score, r.Chunk.ID))
+			lines = append(lines, "    dir: "+r.Chunk.Dir)
 			lines = append(lines, "    "+strings.ReplaceAll(text, "\n", "\n    "))
 			lines = append(lines, "")
 			hits++
@@ -834,6 +705,7 @@ func manageRagScan(absDir, indexPath string, maxChunkChars int) map[string]any {
 	if err := os.WriteFile(indexPath, out, 0o644); err != nil {
 		return errContent("Failed to write RAG index: " + err.Error())
 	}
+	invalidateRag(indexPath)
 	return okContent(jsonPretty(map[string]any{
 		"indexed_files": fileCount, "indexed_chunks": indexedCount,
 		"removed_files": removed, "directory": absDir, "index_path": indexPath,

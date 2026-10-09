@@ -1,0 +1,68 @@
+diff --git a/modules/services/Visibilities.qml b/modules/services/Visibilities.qml
+index ee97b09..c4810b6 100644
+--- a/modules/services/Visibilities.qml
++++ b/modules/services/Visibilities.qml
+@@ -168,6 +168,22 @@ Singleton {
+     }
+ 
+     function setActiveModule(moduleName) {
++        // axless.core: closing must never depend on knowing the focused
++        // monitor. clearAll() walks every screen and needs no monitor at all -
++        // the focused monitor is only needed to decide which screen to *open*
++        // on. Returning early here meant that whenever the focused monitor was
++        // momentarily unknown, the click-outside (and the notch/dashboard
++        // dismissal, and every popup's) was silently dropped: the panel stayed
++        // open and the only way out was the keyboard shortcut.
++        if (!moduleName) {
++            clearAll();
++            currentActiveModule = "";
++            const monitorOnClose = AxctlService.focusedMonitor;
++            if (monitorOnClose)
++                lastFocusedScreen = monitorOnClose.name;
++            return;
++        }
++
+         const focusedMonitor = AxctlService.focusedMonitor;
+         if (!focusedMonitor)
+             return;
+@@ -176,12 +192,8 @@ Singleton {
+ 
+         clearAll();
+ 
+-        if (moduleName) {
+-            currentActiveModule = moduleName;
+-            applyActiveModuleToScreen(focusedScreenName);
+-        } else {
+-            currentActiveModule = "";
+-        }
++        currentActiveModule = moduleName;
++        applyActiveModuleToScreen(focusedScreenName);
+ 
+         lastFocusedScreen = focusedScreenName;
+     }
+diff --git a/modules/shell/UnifiedShellPanel.qml b/modules/shell/UnifiedShellPanel.qml
+index f42319a..20b0020 100644
+--- a/modules/shell/UnifiedShellPanel.qml
++++ b/modules/shell/UnifiedShellPanel.qml
+@@ -49,10 +49,17 @@ PanelWindow {
+ 
+     // Whether we need to capture full-screen input for click-outside detection.
+     // True when notch modules are open OR any FocusGrab is active (e.g., BarPopups).
+-    // axless.core: the sidebar no longer forces full-screen input capture; with
+-    // OnDemand keyboard the compositor moves focus by click, and apps must
+-    // receive those clicks directly.
+-    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab
++    // axless.core: the sidebar clause is restored. Removing it was a mistake:
++    // WlrLayershell.keyboardFocus (above) already handles the keyboard, and
++    // this flag is a different thing entirely - it decides whether the panel's
++    // input mask expands to the whole screen, which is what puts a clickable
++    // backdrop behind the shell.
++    //
++    // Nothing else registers a FocusGrab for the assistant sidebar, so with the
++    // clause gone and the notch closed, needsFullScreenInput was false and the
++    // backdrop invisible: clicking anywhere else could not dismiss the sidebar,
++    // and nothing caught the click. The keyboard fix does not depend on this.
++    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab || (assistantSidebar.active && assistantSidebar.wantsFocus)
+ 
+     readonly property bool barEnabled: {
+         if (!Config.barReady) return false;

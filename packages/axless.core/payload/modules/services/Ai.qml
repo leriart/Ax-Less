@@ -202,9 +202,43 @@ Singleton {
                 last.reasoningContent = root._reasoningBuffer;
         }
         root.currentChat = c;
+        root.displayBuffer = root.responseBuffer;
+        streamFlush.running = false;
     }
     property string lastError: ""
+
+    // responseBuffer accumulates every streamed chunk. displayBuffer is what
+    // the UI binds to, and it is republished at most once per flush interval.
+    //
+    // Without this the sidebar re-measured, re-wrapped and re-laid-out a
+    // growing QTextDocument on *every* SSE line: two 8 KB substring copies and
+    // two document rebuilds per chunk, roughly 2000 layouts for one long
+    // answer, all on the GUI thread.
     property string responseBuffer: ""
+    property string displayBuffer: ""
+
+    function _markDisplayDirty() {
+        if (!streamFlush.running)
+            streamFlush.running = true;
+    }
+
+    Timer {
+        id: streamFlush
+        interval: 66 // ~15 Hz: fast enough to look continuous, cheap enough
+        repeat: false
+        onTriggered: {
+            if (Ai.displayBuffer !== Ai.responseBuffer)
+                Ai.displayBuffer = Ai.responseBuffer;
+        }
+    }
+
+    // axless.core: live model-capability probe. Ollama's /api/show reports
+    // whether a model supports tools, and tiny local models (qwen2.5:0.5b,
+    // llama-3.2-1b) return *empty* completions when they are handed a tools
+    // array they cannot parse. This object was shipped and read by the
+    // strategies but never instantiated or queried, so that branch could
+    // never fire.
+    property ModelCapabilityProbe capabilityProbe: ModelCapabilityProbe {}
 
     // axless.core: tool-call loop state, built on the original engine.
     // The original sent `tools` but ignored the streamed tool calls entirely,
@@ -661,6 +695,33 @@ Singleton {
         makeRequest();
     }
 
+    // Publish the probe result to the active strategy and, when nothing is
+    // cached yet, start a background probe. Safe to call every request: the
+    // probe is idempotent and de-duplicates in-flight lookups itself.
+    function _applyCapabilities(model, apiKey) {
+        if (!model || !capabilityProbe)
+            return;
+        let strategy = currentStrategy;
+        if (!strategy)
+            return;
+        const cached = capabilityProbe.cachedFor(model);
+        if (cached)
+            strategy.activeCapabilities = cached;
+        if (!cached)
+            capabilityProbe.probe(model, apiKey);
+    }
+
+    // Feed back what actually happened, so a model that never returns a
+    // tool_call gets downgraded instead of being re-probed forever.
+    function _recordOutcome(usedTools, hadReasoning, hadInlineThink, wasEmpty) {
+        if (!currentModel || !capabilityProbe)
+            return;
+        try {
+            capabilityProbe.recordOutcome(currentModel, usedTools,
+                                           hadReasoning, hadInlineThink, wasEmpty);
+        } catch (e) { }
+    }
+
     function makeRequest() {
         let apiKey = getApiKey(currentModel);
         if (!apiKey && currentModel.requires_key) {
@@ -675,6 +736,11 @@ Singleton {
             currentChat = errChat;
             return;
         }
+
+        // axless.core: hand the strategy whatever the probe already knows
+        // about this model, and kick off a probe for the next request if we
+        // have nothing cached yet.
+        _applyCapabilities(currentModel, apiKey);
 
         // Determine endpoint — Gemini streaming uses a different endpoint
         let endpoint;
@@ -748,8 +814,10 @@ Singleton {
         if (root.reasoningEffort && root.reasoningEffort !== "auto")
             body.reasoning_effort = (root.reasoningEffort === "off") ? "minimal" : root.reasoningEffort;
 
-        // Reset streaming buffer
+        // Reset streaming buffers
         responseBuffer = "";
+        displayBuffer = "";
+        streamFlush.running = false;
         _rawResponse = "";
         _reasoningBuffer = "";
         _pendingToolCalls = [];
@@ -874,6 +942,7 @@ Singleton {
                     // in-flight message and the text is committed once in
                     // onExited. Do NOT restore the per-token assignment.
                     root.responseBuffer += result.content;
+                    root._markDisplayDirty();
                 }
 
                 // axless.core: accumulate streamed tool calls. They arrive as
@@ -919,11 +988,24 @@ Singleton {
             root._commitStream();
             root.isLoading = false;
 
+            // axless.core: close the loop on the capability probe. A model
+            // that was handed a tools array and never returned a tool_call
+            // gets downgraded, so the next request skips the field. This is
+            // what lets a small local model stop returning empty completions
+            // without waiting for a fresh /api/show probe.
+            root._recordOutcome(
+                root._pendingToolCalls.length > 0,
+                root._reasoningBuffer.length > 0,
+                root.responseBuffer.indexOf("<think>") !== -1,
+                root.responseBuffer.length === 0);
+
             if (root.stoppedByUser) {
                 // The user aborted. Keep whatever streamed so far and record
                 // it without treating the killed process as a failure.
                 root.stoppedByUser = false;
                 root.responseBuffer = "";
+                root.displayBuffer = "";
+                streamFlush.running = false;
                 root.saveCurrentChat();
                 return;
             }
@@ -955,6 +1037,8 @@ Singleton {
                             root.approveCommand(chat.length - 1);
                     }
                     root.responseBuffer = "";
+                    root.displayBuffer = "";
+                    streamFlush.running = false;
                     return;
                 }
 
@@ -1008,6 +1092,8 @@ Singleton {
             }
 
             root.responseBuffer = "";
+            root.displayBuffer = "";
+            streamFlush.running = false;
         }
     }
 
@@ -1118,10 +1204,32 @@ Singleton {
         let filename = chatDir + "/" + currentChatId + ".json";
         let data = JSON.stringify(currentChat, null, 2);
 
+        // saveCurrentChat runs on every assistant message and every tool
+        // result, so the directory is created once instead of forking
+        // mkdir -p on each save.
+        if (!_chatDirReady) {
+            _makeChatDirProcess.running = true;
+            return;
+        }
+
         saveChatProcess.filePath = filename;
         saveChatProcess.data = data;
-        saveChatProcess.command = ["/usr/bin/mkdir", "-p", chatDir];
         saveChatProcess.running = true;
+    }
+
+    property bool _chatDirReady: false
+
+    Process {
+        id: _makeChatDirProcess
+        running: false
+        command: ["/usr/bin/mkdir", "-p", chatDir]
+        onExited: {
+            root._chatDirReady = exitCode === 0;
+            if (root._chatDirReady)
+                root.saveCurrentChat();
+            else
+                console.warn("Could not create the chat directory " + chatDir);
+        }
     }
 
     function reloadHistory() {
@@ -1146,11 +1254,20 @@ Singleton {
                     chatFileView.path = filePath;
                 if (data.length > 0)
                     chatFileView.setText(data);
-                reloadHistory();
-            } else {
-                console.warn("Failed to create chat directory");
+                // axless.core: the history list drives the sidebar's chat
+                // drawer. It was re-read by forking `ambxst chatlist` after
+                // *every* save, which happens on each assistant message and
+                // each tool result. A short coalescing window is invisible to
+                // the user and turns a burst of saves into one spawn.
+                _historyReloadTimer.restart();
             }
         }
+    }
+
+    Timer {
+        id: _historyReloadTimer
+        interval: 700
+        onTriggered: root.reloadHistory()
     }
 
     Process {
@@ -1231,17 +1348,26 @@ Singleton {
         { id: "lmstudio",   label: "LM Studio",  base: "http://localhost:1234",                             path: "/v1/models", auth: "none",      icon: "lmstudio.svg", local: true }
     ]
 
+// axless.core: build the curl argv directly. This used to wrap every
+    // request in `bash -c "curl ... -H 'Authorization: Bearer <key>'"`, which
+    // cost an extra fork per provider and, worse, put the API key inside a
+    // shell string: a key containing a quote or a backtick would break out of
+    // the quoting and execute. argv has no such problem.
     function _providerCommand(prov, key) {
         const url = prov.base + prov.path;
-        if (prov.auth === "query")
-            return ["bash", "-c", "curl -s '" + url + "?key=" + key + "'"];
-        if (prov.auth === "anthropic")
-            return ["bash", "-c", "curl -s " + url
-                + " -H 'x-api-key: " + key + "' -H 'anthropic-version: 2023-06-01'"];
-        if (prov.auth === "bearer")
-            return ["bash", "-c", "curl -s " + url
-                + " -H 'Authorization: Bearer " + key + "'"];
-        return ["bash", "-c", "curl -s " + url];
+        const argv = ["curl", "-s", "--max-time", "20"];
+        if (prov.auth === "query") {
+            argv.push(url + "?key=" + key);
+        } else {
+            argv.push(url);
+            if (prov.auth === "anthropic") {
+                argv.push("-H", "x-api-key: " + key);
+                argv.push("-H", "anthropic-version: 2023-11-01");
+            } else if (prov.auth === "bearer") {
+                argv.push("-H", "Authorization: Bearer " + key);
+            }
+        }
+        return argv;
     }
 
     function fetchAvailableModels() {

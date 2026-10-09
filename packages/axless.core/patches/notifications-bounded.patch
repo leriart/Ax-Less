@@ -1,0 +1,88 @@
+diff --git a/modules/services/Notifications.qml b/modules/services/Notifications.qml
+index 9a8a842..abe953d 100644
+--- a/modules/services/Notifications.qml
++++ b/modules/services/Notifications.qml
+@@ -191,11 +191,39 @@ Singleton {
+     }
+ 
+     function saveNotifications() {
+-        // Limitar notificaciones almacenadas a 5 por summary para evitar almacenamiento excesivo
++        // axless.core: this used to rewrite the whole list to disk on *every*
++        // notification, arrival and expiry alike. Each write was a full
++        // JSON.stringify of the entire history, so a flood was quadratic:
++        // 1000 notifications meant 1000 complete serialisations of a list
++        // that was itself still growing. Coalesce instead - the file is
++        // rewritten once after the burst settles.
++        _listSaveTimer.restart();
++    }
++
++    function _writeNotifications() {
+         const limitedList = limitNotificationsPerSummary(root.list);
+         notifFileView.setText(stringifyList(limitedList));
+     }
+ 
++    Timer {
++        id: _listSaveTimer
++        interval: 1200
++        onTriggered: root._writeNotifications()
++    }
++
++    // axless.core: bound the in-memory history. The per-summary limiter only
++    // capped what got written to disk; root.list itself grew without limit and
++    // every derived binding (popupList, groupsByAppName, appNameList) rescans
++    // it on each change.
++    readonly property int maxHistory: 200
++
++    function _appendNotification(notif) {
++        const next = [...root.list, notif];
++        if (next.length > root.maxHistory)
++            next.splice(0, next.length - root.maxHistory);
++        root.list = next;
++    }
++
+     function limitNotificationsPerSummary(notifications) {
+         var groups = {};
+ 
+@@ -238,15 +266,19 @@ Singleton {
+     }
+ 
+     onListChanged: {
+-        // Update latest time for each app
++        // axless.core: the cleanup loop was quadratic - it re-scanned the whole
++        // list with .some() once per known app, on every single change. One
++        // pass collecting the live app names is enough.
++        const live = new Set();
+         root.list.forEach(notif => {
+-            if (!root.latestTimeForApp[notif.appName] || notif.time > root.latestTimeForApp[notif.appName]) {
+-                root.latestTimeForApp[notif.appName] = Math.max(root.latestTimeForApp[notif.appName] || 0, notif.time);
++            const app = notif.appName;
++            live.add(app);
++            if (!root.latestTimeForApp[app] || notif.time > root.latestTimeForApp[app]) {
++                root.latestTimeForApp[app] = Math.max(root.latestTimeForApp[app] || 0, notif.time);
+             }
+         });
+-        // Remove apps that no longer have notifications
+         Object.keys(root.latestTimeForApp).forEach(appName => {
+-            if (!root.list.some(notif => notif.appName === appName)) {
++            if (!live.has(appName)) {
+                 delete root.latestTimeForApp[appName];
+             }
+         });
+@@ -330,7 +362,7 @@ Singleton {
+ 
+             // Usar Qt.callLater para evitar race conditions al actualizar la lista
+             Qt.callLater(() => {
+-                root.list = [...root.list, newNotifObject];
++                root._appendNotification(newNotifObject);
+                 saveNotifications();
+             });
+ 
+@@ -384,7 +416,7 @@ Singleton {
+             });
+         }
+ 
+-        root.list = [...root.list, newNotifObject];
++        root._appendNotification(newNotifObject);
+         saveNotifications();
+         root.notify(newNotifObject);
+         return newNotifObject;

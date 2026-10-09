@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -265,6 +266,10 @@ func coerceToolCall(name string, rawArgs any) map[string]any {
 var reName = regexp.MustCompile(`"(?:name|tool|tool_name|function)"\s*:\s*"([^"\\]{1,64})"`)
 var rePairStart = regexp.MustCompile(`"([A-Za-z_][A-Za-z0-9_]{0,40})"\s*:\s*"`)
 
+// maxPairScan bounds the lookahead for one "key": "value" pair. The scan runs
+// once per match, so an unbounded window made the whole helper quadratic.
+const maxPairScan = 8192
+
 // lenientPairs salvages "key": "value" pairs from malformed JSON, scanning for
 // a closing quote followed by a comma or brace so embedded quotes survive.
 func lenientPairs(blob string) map[string]string {
@@ -273,13 +278,17 @@ func lenientPairs(blob string) map[string]string {
 	for _, loc := range locs {
 		key := blob[loc[2]:loc[3]]
 		start := loc[1] // end of the opening quote of the value
+		limit := len(blob)
+		if start+maxPairScan < limit {
+			limit = start + maxPairScan
+		}
 		end := -1
-		for i := start; i < len(blob); i++ {
+		for i := start; i < limit; i++ {
 			if blob[i] != '"' {
 				continue
 			}
 			j := i + 1
-			for j < len(blob) && (blob[j] == ' ' || blob[j] == '\t' || blob[j] == '\n' || blob[j] == '\r') {
+			for j < limit && (blob[j] == ' ' || blob[j] == '\t' || blob[j] == '\n' || blob[j] == '\r') {
 				j++
 			}
 			if j < len(blob) && (blob[j] == ',' || blob[j] == '}') {
@@ -288,8 +297,8 @@ func lenientPairs(blob string) map[string]string {
 			}
 		}
 		if end < 0 {
-			// No natural close; take up to the last quote.
-			if i := strings.LastIndex(blob[start:], `"`); i >= 0 {
+			// No natural close; take up to the last quote in the window.
+			if i := strings.LastIndex(blob[start:limit], `"`); i >= 0 {
 				end = start + i
 			} else {
 				continue
@@ -322,6 +331,59 @@ func salvage(text string) map[string]any {
 
 var reFence = regexp.MustCompile("(?s)```(?:json|tool_call|tool)?\\s*(.+?)```")
 
+// maxBraceRegion bounds the size of a single salvaged region so a pathological
+// answer cannot make us hold an arbitrarily large slice per candidate.
+const maxBraceRegion = 1 << 20
+
+// balancedRegions returns every top-level-ish {...} region in s, in the order
+// their opening brace appears. It is a single pass with an explicit stack and
+// string/escape tracking, so it never re-scans a byte.
+func balancedRegions(s string) []any {
+	type span struct{ start, end int }
+	var spans []span
+	var stack []int
+	inStr, esc := false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			stack = append(stack, i)
+		case '}':
+			if len(stack) == 0 {
+				continue
+			}
+			start := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if i-start <= maxBraceRegion {
+				spans = append(spans, span{start, i + 1})
+			}
+		}
+	}
+	sort.Slice(spans, func(a, b int) bool { return spans[a].start < spans[b].start })
+
+	out := make([]any, 0, len(spans))
+	for _, sp := range spans {
+		var parsed any
+		if err := json.Unmarshal([]byte(s[sp.start:sp.end]), &parsed); err == nil {
+			out = append(out, parsed)
+		}
+	}
+	return out
+}
+
 // extractToolCalls pulls tool calls out of a text response.
 func extractToolCalls(text string) []map[string]any {
 	if text == "" {
@@ -346,26 +408,11 @@ func extractToolCalls(text string) []map[string]any {
 	try(stripped)
 
 	if len(candidates) == 0 {
-		start := strings.Index(stripped, "{")
-		for start != -1 {
-			depth := 0
-			for i := start; i < len(stripped); i++ {
-				if stripped[i] == '{' {
-					depth++
-				} else if stripped[i] == '}' {
-					depth--
-					if depth == 0 {
-						try(stripped[start : i+1])
-						break
-					}
-				}
-			}
-			next := strings.Index(stripped[start+1:], "{")
-			if next == -1 {
-				break
-			}
-			start = start + 1 + next
-		}
+		// Single linear pass over the text collecting every balanced brace
+		// region. The previous version restarted a full scan from each '{',
+		// which is quadratic: a 32 KB answer with prose braces cost 5.4 ms of
+		// pure CPU in the middle of the streaming path.
+		candidates = append(candidates, balancedRegions(stripped)...)
 	}
 
 	if len(candidates) == 0 {
@@ -522,6 +569,25 @@ func runAgent(goal string, invokeTool ToolInvoker, tools []map[string]any,
 			break
 		}
 		steps++
+
+		// Keep the prompt inside the model's real window. This used to be
+		// computed by the server, reported to the model through context_info,
+		// and then never enforced: 12 steps x 4 tool calls x 8000 chars could
+		// push ~96k tokens at a model with a 4-6k budget.
+		budget := computeInputTokenBudget(0, lookupKnownContext(model))
+		if trimmed := trimMessagesToBudget(messages, budget); len(trimmed) != len(messages) {
+			note("trimmed", map[string]any{
+				"message": fmt.Sprintf("history trimmed from %d to %d messages to fit a %d token budget",
+					len(messages), len(trimmed), budget),
+			})
+			messages = trimmed
+		}
+
+		note("step", map[string]any{
+			"step": steps, "of": maxSteps,
+			"elapsed_s": int(time.Since(started).Seconds()),
+			"messages":  len(messages),
+		})
 
 		message, err := chat(host, model, messages, catalogue, time.Duration(maxSeconds)*time.Second)
 		if err != nil {

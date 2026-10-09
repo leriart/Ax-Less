@@ -1906,9 +1906,16 @@ duration: Config.animDuration
                                                 // Let the Row layout determine
                                                 // positioning — anchors and Row
                                                 // layoutDirection can conflict.
-                                                width: Math.min(
-                                                    Math.max(bubbleContent.implicitWidth + 32, 100),
-                                                    chatView.width * (isSystem ? 0.9 : 0.7))
+                                                // axless.core: fixed width, not implicitWidth.
+                                                // Binding the bubble width to the content's
+                                                // implicitWidth loops against the TextEdit's wrap
+                                                // width once the markdown layout is in play, which
+                                                // pegs the main thread - it produced two core dumps
+                                                // of this shell. The shipped copy already uses a
+                                                // fixed width; this file is not installed, but it
+                                                // was one line away from being wired up and
+                                                // re-freezing the shell.
+                                                width: chatView.width * (isSystem ? 0.9 : 0.72)
                                                 height: bubbleContent.implicitHeight + 24
                                                 clip: true
 

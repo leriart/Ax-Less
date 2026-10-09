@@ -9,6 +9,7 @@ package main
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type cjkRange struct{ lo, hi rune }
@@ -31,13 +32,29 @@ func isCJK(r rune) bool {
 	return false
 }
 
-// estimateTokens approximates the token count for a string.
+// estimateTokens approximates the token count for a string. Latin text is by
+// far the common case, so it is counted byte-wise and only falls back to rune
+// decoding once a non-ASCII byte appears.
 func estimateTokens(text string) int {
 	if text == "" {
 		return 0
 	}
 	var latin, cjk, other int
-	for _, r := range text {
+	i := 0
+	for i < len(text) {
+		c := text[i]
+		if c >= utf8.RuneSelf {
+			break
+		}
+		switch c {
+		case ' ', '\t', '\n', '\v', '\f', '\r':
+			other++
+		default:
+			latin++
+		}
+		i++
+	}
+	for _, r := range text[i:] {
 		switch {
 		case unicode.IsSpace(r):
 			other++
@@ -51,6 +68,15 @@ func estimateTokens(text string) int {
 	}
 	tokens := float64(latin)/4.0 + float64(cjk)/1.5 + float64(other)/4.0
 	return int(tokens) + 4
+}
+
+// countMessages estimates the total token cost of a message list.
+func countMessages(messages []map[string]any) int {
+	total := 0
+	for _, m := range messages {
+		total += estimateTokens(messageContent(m))
+	}
+	return total
 }
 
 type contextWindow struct {
@@ -223,46 +249,62 @@ func messageContent(m map[string]any) string {
 
 // trimMessagesToBudget drops the oldest non-system turns until the estimated
 // total fits, always keeping system messages and the last message.
+//
+// It is a single forward pass with a running total. The previous version
+// re-scanned and re-summed the whole history after every drop, so 200 messages
+// cost 135 ms and grew quadratically.
 func trimMessagesToBudget(messages []map[string]any, maxTokens int) []map[string]any {
 	if len(messages) == 0 {
 		return messages
 	}
+	counts := make([]int, len(messages))
 	total := 0
-	for _, m := range messages {
-		total += estimateTokens(messageContent(m))
+	for i, m := range messages {
+		counts[i] = estimateTokens(messageContent(m))
+		total += counts[i]
 	}
 	if total <= maxTokens {
 		return messages
 	}
-	out := make([]map[string]any, len(messages))
-	copy(out, messages)
-
-	protected := func(idx []map[string]any) map[int]bool {
-		p := map[int]bool{}
-		for i, m := range idx {
-			if m["role"] == "system" || i == len(idx)-1 {
-				p[i] = true
-			}
+	last := len(messages) - 1
+	// Drop from the front while over budget, always keeping system turns and
+	// the final message. Copying into a fresh slice keeps the caller's input
+	// intact and preserves order.
+	out := make([]map[string]any, 0, len(messages))
+	for i, m := range messages {
+		if total > maxTokens && i != last && m["role"] != "system" {
+			total -= counts[i]
+			continue
 		}
-		return p
+		out = append(out, m)
 	}
+	if len(out) == len(messages) {
+		return messages
+	}
+	return dropOrphanToolMessages(out)
+}
 
-	for total > maxTokens && len(out) > 1 {
-		p := protected(out)
-		drop := -1
-		for i := range out {
-			if !p[i] {
-				drop = i
-				break
+// dropOrphanToolMessages removes any tool result that no longer follows an
+// assistant message carrying tool_calls. Trimming from the front can slice a
+// turn in half, and OpenAI-compatible APIs reject a tool message whose
+// tool_calls were trimmed away - which would turn a context fix into a hard
+// failure on every long agent run.
+func dropOrphanToolMessages(messages []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	sawToolCalls := false
+	for _, m := range messages {
+		switch m["role"] {
+		case "assistant":
+			_, hasCalls := m["tool_calls"]
+			sawToolCalls = hasCalls
+			out = append(out, m)
+		case "tool":
+			if sawToolCalls {
+				out = append(out, m)
 			}
-		}
-		if drop < 0 {
-			break
-		}
-		out = append(out[:drop], out[drop+1:]...)
-		total = 0
-		for _, m := range out {
-			total += estimateTokens(messageContent(m))
+		default:
+			sawToolCalls = false
+			out = append(out, m)
 		}
 	}
 	return out

@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -79,8 +81,8 @@ var toolTiers = map[string][]string{
 }
 
 var tierNames = map[string][]string{
-	"tiny": toolTiers["tiny"],
-	"small": concat(toolTiers["tiny"], toolTiers["small"]),
+	"tiny":   toolTiers["tiny"],
+	"small":  concat(toolTiers["tiny"], toolTiers["small"]),
 	"medium": concat(concat(toolTiers["tiny"], toolTiers["small"]), toolTiers["medium"]),
 }
 
@@ -147,8 +149,8 @@ func allTools() []map[string]any {
 		{"name": "move_windows",
 			"description": "Move one or more windows to one or more workspaces in a single batch operation. Two modes are supported, mutually exclusive:\n  (1) MANY-TO-ONE - provide `workspace_id` together with EITHER `window_ids` OR `app_names`. Every matching window is moved to the same target workspace.\n  (2) MANY-TO-MANY - provide `assignments`, a list of {window_id, workspace_id} pairs. Each window is moved to its own target workspace in one call.\nReturns JSON with a `moved` list, a `failed` list and the number attempted. A failure on one window does NOT abort the rest.",
 			"parameters": tObj(map[string]any{
-				"window_ids": tArr(tStr("Window id, e.g. '0x55c18cfa9170'."), "List of explicit window ids to move. Used only in many-to-one mode."),
-				"app_names":  tArr(tStr("Substring to match against window.app_id, window.title or window.wm_class (case-insensitive)."), "Alternative to window_ids. Used only in many-to-one mode."),
+				"window_ids":   tArr(tStr("Window id, e.g. '0x55c18cfa9170'."), "List of explicit window ids to move. Used only in many-to-one mode."),
+				"app_names":    tArr(tStr("Substring to match against window.app_id, window.title or window.wm_class (case-insensitive)."), "Alternative to window_ids. Used only in many-to-one mode."),
 				"workspace_id": tStr("Single target workspace id. Required when using window_ids or app_names."),
 				"assignments": tArr(tObj(map[string]any{
 					"window_id":    tStr("Window id to move."),
@@ -308,12 +310,15 @@ func allTools() []map[string]any {
 	return append(tools, fsTools()...)
 }
 
-var cachedTools []map[string]any
+// toolsOnce guards the tool catalogue. Without it, two concurrent GET /tools
+// both saw cachedTools == nil and raced on the assignment.
+var (
+	toolsOnce   sync.Once
+	cachedTools []map[string]any
+)
 
 func toolsList() []map[string]any {
-	if cachedTools == nil {
-		cachedTools = allTools()
-	}
+	toolsOnce.Do(func() { cachedTools = allTools() })
 	return cachedTools
 }
 
@@ -500,35 +505,69 @@ var cloudModelHints = map[string]string{
 	"deepseek-coder": "medium",
 }
 
-var ollamaShowCache = map[string]struct {
-	ts   time.Time
-	data map[string]any
-}{}
+// ollamaShowCache memoises /api/show per model+endpoint. It is written from
+// every concurrent request goroutine, so it needs a lock; it is also pruned so
+// a long-lived server talking to many endpoints cannot grow without bound.
+var (
+	ollamaShowMu    sync.RWMutex
+	ollamaShowCache = map[string]struct {
+		ts   time.Time
+		data map[string]any
+	}{}
+)
+
+const ollamaShowCacheMax = 64
 
 func ollamaShow(modelName, endpoint string) map[string]any {
 	if modelName == "" {
 		return nil
 	}
 	key := strings.ToLower(strings.TrimSpace(modelName)) + "|" + strings.ToLower(strings.TrimSpace(endpoint))
-	if c, ok := ollamaShowCache[key]; ok && time.Since(c.ts) < 300*time.Second {
+	ollamaShowMu.RLock()
+	c, hit := ollamaShowCache[key]
+	ollamaShowMu.RUnlock()
+	if hit && time.Since(c.ts) < 300*time.Second {
 		return c.data
 	}
 	body, _ := json.Marshal(map[string]any{"name": modelName})
 	client := &http.Client{Timeout: 4 * time.Second}
-	resp, err := client.Post(strings.TrimRight(endpoint, "/")+"/api/show", "application/json", strings.NewReader(string(body)))
+	resp, err := client.Post(strings.TrimRight(endpoint, "/")+"/api/show", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil || data["error"] != nil {
 		return nil
+	}
+	ollamaShowMu.Lock()
+	if len(ollamaShowCache) >= ollamaShowCacheMax {
+		// Drop the expired entries first; only evict the oldest if that is
+		// not enough, so a burst of distinct keys cannot thrash the map.
+		cutoff := time.Now().Add(-300 * time.Second)
+		for k, v := range ollamaShowCache {
+			if v.ts.Before(cutoff) {
+				delete(ollamaShowCache, k)
+			}
+		}
+		if len(ollamaShowCache) >= ollamaShowCacheMax {
+			oldestKey, oldestTS := "", time.Now()
+			for k, v := range ollamaShowCache {
+				if v.ts.Before(oldestTS) {
+					oldestKey, oldestTS = k, v.ts
+				}
+			}
+			if oldestKey != "" {
+				delete(ollamaShowCache, oldestKey)
+			}
+		}
 	}
 	ollamaShowCache[key] = struct {
 		ts   time.Time
 		data map[string]any
 	}{time.Now(), data}
+	ollamaShowMu.Unlock()
 	return data
 }
 

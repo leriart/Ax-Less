@@ -95,7 +95,6 @@ Item {
     property real lastCaptureTime: 0
     property real blendFactor: 0.0
     property bool isOriginalFrame: true
-    property int frameCounter: 0
 
     property int frameCountSinceLastSecond: 0
     property real lastFpsUpdateTime: 0
@@ -356,6 +355,12 @@ Item {
         id: captureTimer
         interval: root.captureIntervalMs
         repeat: true
+        // Started and stopped explicitly alongside the player (see the
+        // sourceFile / playbackState handlers). It must stay `running: false`
+        // as the default: binding it would be silently dropped by the first
+        // imperative restart(), and the guard below is what keeps
+        // scheduleUpdate() - a full frame texture copy - from happening while
+        // interpolation is off.
         running: false
         onTriggered: {
             if (!root.interpolate || root.multiplier <= 1)
@@ -381,8 +386,15 @@ Item {
             root.blendFactor = Math.min(1.0, elapsed / root.captureIntervalMs);
             // The shader brightens interpolated frames in debug mode; telling
             // it these are the real frames keeps that debug view readable.
-            root.isOriginalFrame = root.blendFactor < 0.01 || root.blendFactor > 0.99;
-            root.frameCounter++;
+            //
+            // axless.core: two uniforms were being written every vsync for
+            // nothing. frameCounter is declared in interpol.frag but never
+            // read, and isOriginalFrame is only read inside `if (debugMode)`.
+            // Either one changing forces the whole uniform block to be
+            // re-uploaded to the GPU 60 times a second; gating the write on
+            // debugMode leaves both constant while it is off.
+            if (root.debugMode)
+                root.isOriginalFrame = root.blendFactor < 0.01 || root.blendFactor > 0.99;
 
             // Count first, then publish once a second has elapsed, otherwise
             // the first window is always short by one frame and reads zero.
@@ -421,7 +433,10 @@ Item {
         property real motionThreshold: root.motionThreshold
         property bool debugMode: root.debugMode
         property bool isOriginalFrame: root.isOriginalFrame
-        property int frameCounter: root.frameCounter
+        // axless.core: frameCounter stays bound to a constant. interpol.frag
+        // declares it but never reads it, and a changing uniform forces the
+        // whole block to be re-uploaded on every vsync for no effect.
+        property int frameCounter: 0
 
         vertexShader: "../../../../shaders/interpol.vert.qsb"
         fragmentShader: "../../../../shaders/interpol.frag.qsb"

@@ -14,14 +14,20 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 const (
-	maxReadBytes    = 512 * 1024
-	maxWriteBytes   = 512 * 1024
-	maxSearchHits   = 100
-	maxListEntries  = 500
+	maxReadBytes   = 512 * 1024
+	maxWriteBytes  = 512 * 1024
+	maxSearchHits  = 100
+	maxListEntries = 500
+
+	// maxSearchScanBytes bounds how much of a file search_files reads. The
+	// per-file size check above already caps at maxReadBytes; this is the
+	// hard ceiling for the line loop.
+	maxSearchScanBytes = 512 * 1024
 )
 
 var skipDirs = map[string]bool{
@@ -168,19 +174,28 @@ func fsListDir(args map[string]any) map[string]any {
 			continue
 		}
 		full := filepath.Join(real, name)
-		st, err := os.Stat(full)
+		// DirEntry.Info() comes from the directory read, so this avoids the
+		// os.Stat that used to run once per entry (500 entries was 500 extra
+		// syscalls per list_dir). Symlinks still need a follow-up stat so they
+		// keep reporting the target's kind and size.
+		info, err := e.Info()
 		if err != nil {
 			continue
 		}
 		kind := "file"
-		if st.IsDir() {
+		if e.Type()&os.ModeSymlink != 0 {
+			if st, serr := os.Stat(full); serr == nil {
+				info = st
+			}
+		}
+		if info.IsDir() {
 			kind = "dir"
 		}
 		entries = append(entries, map[string]any{
 			"name":     name,
 			"type":     kind,
-			"size":     st.Size(),
-			"modified": st.ModTime().Unix(),
+			"size":     info.Size(),
+			"modified": info.ModTime().Unix(),
 		})
 		if len(entries) >= maxListEntries {
 			entries = append(entries, map[string]any{
@@ -227,10 +242,15 @@ func fsReadFile(args map[string]any) map[string]any {
 		return errResult(err.Error())
 	}
 	text := string(raw)
-	lines := strings.Split(text, "\n")
-	numbered := make([]string, len(lines))
-	for i, line := range lines {
-		numbered[i] = fmt.Sprintf("%d\t%s", offset+i+1, line)
+	var numbered strings.Builder
+	numbered.Grow(len(text) + len(text)/8 + 16)
+	for i, line := range strings.Split(text, "\n") {
+		if i > 0 {
+			numbered.WriteByte('\n')
+		}
+		numbered.WriteString(strconv.Itoa(offset + i + 1))
+		numbered.WriteByte('\t')
+		numbered.WriteString(line)
 	}
 	lineCount := strings.Count(text, "\n")
 	if text != "" {
@@ -241,7 +261,7 @@ func fsReadFile(args map[string]any) map[string]any {
 		"offset":  offset,
 		"bytes":   len(raw),
 		"lines":   lineCount,
-		"content": strings.Join(numbered, "\n"),
+		"content": numbered.String(),
 	})
 	return okResult(string(out))
 }
@@ -288,13 +308,23 @@ func fsWriteFile(args map[string]any) map[string]any {
 	return okResult(string(out))
 }
 
+// globMatch reports whether name matches pattern. When ignoreCase is set the
+// caller should pass an already-lowercased pattern (see globLower), because
+// lowering it per call was repeated once per line of every file scanned.
 func globMatch(pattern, name string, ignoreCase bool) bool {
 	if ignoreCase {
-		pattern = strings.ToLower(pattern)
 		name = strings.ToLower(name)
 	}
 	ok, _ := filepath.Match(pattern, name)
 	return ok
+}
+
+// globLower normalises a pattern once, before the scan loop.
+func globLower(pattern string, ignoreCase bool) string {
+	if ignoreCase {
+		return strings.ToLower(pattern)
+	}
+	return pattern
 }
 
 func fsSearchFiles(args map[string]any) map[string]any {
@@ -305,6 +335,9 @@ func fsSearchFiles(args map[string]any) map[string]any {
 	rootArg := argStrDefault(args, "path", ".")
 	ignoreCase := argBool(args, "ignore_case")
 	maxHits := argInt(args, "max_results", maxSearchHits)
+
+	// Normalise the pattern once instead of once per line of every file.
+	pattern = globLower(pattern, ignoreCase)
 
 	root, err := resolveSandbox(rootArg, true)
 	if err != nil {
@@ -339,7 +372,7 @@ func fsSearchFiles(args map[string]any) map[string]any {
 			return nil
 		}
 		defer f.Close()
-		data, err := io.ReadAll(f)
+		data, err := io.ReadAll(io.LimitReader(f, maxSearchScanBytes))
 		if err != nil {
 			return nil
 		}

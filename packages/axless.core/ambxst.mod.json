@@ -179,11 +179,6 @@
     },
     {
       "type": "overlay",
-      "source": "payload/mcp/nothingclaw/requirements.txt",
-      "target": "mcp/nothingclaw/requirements.txt"
-    },
-    {
-      "type": "overlay",
       "source": "payload/mcp/nothingclaw/server",
       "target": "mcp/nothingclaw/server"
     },
@@ -239,6 +234,41 @@
     },
     {
       "type": "overlay",
+      "source": "payload/mcp/build.sh",
+      "target": "mcp/build.sh"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_system.go",
+      "target": "mcp/nothingclaw-go/server_system.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/htmltext.go",
+      "target": "mcp/nothingclaw-go/htmltext.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/rag_index.go",
+      "target": "mcp/nothingclaw-go/rag_index.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/server_test.go",
+      "target": "mcp/nothingclaw-go/server_test.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/htmltext_test.go",
+      "target": "mcp/nothingclaw-go/htmltext_test.go"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/mcp/nothingclaw-go/rag_index_test.go",
+      "target": "mcp/nothingclaw-go/rag_index_test.go"
+    },
+    {
+      "type": "overlay",
       "source": "payload/mcp/nothingclaw/README.md",
       "target": "mcp/nothingclaw/README.md"
     },
@@ -253,6 +283,14 @@
       "target": "modules/widgets/dashboard/controls/CompositorPanel.qml",
       "replace": true,
       "expectedSha256": "04279b7983702bbbb07e993ba700dbd503437dcb038ffa2104b679d612f5b8c2"
+    },
+    {
+      "type": "patch",
+      "source": "patches/ipc-no-fork.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/notifications-bounded.patch"
     },
     {
       "type": "patch",
@@ -490,6 +528,18 @@
       "type": "overlay",
       "source": "payload/mcp/opencode-bridge/go.mod",
       "target": "mcp/opencode-bridge/go.mod"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpapers-tab-perf.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/wallpaper-scan-coalesce.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/click-outside-fix.patch"
     }
   ]
 }

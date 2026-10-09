@@ -1,0 +1,9 @@
+# Artefactos de `go build ./...` sin -o: Go deja el binario en el directorio
+# del paquete. Los binarios que SI se distribuyen viven en rutas fijas
+# (nothingclaw/server, openclaw/server, opencode/server) y ../scripts/, y se
+# construyen con mcp/build.sh.
+/bridge/mcpbridge
+/nothingclaw-go/nothingclaw
+/openclaw/openclawbridge
+/opencode-bridge/opencodebridge
+/scripts/

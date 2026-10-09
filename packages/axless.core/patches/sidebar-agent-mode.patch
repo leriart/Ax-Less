@@ -1,5 +1,5 @@
 diff --git a/modules/sidebar/AssistantSidebar.qml b/modules/sidebar/AssistantSidebar.qml
-index 292f58c..f7161a6 100644
+index 292f58c..a6301c5 100644
 --- a/modules/sidebar/AssistantSidebar.qml
 +++ b/modules/sidebar/AssistantSidebar.qml
 @@ -24,6 +24,7 @@ Item {
@@ -525,7 +525,7 @@ index 292f58c..f7161a6 100644
  
                          ColumnLayout {
                              anchors.bottom: inputContainer.top
-@@ -685,9 +1140,36 @@ Item {
+@@ -685,9 +1140,41 @@ Item {
                                      required property int index
  
                                      property bool isUser: modelData.role === "user"
@@ -542,7 +542,12 @@ index 292f58c..f7161a6 100644
 +                                        && !modelData.functionCall && Ai.isLoading
 +                                        && index === chatView.count - 1
 +                                    property string displayContent: {
-+                                        let txt = isStreaming ? Ai.responseBuffer : (modelData.content || "");
++                                        // axless.core: displayBuffer, not responseBuffer.
++                                        // responseBuffer changes on every SSE line;
++                                        // displayBuffer is republished by the engine at
++                                        // most every 66 ms, so a burst of chunks costs
++                                        // one re-wrap instead of one per chunk.
++                                        let txt = isStreaming ? Ai.displayBuffer : (modelData.content || "");
 +                                        // axless.core: a tool result (e.g. list_workspaces
 +                                        // JSON on one line) can be huge; laying all of it
 +                                        // out as text is what locked the shell.
@@ -563,7 +568,7 @@ index 292f58c..f7161a6 100644
  
                                      width: ListView.view.width
                                      height: bubbleArea.height + 8
-@@ -853,7 +1335,11 @@ Item {
+@@ -853,7 +1340,11 @@ Item {
  
                                              StyledRect {
                                                  id: bubble
@@ -576,7 +581,7 @@ index 292f58c..f7161a6 100644
                                                  height: bubbleContent.implicitHeight + 24
  
                                                  anchors.right: isUser ? parent.right : undefined
-@@ -875,68 +1361,44 @@ Item {
+@@ -875,68 +1366,50 @@ Item {
                                                          visible: !messageDelegate.isEditing && !bubbleContentText.visible
                                                          spacing: 8
  
@@ -662,7 +667,7 @@ index 292f58c..f7161a6 100644
 +                                                    // streams with no text yet. Just dots + opacity
 +                                                    // animation - no text layout, so it cannot hang.
 +                                                    Row {
-+                                                        visible: messageDelegate.isStreaming && Ai.responseBuffer === ""
++                                                        visible: messageDelegate.isStreaming && Ai.displayBuffer === ""
 +                                                        Layout.alignment: Qt.AlignLeft
 +                                                        spacing: 4
 +                                                        Repeater {
@@ -675,6 +680,12 @@ index 292f58c..f7161a6 100644
 +                                                                opacity: 0.4
 +                                                                SequentialAnimation on opacity {
 +                                                                    loops: Animation.Infinite
++                                                                    // axless.core: gate the animation on the
++                                                                    // dots actually being shown. An infinite
++                                                                    // SequentialAnimation keeps ticking even
++                                                                    // when its item is invisible, so this ran
++                                                                    // for the whole time the turn was live.
++                                                                    running: messageDelegate.isStreaming && Ai.displayBuffer === ""
 +                                                                    PauseAnimation { duration: index * 150 }
 +                                                                    NumberAnimation { to: 1.0; duration: 350 }
 +                                                                    NumberAnimation { to: 0.4; duration: 350 }
@@ -682,7 +693,7 @@ index 292f58c..f7161a6 100644
                                                                  }
                                                              }
                                                          }
-@@ -945,7 +1407,16 @@ Item {
+@@ -945,7 +1418,20 @@ Item {
                                                      TextEdit {
                                                          id: bubbleContentText
                                                          Layout.fillWidth: true
@@ -694,13 +705,17 @@ index 292f58c..f7161a6 100644
 +                                                        // hidden until the turn finishes, so nothing is
 +                                                        // rebuilt per token. Editing still uses the full
 +                                                        // text.
++                                                        // axless.core: single source of truth. This used
++                                                        // to re-read responseBuffer and build its own
++                                                        // second 8 KB copy on every chunk;
++                                                        // displayContent already applies the cap once.
 +                                                        text: messageDelegate.isStreaming
-+                                                            ? (Ai.responseBuffer.length > 8000 ? Ai.responseBuffer.substring(0, 8000) + "…" : Ai.responseBuffer)
++                                                            ? messageDelegate.displayContent
 +                                                            : (messageDelegate.isEditing ? (modelData.content || "") : "")
                                                          textFormat: Text.PlainText
                                                          color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                          font.family: Config.theme.font
-@@ -953,7 +1424,28 @@ Item {
+@@ -953,7 +1439,28 @@ Item {
                                                          wrapMode: Text.Wrap
                                                          readOnly: !messageDelegate.isEditing
                                                          selectByMouse: true
@@ -730,7 +745,7 @@ index 292f58c..f7161a6 100644
                                                      }
  
                                                      ColumnLayout {
-@@ -969,7 +1461,9 @@ Item {
+@@ -969,7 +1476,9 @@ Item {
                                                          }
  
                                                          Text {
@@ -741,7 +756,7 @@ index 292f58c..f7161a6 100644
                                                              color: Styling.srItem("overprimary")
                                                              font.family: Config.theme.font
                                                              font.weight: Font.Bold
-@@ -977,16 +1471,29 @@ Item {
+@@ -977,16 +1486,29 @@ Item {
                                                          }
  
                                                          StyledRect {
@@ -774,7 +789,7 @@ index 292f58c..f7161a6 100644
                                                                  color: Colors.overSurface
                                                                  readOnly: true
                                                                  wrapMode: Text.WrapAnywhere
-@@ -1039,6 +1546,25 @@ Item {
+@@ -1039,6 +1561,25 @@ Item {
                                                                      verticalAlignment: Text.AlignVCenter
                                                                  }
                                                              }
@@ -800,7 +815,7 @@ index 292f58c..f7161a6 100644
                                                          }
  
                                                          Text {
-@@ -1103,6 +1629,25 @@ Item {
+@@ -1103,6 +1644,25 @@ Item {
                                      height: 40
                                      visible: Ai.isLoading
  
@@ -826,7 +841,7 @@ index 292f58c..f7161a6 100644
                                      Row {
                                          anchors.centerIn: parent
                                          spacing: 4
-@@ -1166,6 +1711,121 @@ Item {
+@@ -1166,6 +1726,121 @@ Item {
                              }
                          }
  
