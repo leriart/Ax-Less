@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.modules.services
 import qs.modules.theme
 import qs.config
 
@@ -25,7 +26,10 @@ QtObject {
     readonly property int prioMed: 2
     readonly property int prioHigh: 3
 
-    readonly property var priorityNames: ["None", "Low", "Med", "High"]
+    readonly property var priorityNames: [
+        I18n.t("todo.prio_none"), I18n.t("todo.prio_low"),
+        I18n.t("todo.prio_med"), I18n.t("todo.prio_high")
+    ]
     readonly property var priorityShort: ["", "L", "M", "H"]
 
     function priorityColor(p) {
@@ -262,8 +266,7 @@ QtObject {
     function formatDate(d) {
         if (!d) return ""
         var x = new Date(d)
-        var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-        return months[x.getMonth()] + " " + x.getDate()
+        return x.toLocaleDateString(Qt.locale(), "d MMM")
     }
 
     function formatTime(d) {

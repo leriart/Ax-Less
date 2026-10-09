@@ -584,6 +584,14 @@
     {
       "type": "patch",
       "source": "patches/bind-cooldown-refresh.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/todo-i18n.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/todo-i18n-2.patch"
     }
   ]
 }

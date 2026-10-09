@@ -1,0 +1,32 @@
+diff --git a/translations/en.json b/translations/en.json
+index 49d0ba4..6d1e086 100644
+--- a/translations/en.json
++++ b/translations/en.json
+@@ -1039,5 +1039,10 @@
+   "todo.apply": "Apply",
+   "todo.cancel": "Cancel",
+   "todo.save": "Save",
+-  "todo.clear": "Clear"
++  "todo.clear": "Clear",
++  "todo.prio_none": "None",
++  "todo.no_date": "No date",
++  "todo.today": "Today",
++  "todo.tomorrow": "Tomorrow",
++  "todo.next_week": "+1 week"
+ }
+diff --git a/translations/es.json b/translations/es.json
+index 9219768..c7ed221 100644
+--- a/translations/es.json
++++ b/translations/es.json
+@@ -1039,5 +1039,10 @@
+   "todo.apply": "Aplicar",
+   "todo.cancel": "Cancelar",
+   "todo.save": "Guardar",
+-  "todo.clear": "Limpiar"
++  "todo.clear": "Limpiar",
++  "todo.prio_none": "Ninguna",
++  "todo.no_date": "Sin fecha",
++  "todo.today": "Hoy",
++  "todo.tomorrow": "Mañana",
++  "todo.next_week": "+1 semana"
+ }

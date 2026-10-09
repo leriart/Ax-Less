@@ -60,12 +60,19 @@ Rectangle {
     property string pendingStartDate: ""
     property string pendingEndDate: ""
 
-    readonly property var _monthNames: [
-        "January","February","March","April","May","June",
-        "July","August","September","October","November","December"
+    // Month and weekday names come from the locale rather than a hardcoded
+    // English list, so the calendar header reads "julio 2026" in Spanish
+    // without needing 19 extra translation keys.
+    readonly property var _dowNames: {
+        const out = [];
+        for (let i = 0; i < 7; i++)          // 2024-01-07 was a Sunday
+            out.push(new Date(2024, 0, 7 + i).toLocaleDateString(Qt.locale(), "dd"));
+        return out;
+    }
+    readonly property var _dueChoiceLabels: [
+        I18n.t("todo.no_date"), I18n.t("todo.today"),
+        I18n.t("todo.tomorrow"), I18n.t("todo.next_week")
     ]
-    readonly property var _dowNames: ["Su","Mo","Tu","We","Th","Fr","Sa"]
-    readonly property var _dueChoiceLabels: ["No date", "Today", "Tomorrow", "+1 week"]
 
     function _openDatePicker(taskId, existingDue) {
         pickerTaskId = taskId
@@ -214,7 +221,7 @@ Rectangle {
                 color: Styling.srItem("overprimary")
             }
             Text {
-                text: "TODO"
+                text: I18n.t("todo.title")
                 font.family: Config.theme.font
                 font.pixelSize: Styling.fontSize(3)
                 font.weight: Font.Bold
@@ -227,10 +234,10 @@ Rectangle {
                 spacing: 4
                 Repeater {
                     model: [
-                        { label: "All", val: -1 },
-                        { label: "High", val: TodoBoard.prioHigh },
-                        { label: "Med", val: TodoBoard.prioMed },
-                        { label: "Low", val: TodoBoard.prioLow }
+                        { label: I18n.t("todo.filter_all"), val: -1 },
+                        { label: I18n.t("todo.prio_high"), val: TodoBoard.prioHigh },
+                        { label: I18n.t("todo.prio_med"), val: TodoBoard.prioMed },
+                        { label: I18n.t("todo.prio_low"), val: TodoBoard.prioLow }
                     ]
                     delegate: StyledRect {
                         required property var modelData
@@ -275,7 +282,7 @@ Rectangle {
                 variant: root.showCalendar ? "primary" : "common"
                 Text {
                     anchors.centerIn: parent
-                    text: "Cal"
+                    text: I18n.t("todo.calendar")
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(-3)
                     font.weight: Font.Medium
@@ -297,7 +304,7 @@ Rectangle {
                 variant: TodoBoard.hideDone ? "primary" : "common"
                 Text {
                     anchors.centerIn: parent
-                    text: "Hide done"
+                    text: I18n.t("todo.hide_done")
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(-3)
                     color: TodoBoard.hideDone ? Styling.srItem("onprimary") : Colors.overBackground
@@ -319,7 +326,7 @@ Rectangle {
                 visible: _doneCount > 0
                 Text {
                     anchors.centerIn: parent
-                    text: "Clear ✓"
+                    text: I18n.t("todo.clear_done")
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(-3)
                     color: Colors.outline
@@ -349,7 +356,7 @@ Rectangle {
                 TextField {
                     id: newInput
                     Layout.fillWidth: true
-                    placeholderText: "Add a new task..."
+                    placeholderText: I18n.t("todo.add_placeholder")
                     placeholderTextColor: Qt.rgba(Colors.overBackground.r, Colors.overBackground.g, Colors.overBackground.b, 0.4)
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(0)
@@ -398,7 +405,7 @@ Rectangle {
                         ? "primary" : "common"
                     Text {
                         anchors.centerIn: parent
-                        text: "range"
+                        text: I18n.t("todo.range")
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-2)
                         font.weight: Font.Medium
@@ -504,7 +511,7 @@ Rectangle {
                                 Layout.preferredWidth: 24
                             }
                             Text {
-                                text: "Priority"
+                                text: I18n.t("todo.priority")
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
                                 font.weight: Font.Medium
@@ -512,7 +519,7 @@ Rectangle {
                                 Layout.preferredWidth: 60
                             }
                             Text {
-                                text: "Task"
+                                text: I18n.t("todo.task")
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
                                 font.weight: Font.Medium
@@ -520,7 +527,7 @@ Rectangle {
                                 Layout.fillWidth: true
                             }
                             Text {
-                                text: "Due"
+                                text: I18n.t("todo.due")
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
                                 font.weight: Font.Medium
@@ -528,7 +535,7 @@ Rectangle {
                                 Layout.preferredWidth: 120
                             }
                             Text {
-                                text: "Status"
+                                text: I18n.t("todo.status")
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
                                 font.weight: Font.Medium
@@ -628,7 +635,7 @@ Rectangle {
                     }
                     Text {
                         visible: root._filterDay !== null
-                        text: "Clear"
+                        text: I18n.t("todo.clear")
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-2)
                         color: Colors.primary
@@ -693,7 +700,7 @@ Rectangle {
                 Item { Layout.preferredHeight: 8 }
 
                 Text {
-                    text: "Select date"
+                    text: I18n.t("todo.select_date")
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(1)
                     font.weight: Font.Medium
@@ -717,7 +724,7 @@ Rectangle {
                         }
                     }
                     Text {
-                        text: root._monthNames[pickerMonth] + " " + pickerYear
+                        text: new Date(pickerYear, pickerMonth, 1).toLocaleDateString(Qt.locale(), "MMMM yyyy")
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(0)
                         font.weight: Font.Medium
@@ -809,7 +816,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 4
                     Text {
-                        text: "Time:"
+                        text: I18n.t("todo.time")
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-1)
                         color: Colors.outline
@@ -878,7 +885,7 @@ Rectangle {
                         radius: Styling.radius(-2)
                         Text {
                             anchors.centerIn: parent
-                            text: "Clear"
+                            text: I18n.t("todo.clear")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-1)
                             color: Colors.overBackground
@@ -897,7 +904,7 @@ Rectangle {
                         radius: Styling.radius(-2)
                         Text {
                             anchors.centerIn: parent
-                            text: "Cancel"
+                            text: I18n.t("todo.cancel")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-1)
                             color: Colors.overBackground
@@ -916,7 +923,7 @@ Rectangle {
                         radius: Styling.radius(-2)
                         Text {
                             anchors.centerIn: parent
-                            text: "Save"
+                            text: I18n.t("todo.save")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-1)
                             color: Styling.srItem("onprimary")
@@ -980,7 +987,7 @@ Rectangle {
                 Item { Layout.preferredHeight: 8 }
 
                 Text {
-                    text: "Select date range"
+                    text: I18n.t("todo.select_date_range")
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(1)
                     font.weight: Font.Medium
@@ -1146,7 +1153,7 @@ Rectangle {
                         variant: "common"
                         Text {
                             anchors.centerIn: parent
-                            text: "Cancel"
+                            text: I18n.t("todo.cancel")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: Colors.overBackground
@@ -1165,7 +1172,7 @@ Rectangle {
                         variant: "common"
                         Text {
                             anchors.centerIn: parent
-                            text: "Clear"
+                            text: I18n.t("todo.clear")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: Colors.overBackground
@@ -1188,7 +1195,7 @@ Rectangle {
                         variant: "primary"
                         Text {
                             anchors.centerIn: parent
-                            text: "Apply"
+                            text: I18n.t("todo.apply")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: rangePopup.item

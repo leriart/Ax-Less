@@ -1,0 +1,64 @@
+diff --git a/translations/en.json b/translations/en.json
+index faef459..49d0ba4 100644
+--- a/translations/en.json
++++ b/translations/en.json
+@@ -1018,5 +1018,26 @@
+   "compositor.touchpad.natural_scroll": "Natural scrolling",
+   "compositor.touchpad.middle_emulation": "Middle button emulation",
+   "compositor.touchpad.accel_speed": "Acceleration speed",
+-  "compositor.touchpad.hint": "These settings are written to ~/.config/niri/config.kdl and reloaded. niri has no runtime touchpad interface, so they are applied by editing the config. Every change is validated with `niri validate` before it is written."
++  "compositor.touchpad.hint": "These settings are written to ~/.config/niri/config.kdl and reloaded. niri has no runtime touchpad interface, so they are applied by editing the config. Every change is validated with `niri validate` before it is written.",
++  "todo.title": "TODO",
++  "todo.filter_all": "All",
++  "todo.prio_high": "High",
++  "todo.prio_med": "Med",
++  "todo.prio_low": "Low",
++  "todo.calendar": "Cal",
++  "todo.hide_done": "Hide done",
++  "todo.clear_done": "Clear done",
++  "todo.add_placeholder": "Add a new task...",
++  "todo.range": "range",
++  "todo.priority": "Priority",
++  "todo.task": "Task",
++  "todo.due": "Due",
++  "todo.status": "Status",
++  "todo.select_date": "Select date",
++  "todo.time": "Time",
++  "todo.select_date_range": "Select date range",
++  "todo.apply": "Apply",
++  "todo.cancel": "Cancel",
++  "todo.save": "Save",
++  "todo.clear": "Clear"
+ }
+diff --git a/translations/es.json b/translations/es.json
+index d3cbcb1..9219768 100644
+--- a/translations/es.json
++++ b/translations/es.json
+@@ -1018,5 +1018,26 @@
+   "compositor.touchpad.natural_scroll": "Desplazamiento natural",
+   "compositor.touchpad.middle_emulation": "Emulación del botón central",
+   "compositor.touchpad.accel_speed": "Velocidad de aceleración",
+-  "compositor.touchpad.hint": "Estos ajustes se escriben en ~/.config/niri/config.kdl y se recargan. niri no tiene interfaz de touchpad en tiempo de ejecución, así que se aplican editando la config. Cada cambio se valida con `niri validate` antes de escribirse."
++  "compositor.touchpad.hint": "Estos ajustes se escriben en ~/.config/niri/config.kdl y se recargan. niri no tiene interfaz de touchpad en tiempo de ejecución, así que se aplican editando la config. Cada cambio se valida con `niri validate` antes de escribirse.",
++  "todo.title": "TAREAS",
++  "todo.filter_all": "Todas",
++  "todo.prio_high": "Alta",
++  "todo.prio_med": "Media",
++  "todo.prio_low": "Baja",
++  "todo.calendar": "Cal",
++  "todo.hide_done": "Ocultar hechas",
++  "todo.clear_done": "Borrar hechas",
++  "todo.add_placeholder": "Añadir una tarea...",
++  "todo.range": "rango",
++  "todo.priority": "Prioridad",
++  "todo.task": "Tarea",
++  "todo.due": "Vence",
++  "todo.status": "Estado",
++  "todo.select_date": "Elegir fecha",
++  "todo.time": "Hora",
++  "todo.select_date_range": "Elegir rango de fechas",
++  "todo.apply": "Aplicar",
++  "todo.cancel": "Cancelar",
++  "todo.save": "Guardar",
++  "todo.clear": "Limpiar"
+ }
