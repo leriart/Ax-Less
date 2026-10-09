@@ -15,7 +15,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-GOFLAGS_BUILD=(-trimpath -ldflags "-s -w")
+GOFLAGS_BUILD=(-buildvcs=false -trimpath -ldflags "-s -w")
+# -buildvcs=false matters here. These binaries are committed, and Go otherwise
+# stamps each one with the git revision and a vcs.modified flag. Committing a
+# binary dirties the tree, so the next build stamps vcs.modified=true, which
+# changes the binary, which dirties the tree again: every rebuild produced a
+# diff against an identical source tree. Turning VCS stamping off makes a
+# rebuild of unchanged source byte-identical, and keeps the repository revision
+# out of a shipped artifact.
 
 echo "==> nothingclaw"
 (cd nothingclaw-go && CGO_ENABLED=0 go build "${GOFLAGS_BUILD[@]}" -o ../nothingclaw/server .)
