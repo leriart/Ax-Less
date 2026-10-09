@@ -1,6 +1,7 @@
 import QtQuick
 
 ApiStrategy {
+    id: root
     supportsStreaming: true
 
     function getEndpoint(modelObj, apiKey) {
