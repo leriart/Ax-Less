@@ -576,6 +576,10 @@
     {
       "type": "patch",
       "source": "patches/compositor-extra-i18n.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/bind-cooldown-toggle.patch"
     }
   ]
 }

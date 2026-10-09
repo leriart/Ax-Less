@@ -1,0 +1,18 @@
+diff --git a/modules/services/GlobalShortcuts.qml b/modules/services/GlobalShortcuts.qml
+index 845477c..430d517 100644
+--- a/modules/services/GlobalShortcuts.qml
++++ b/modules/services/GlobalShortcuts.qml
+@@ -136,6 +136,13 @@ QtObject {
+     }
+ 
+     function toggle(target) {
++        // axless.core: the cooldown covers this path too. `ambxst toggle <x>`
++        // arrives as a "ui.toggle" event, not "ui.command", so it never went
++        // through run() and was the one shell action the cooldown missed.
++        if (!BindCooldown.gate("toggle:" + target)) {
++            console.log("IPC toggle dropped by cooldown:", target);
++            return;
++        }
+         console.log("IPC toggle command received:", target);
+         switch (target) {
+             case "bar": GlobalStates.barPinToggled(); break;

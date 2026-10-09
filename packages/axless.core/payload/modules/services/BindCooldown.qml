@@ -100,6 +100,31 @@ QtObject {
         return true;
     }
 
+    // The panel calls these, not ModsService directly. Writing only the
+    // setting was the bug: `cooldownMs` then depended on a setting-changed
+    // signal and a Component.onCompleted read, neither of which fires
+    // reliably on a singleton here, so the value stayed at its default and
+    // the cooldown appeared to do nothing. Setting the property first makes
+    // it take effect in this process immediately; persisting keeps it across
+    // restarts.
+    function setMs(v) {
+        let n = Math.round(Number(v));
+        if (isNaN(n))
+            return;
+        n = Math.max(0, Math.min(1000, n));
+        root.cooldownMs = n;
+        ModsService.setSetting("axless.core", "bindCooldown", n);
+    }
+
+    // Toggling off remembers nothing but the convention value; toggling on
+    // restores the default when it was left at 0.
+    function setEnabled(on) {
+        if (on)
+            setMs(root.cooldownMs > 0 ? root.cooldownMs : 25);
+        else
+            setMs(0);
+    }
+
     // Exposed for the settings UI: forget the history so the next press is
     // always accepted. Not normally needed; useful when testing the value.
     function reset() {

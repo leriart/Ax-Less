@@ -2133,7 +2133,7 @@ Item {
                                 ToggleRow {
                                     label: I18n.t("compositor.cooldown.enabled")
                                     checked: BindCooldown.cooldownMs > 0
-                                    onToggled: v => ModsService.setSetting("axless.core", "bindCooldown", v ? 25 : 0)
+                                    onToggled: v => BindCooldown.setEnabled(v)
                                 }
 
                                 NumberInputRow {
@@ -2142,7 +2142,7 @@ Item {
                                     minValue: 0
                                     maxValue: 1000
                                     visible: BindCooldown.cooldownMs > 0
-                                    onValueEdited: v => ModsService.setSetting("axless.core", "bindCooldown", v)
+                                    onValueEdited: v => BindCooldown.setMs(v)
                                 }
 
                                 Text {
