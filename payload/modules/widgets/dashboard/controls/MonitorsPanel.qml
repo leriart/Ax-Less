@@ -422,6 +422,11 @@ Item {
                 root.errorText = id + ": " + msg;
             } else {
                 root.clearPerOutput(id);
+                // A successful position write is a deliberate move, not a
+                // layout reset to undo. Remember it and persist immediately.
+                if (action === "position" || action === "positionAuto")
+                    PerMonitorConfig.noteUserMove(id);
+                PerMonitorConfig.refreshNow();
             }
             // The compositor owns its state; re-read rather than guessing.
             Qt.callLater(root.refresh);

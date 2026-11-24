@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.4
+
+- Fixed remembered monitor positions on startup. The layout file was read
+  through a `cat` process that raced the compositor probe; when the probe won,
+  the live fallback layout was written over the remembered one. The file is
+  now read synchronously before the first poll, restores are retried until the
+  compositor reports the new position, and the saved file is not overwritten
+  while a restore is still in flight.
+- The Monitors panel now records a successful position write immediately and
+  refreshes the remembered layout without waiting for the 20 s poll. A
+  re-plugged cable restores the newest arrangement, and entries for unplugged
+  outputs are preserved.
+
 ## 1.2.3
 
 - Fixed AI chat persistence. `saveCurrentChat` started a `Process` with no

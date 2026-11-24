@@ -131,7 +131,11 @@ Singleton {
     property var _live: ({})
     // Names present in the previous poll, to tell "moved" from "appeared".
     property var _seenIds: ({})
+    // Restores already issued but not confirmed by a later poll:
+    // { id: {x,y} }. Retried until the compositor reports the new position.
+    property var _pendingRestore: ({})
     property bool _restoredAtBoot: false
+    property bool _layoutLoaded: false
     property string _savedJson: ""
 
     readonly property string _reported: {
@@ -140,16 +144,16 @@ Singleton {
     }
     property string _detected: ""
 
-    // The remembered layout file is written by this same service, so it is
-    // read once at startup with a plain `cat` instead of a FileView: a
-    // FileView warns on every cold boot when the file does not exist yet,
-    // and a watch would re-parse our own writes.
-    function _loadRemembered() {
-        _spawn(["bash", "-c", "test -f '" + layoutPath + "' && cat '" + layoutPath + "'"],
-            (ok, out) => {
-                if (ok)
-                    root._parseLayout(out);
-            });
+    // blockLoading makes text() available synchronously, so the first poll
+    // cannot run before the remembered layout has been read. The previous
+    // implementation raced a `cat` Process against the compositor probe; on
+    // a cold boot the probe could win, and the live fallback layout was then
+    // written over the remembered one.
+    FileView {
+        id: layoutLoader
+        path: root.layoutPath
+        printErrors: false
+        blockLoading: true
     }
 
     Timer {
@@ -159,7 +163,7 @@ Singleton {
         interval: 2500
         running: true
         onTriggered: {
-            root._loadRemembered();
+            root._ensureLayoutLoaded();
             layoutTimer.restart();
             // Poll right away so the boot restore lands ~2.5 s after shell
             // start instead of a full interval later.
@@ -186,14 +190,19 @@ Singleton {
             return;
         const p = root._probeTable[index];
         _spawn(p.argv, ok => {
-            if (ok)
+            if (ok) {
                 root._detected = p.name;
-            else
+                // Do not wait for the 20 s timer after a successful probe:
+                // the first restore belongs to the boot path.
+                root._pollLayout();
+            } else {
                 root._probeFrom(index + 1);
+            }
         });
     }
 
     function _parseLayout(text) {
+        root._layoutLoaded = true;
         if (!text || text.trim().length === 0) {
             root._remembered = null;
             return;
@@ -207,7 +216,13 @@ Singleton {
         }
     }
 
+    function _ensureLayoutLoaded() {
+        if (!root._layoutLoaded)
+            root._parseLayout(layoutLoader.text());
+    }
+
     function _pollLayout() {
+        root._ensureLayoutLoaded();
         if (root._reported === "" && root._detected === "") {
             root._probeFrom(0);
             return;
@@ -262,26 +277,80 @@ Singleton {
     }
 
     function _onLiveSnapshot(comp, live) {
-        const remembered = root._remembered;
+        const remembered = (root._remembered && root._remembered.compositor === comp)
+            ? root._remembered : null;
         const seen = root._seenIds;
+        let pending = Object.assign({}, root._pendingRestore);
+        let restoring = false;
+
         for (const id in live) {
             const want = remembered ? remembered.outputs[id] : null;
-            if (!want)
+            const isPending = pending[id] !== undefined;
+            if (!want) {
+                if (isPending)
+                    delete pending[id];
                 continue;
+            }
             const differs = live[id].x !== want.x || live[id].y !== want.y;
+            if (!differs) {
+                if (isPending)
+                    delete pending[id];
+                continue;
+            }
             const appeared = seen[id] !== true;
             // Restore only while the layout is settling: at boot for every
-            // output present from the start, and later for outputs that
-            // reappear (re-plugged cable). An output that is present and
-            // merely moved keeps its new position - the next save adopts
-            // it as the new memory.
-            if (differs && (appeared || !root._restoredAtBoot))
+            // output present from the start, for outputs that reappear
+            // (re-plugged cable), and while a previous restore has not been
+            // confirmed yet. An output that is present and merely moved
+            // keeps its new position - the next save adopts it as memory.
+            if (appeared || !root._restoredAtBoot || isPending) {
+                pending[id] = { x: want.x, y: want.y };
                 root._restorePosition(comp, id, want);
+                restoring = true;
+            }
         }
+
+        root._pendingRestore = pending;
         root._restoredAtBoot = true;
         root._seenIds = (() => { const s = {}; for (const id in live) s[id] = true; return s; })();
         root._live = live;
-        root._saveLayout(comp, live);
+
+        // Do not overwrite the remembered layout while a restore is still in
+        // flight: the live snapshot still holds the old positions. The next
+        // poll confirms the new arrangement and saves it.
+        if (restoring)
+            return;
+
+        // Keep entries for outputs that are currently unplugged, so a
+        // re-plugged cable can still be restored.
+        const outputs = Object.assign({}, live);
+        if (remembered) {
+            for (const id in remembered.outputs) {
+                if (outputs[id] === undefined)
+                    outputs[id] = remembered.outputs[id];
+            }
+        }
+        root._saveLayout(comp, outputs);
+    }
+
+    // Called by MonitorsPanel after a successful position write. Treats the
+    // new live position as intentional so a boot restore cannot undo it, and
+    // refreshes immediately instead of waiting for the 20 s poll.
+    function noteUserMove(id) {
+        root._restoredAtBoot = true;
+        if (root._pendingRestore[id] !== undefined) {
+            const pending = Object.assign({}, root._pendingRestore);
+            delete pending[id];
+            root._pendingRestore = pending;
+        }
+        const seen = Object.assign({}, root._seenIds);
+        seen[id] = true;
+        root._seenIds = seen;
+    }
+
+    function refreshNow() {
+        root._ensureLayoutLoaded();
+        root._pollLayout();
     }
 
     function _restorePosition(comp, id, pos) {
@@ -309,12 +378,28 @@ Singleton {
         const json = JSON.stringify({ compositor: comp, outputs: live }, null, 2);
         if (json === root._savedJson)
             return;
-        root._savedJson = json;
         const script =
             "mkdir -p '" + layoutDir.replace(/'/g, "'\\''") + "' && " +
-            "printf '%s' '" + json.replace(/'/g, "'\\''") + "' > '" + layoutPath + ".tmp' && " +
-            "mv '" + layoutPath + ".tmp' '" + layoutPath + "'";
-        _spawn(["bash", "-c", script], null);
+            "printf '%s' '" + json.replace(/'/g, "'\\''") + "' > '" +
+            layoutPath.replace(/'/g, "'\\''") + ".tmp' && " +
+            "mv '" + layoutPath.replace(/'/g, "'\\''") + ".tmp' '" +
+            layoutPath.replace(/'/g, "'\\''") + "'";
+        _spawn(["bash", "-c", script], ok => {
+            // Only remember the serialized value after a successful write;
+            // otherwise a failed save would never be retried.
+            if (ok) {
+                root._savedJson = json;
+                // Keep the in-memory memory in sync: a cable re-plug later
+                // in this session must restore the newest arrangement, not
+                // the one from before the user moved anything.
+                root._remembered = {
+                    compositor: comp,
+                    outputs: JSON.parse(JSON.stringify(live))
+                };
+            } else {
+                console.warn("PerMonitorConfig: could not save", layoutPath);
+            }
+        });
     }
 
     // Fresh Process per call: Quickshell 0.3.0 does not reliably restart an
