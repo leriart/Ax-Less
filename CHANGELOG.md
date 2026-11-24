@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.3
+
+- Fixed AI chat persistence. `saveCurrentChat` started a `Process` with no
+  command, so its `onExited` never ran and no chat JSON was ever written. Chat
+  files are now written directly through the `FileView`, atomically, and the
+  history list is refreshed after the write.
+- The chat directory now follows `XDG_DATA_HOME` like the rest of Ambxst,
+  instead of always using `~/.local/share`.
+
 ## 1.2.2
 
 - Restored the 73 NothingLess compositor keys in `config/defaults/compositor.js`,

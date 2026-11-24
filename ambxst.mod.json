@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "axless.core",
   "name": "Ax-Less Core",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "changelog": "CHANGELOG.md",
   "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support, including native tool calling on local models such as Ollama, a sidebar agent picker that remembers the last agent and mode, and a stop button), a hardened NothingClaw bridge (Go) with tolerant tool arguments and stale-process cleanup, an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",

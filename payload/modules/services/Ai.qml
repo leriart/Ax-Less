@@ -15,7 +15,7 @@ Singleton {
     // PROPERTIES
     // ============================================
 
-    property string chatDir: Quickshell.env("HOME") + "/.local/share/ambxst/chats"
+    property string chatDir: (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/ambxst/chats"
     property string tmpDir: "/tmp/ambxst-ai"
 
     property list<AiModel> models: []
@@ -418,6 +418,7 @@ Singleton {
     FileView {
         id: chatFileView
         printErrors: false
+        atomicWrites: true
     }
 
     FileView {
@@ -1239,9 +1240,12 @@ Singleton {
             return;
         }
 
-        saveChatProcess.filePath = filename;
-        saveChatProcess.data = data;
-        saveChatProcess.running = true;
+        // axless.core: write directly through the FileView. The previous
+        // implementation started a Process with no command, so onExited never
+        // ran and no chat file was ever written.
+        chatFileView.path = filename;
+        chatFileView.setText(data);
+        _historyReloadTimer.restart();
     }
 
     property bool _chatDirReady: false
@@ -1271,26 +1275,11 @@ Singleton {
         loadChatProcess.running = true;
     }
 
-    Process {
-        id: saveChatProcess
-        property string filePath: ""
-        property string data: ""
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                if (filePath.length > 0)
-                    chatFileView.path = filePath;
-                if (data.length > 0)
-                    chatFileView.setText(data);
-                // axless.core: the history list drives the sidebar's chat
-                // drawer. It was re-read by forking `ambxst chatlist` after
-                // *every* save, which happens on each assistant message and
-                // each tool result. A short coalescing window is invisible to
-                // the user and turns a burst of saves into one spawn.
-                _historyReloadTimer.restart();
-            }
-        }
-    }
-
+    // axless.core: the history list drives the sidebar's chat drawer. It was
+    // re-read by forking `ambxst chatlist` after *every* save, which happens
+    // on each assistant message and each tool result. A short coalescing
+    // window is invisible to the user and turns a burst of saves into one
+    // spawn.
     Timer {
         id: _historyReloadTimer
         interval: 700
