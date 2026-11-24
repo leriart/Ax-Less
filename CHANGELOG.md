@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+- Fixed saving AI provider API keys on a clean Ambxst 1.4 install. The
+  daemon's keystore only creates its sqlite schema from `keystore.list`, and
+  that path fails before `keys.db` exists, so `keystore.set` returned
+  `no such table: api_keys` and the key was discarded. `KeyStore.qml` now
+  creates the database and table before the first daemon call, queues writes
+  while that happens, and retries once if the table is still missing.
+- `KeyStore.setKey` now preserves the provider's existing endpoint and custom
+  curl unless new values are passed, instead of clearing them on every key
+  update.
+- The AI panel clears the key field only after the save succeeds, and logs a
+  warning with the backend error when it does not.
+
 ## 1.2.0
 
 - Updated the package for Ambxst 1.4.x (tested against 1.4.1,

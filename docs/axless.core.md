@@ -60,6 +60,17 @@ New: multi-step chain enforcement, duplicate-call and rate limiting, a
 text-based tool-call fallback for small models, per-tier timeouts for slow
 local models, throttled streaming, and a request watchdog.
 
+### API key storage on 1.4
+
+Ambxst 1.4's daemon creates the keystore sqlite schema only from
+`keystore.list`, and only after `chmod`-ing an existing `keys.db`. On a clean
+install the file does not exist yet, so `list` returns nothing and `set` fails
+with `no such table: api_keys`; the AI panel then clears the field and the key
+is lost. The mod's `KeyStore.qml` patch creates `keys.db` and the `api_keys`
+table before the first daemon call, queues writes until that finishes, and
+retries once if the schema is still missing. It also keeps the stored endpoint
+and custom curl when only the API key is updated.
+
 ### UI
 
 - `AssistantSidebar.qml` — the agent-capable sidebar, including the agent

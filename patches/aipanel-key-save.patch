@@ -1,0 +1,34 @@
+diff --git a/modules/widgets/config/AiPanel.qml b/modules/widgets/config/AiPanel.qml
+index c6f4df7..f2ea73c 100644
+--- a/modules/widgets/config/AiPanel.qml
++++ b/modules/widgets/config/AiPanel.qml
+@@ -112,8 +112,12 @@ Item {
+                                     if (modelData === "ollama") {
+                                         KeyStore.setKey("ollama", "enabled")
+                                     } else if (keyInput.text !== "") {
+-                                        KeyStore.setKey(modelData, keyInput.text)
+-                                        keyInput.text = ""
++                                        KeyStore.setKey(modelData, keyInput.text, undefined, undefined, (ok, error) => {
++                                            if (ok)
++                                                keyInput.text = "";
++                                            else
++                                                console.warn("AiPanel: failed to save " + modelData + " key:", error);
++                                        })
+                                     }
+                                 }
+                                 background: StyledRect {
+@@ -253,8 +257,12 @@ Item {
+                             bottomPadding: 4
+                             onClicked: {
+                                 if (customKeyInput.text !== "") {
+-                                    KeyStore.setKey("custom", customKeyInput.text)
+-                                    customKeyInput.text = ""
++                                    KeyStore.setKey("custom", customKeyInput.text, undefined, undefined, (ok, error) => {
++                                        if (ok)
++                                            customKeyInput.text = "";
++                                        else
++                                            console.warn("AiPanel: failed to save custom key:", error);
++                                    })
+                                 }
+                             }
+                             background: StyledRect {

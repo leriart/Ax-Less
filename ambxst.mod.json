@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "axless.core",
   "name": "Ax-Less Core",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "changelog": "CHANGELOG.md",
   "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support, including native tool calling on local models such as Ollama, a sidebar agent picker that remembers the last agent and mode, and a stop button), a hardened NothingClaw bridge (Go) with tolerant tool arguments and stale-process cleanup, an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",
@@ -40,6 +40,7 @@
     "Executes shell commands and approved tools on the user's system",
     "Reads and writes the system prompt, tool allowlist and agent profile files",
     "Reads provider API keys from the Ambxst keystore",
+    "Runs sqlite3 once to create the keystore table when keys.db does not exist yet",
     "Runs axctl to read compositor capabilities and layouts, and to set window opacity live",
     "Re-applies window opacity on every Ambxst start",
     "Adds compositor and translation configuration keys",
@@ -70,6 +71,10 @@
       "type": "overlay",
       "source": "payload/mcp/openclaw/main.go",
       "target": "mcp/openclaw/main.go"
+    },
+    {
+      "type": "patch",
+      "source": "patches/keystore-init.patch"
     },
     {
       "type": "overlay",
@@ -531,6 +536,10 @@
     {
       "type": "patch",
       "source": "patches/aipanel-agents.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/aipanel-key-save.patch"
     },
     {
       "type": "overlay",
