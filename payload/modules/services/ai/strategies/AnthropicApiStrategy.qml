@@ -3,6 +3,18 @@ import QtQuick
 ApiStrategy {
     supportsStreaming: true
 
+    // Anthropic streams tool calls as content blocks: a start event carries
+    // the tool name/id, then input_json_delta fragments carry the arguments.
+    // Map each content-block index to a compact tool slot (0, 1, ...) so the
+    // Ai.qml accumulator does not create holes for text blocks.
+    property var _toolSlotByBlock: ({})
+    property int _nextToolSlot: 0
+
+    function _resetToolSlots() {
+        _toolSlotByBlock = ({});
+        _nextToolSlot = 0;
+    }
+
     function getEndpoint(modelObj, apiKey) {
         return modelObj.endpoint || "https://api.anthropic.com/v1/messages";
     }
@@ -140,7 +152,8 @@ ApiStrategy {
     }
 
     function getStreamBody(messages, model, tools, options) {
-        let body = getBody(messages, model, tools);
+        _resetToolSlots();
+        let body = getBody(messages, model, tools, options);
         body.stream = true;
         return body;
     }
@@ -203,9 +216,43 @@ ApiStrategy {
         try {
             let json = JSON.parse(trimmed.substring(6));
 
+            if (json.type === "content_block_start"
+                    && json.content_block && json.content_block.type === "tool_use") {
+                const blockIndex = (typeof json.index === "number") ? json.index : 0;
+                let slot = _toolSlotByBlock[blockIndex];
+                if (slot === undefined) {
+                    slot = _nextToolSlot++;
+                    _toolSlotByBlock[blockIndex] = slot;
+                }
+                return {
+                    content: "", done: false, error: null,
+                    toolCallDelta: [{
+                        index: slot,
+                        id: json.content_block.id || "",
+                        function: {
+                            name: json.content_block.name || "",
+                            arguments: ""
+                        }
+                    }]
+                };
+            }
+
             if (json.type === "content_block_delta") {
                 if (json.delta && json.delta.type === "text_delta")
                     return { content: json.delta.text || "", done: false, error: null };
+                if (json.delta && json.delta.type === "input_json_delta") {
+                    const blockIndex = (typeof json.index === "number") ? json.index : 0;
+                    const slot = _toolSlotByBlock[blockIndex];
+                    if (slot !== undefined) {
+                        return {
+                            content: "", done: false, error: null,
+                            toolCallDelta: [{
+                                index: slot,
+                                function: { arguments: json.delta.partial_json || "" }
+                            }]
+                        };
+                    }
+                }
             }
 
             if (json.type === "message_delta") {

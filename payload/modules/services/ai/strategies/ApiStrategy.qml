@@ -370,8 +370,12 @@ QtObject {
             // bug (the API would silently drop the tool result and
             // the model would refuse the next tool call).
             if (role === "tool") {
-                if (msg.tool_call_id) {
-                    out.tool_call_id = msg.tool_call_id;
+                // axless.core: Ai.qml stores the id as camelCase `toolCallId`;
+                // older chats may carry the snake_case spelling. Accept both
+                // so the tool result is paired with the assistant call.
+                const toolId = msg.tool_call_id || msg.toolCallId;
+                if (toolId) {
+                    out.tool_call_id = toolId;
                 }
             } else if (msg.name) {
                 out.name = msg.name;

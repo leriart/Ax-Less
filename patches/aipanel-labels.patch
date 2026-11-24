@@ -1,0 +1,36 @@
+--- a/modules/widgets/config/AiPanel.qml
++++ b/modules/widgets/config/AiPanel.qml
+@@ -35,6 +35,24 @@
+         { name: "Command",     type: "command",     command: "" }
+     ]
+ 
++    // axless.core: proper display names for the provider list.
++    function providerLabel(id) {
++        const labels = {
++            "openai": "OpenAI",
++            "anthropic": "Anthropic",
++            "deepseek": "DeepSeek",
++            "openrouter": "OpenRouter",
++            "xai": "xAI",
++            "lmstudio": "LM Studio",
++            "minimax": "MiniMax",
++            "gemini": "Gemini",
++            "mistral": "Mistral",
++            "groq": "Groq",
++            "ollama": "Ollama"
++        };
++        return labels[id] || (id.charAt(0).toUpperCase() + id.slice(1));
++    }
++
+     function _addPreset(preset) {
+         const existing = AgentStore.listProfiles();
+         for (let i = 0; i < existing.length; i++) {
+@@ -319,7 +337,7 @@
+                         RowLayout {
+                             Layout.fillWidth: true
+                             Text {
+-                                text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
++                                text: root.providerLabel(modelData)
+                                 font.family: Config.theme.font
+                                 font.pixelSize: 16
+                                 font.weight: Font.Bold

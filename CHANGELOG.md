@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.2.2
+
+- Restored the 73 NothingLess compositor keys in `config/defaults/compositor.js`,
+  the `Config` adapter and `GlobalStates._compositorProps`. The advanced panel
+  could read its fallbacks but could not persist the Hyprland-only controls,
+  and Discard did not restore them.
+- Fixed agent tool-call round-trips. `Ai.qml` now forwards `toolCallId`,
+  `tool_call_id` and `reasoningContent` to the strategies; the shared strategy
+  pairs tool results with the assistant call, and DeepSeek reasoning is echoed
+  back. Anthropic, Gemini, Groq, Mistral and MiniMax now use the strategy
+  overlays that were already shipped but never applied; Anthropic/Gemini/MiniMax
+  also parse streamed tool calls.
+- Added proper provider labels for DeepSeek, OpenRouter, xAI and LM Studio, and
+  made LM Studio a local provider: it enables without a fake API key.
+- Added the missing Russian translations for the compositor cooldown, touchpad,
+  task board and wallpaper interpolation, and translated the agent settings UI
+  in English, Spanish and Russian.
+- Added the 14 Phosphor icon aliases the agent UI and stock 1.4 widgets
+  reference but the Ambxst icon set does not define.
+- Declared the custom AI endpoint/curl config keys used by the AI panel, so the
+  fields persist instead of assigning to a non-existent property.
+
 ## 1.2.1
 
 - Fixed saving AI provider API keys on a clean Ambxst 1.4 install. The

@@ -805,6 +805,18 @@ Singleton {
                 apiMsg.attachments = msg.attachments;
             if (msg.functionCall)
                 apiMsg.functionCall = msg.functionCall;
+            // axless.core: keep the tool-call id and reasoning text on the
+            // copy sent to the strategy. Without these the OpenAI-compatible
+            // strategies generated a fresh id for the assistant call and
+            // dropped it from the tool result, so providers rejected the
+            // follow-up turn; DeepSeek R1 also requires reasoning_content to
+            // be echoed back with every assistant message.
+            if (msg.toolCallId)
+                apiMsg.toolCallId = msg.toolCallId;
+            if (msg.tool_call_id)
+                apiMsg.tool_call_id = msg.tool_call_id;
+            if (msg.reasoningContent)
+                apiMsg.reasoningContent = msg.reasoningContent;
             if (msg.geminiParts)
                 apiMsg.geminiParts = msg.geminiParts;
             if (msg.name)
@@ -870,6 +882,11 @@ Singleton {
         let customCurl = "";
         if (currentModel && currentModel.customCurlTemplate) {
             customCurl = currentModel.customCurlTemplate;
+        } else if (currentModel && currentModel.provider === "custom"
+                   && Config.ai.customCurlTemplate) {
+            // The AI panel stores the custom curl template in Config rather
+            // than the keystore, so use it when a custom model is selected.
+            customCurl = Config.ai.customCurlTemplate;
         } else if (currentModel && KeyStore.getCustomCurl(currentModel.provider)) {
             customCurl = KeyStore.getCustomCurl(currentModel.provider);
         }

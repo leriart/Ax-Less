@@ -73,12 +73,15 @@ and custom curl when only the API key is updated.
 
 ### UI
 
-- `AssistantSidebar.qml` — the agent-capable sidebar, including the agent
-  picker, per-tool approval rows and tool-result rendering.
-- `AiPanel.qml` — provider, model, keystore and agent connection settings.
-- `CodeBlock.qml`, `ModelSelectorPopup.qml` — updated alongside the above.
-- `Icons.qml` — aliases for 8 icon names the agent UI expects but the Ambxst
-  icon set does not define (patch).
+- `AssistantSidebar.qml` — upgraded by patch with the agent picker, per-tool
+  approval rows and tool-result rendering.
+- `AiPanel.qml` — provider, model, keystore and agent connection settings,
+  translated in en/es/ru.
+- `CodeBlock.qml` and `ModelSelectorPopup.qml` come from the 1.4 base. The
+  older full-file copies under `payload/modules/sidebar/` are reference
+  material and are not applied.
+- `Icons.qml` — the agent UI and stock 1.4 widgets reference 14 icon names the
+  Ambxst icon set does not define; a patch adds them.
 
 ## Installing
 
@@ -153,10 +156,9 @@ These were Ambxst 1.2/1.3 improvements that the NothingLess AI code predates.
 They were **not** re-ported, because doing so would mean diverging further
 from a subsystem that is being replaced wholesale:
 
-- **Translations.** The base `Ai.qml`, `AiPanel.qml` and `AssistantSidebar.qml`
-  route user-facing strings through `I18n.t()`. The ported versions hardcode
-  English. The `ai.*` keys in `translations/*.json` are now unused for the
-  assistant.
+- **Translations.** The AI panel's provider and agent controls use `I18n.t()`
+  and ship en/es/ru strings. Some engine errors and sidebar strings in
+  `Ai.qml` / `AssistantSidebar.qml` still hardcode English.
 - **Settings search indexing.** `SettingsCrawler.js` scrapes `label` /
   `settingsSection` properties from panel items. The ported `AiPanel.qml`
   does not set them, so AI entries no longer appear in settings search.

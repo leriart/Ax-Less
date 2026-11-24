@@ -1,0 +1,41 @@
+--- a/modules/widgets/config/AiPanel.qml
++++ b/modules/widgets/config/AiPanel.qml
+@@ -357,7 +357,7 @@
+                             spacing: 12
+ 
+                             TextField {
+-                                visible: modelData !== "ollama"
++                                visible: modelData !== "ollama" && modelData !== "lmstudio"
+                                 id: keyInput
+                                 Layout.fillWidth: true
+                                 placeholderText: I18n.t("ai.enter_api_key")
+@@ -380,16 +380,16 @@
+                             }
+                             Button {
+                                 id: saveButton
+-                                text: modelData === "ollama" ? (KeyStore.hasKey("ollama") ? "Configured" : "Enable") : I18n.t("common.save")
+-                                visible: modelData === "ollama" ? !KeyStore.hasKey("ollama") : true
++                                text: (modelData === "ollama" || modelData === "lmstudio") ? (KeyStore.hasKey(modelData) ? "Configured" : "Enable") : I18n.t("common.save")
++                                visible: (modelData === "ollama" || modelData === "lmstudio") ? !KeyStore.hasKey(modelData) : true
+                                 hoverEnabled: true
+                                 leftPadding: 6
+                                 rightPadding: 6
+                                 topPadding: 4
+                                 bottomPadding: 4
+                                 onClicked: {
+-                                    if (modelData === "ollama") {
+-                                        KeyStore.setKey("ollama", "enabled")
++                                    if (modelData === "ollama" || modelData === "lmstudio") {
++                                        KeyStore.setKey(modelData, "enabled")
+                                     } else if (keyInput.text !== "") {
+                                         KeyStore.setKey(modelData, keyInput.text, undefined, undefined, (ok, error) => {
+                                             if (ok)
+@@ -425,7 +425,7 @@
+                             Button {
+                                 id: clearButton
+                                 visible: KeyStore.hasKey(modelData)
+-                                text: modelData === "ollama" ? "Disable" : I18n.t("common.clear")
++                                text: (modelData === "ollama" || modelData === "lmstudio") ? "Disable" : I18n.t("common.clear")
+                                 leftPadding: 6
+                                 rightPadding: 6
+                                 topPadding: 4

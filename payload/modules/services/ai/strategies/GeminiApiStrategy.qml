@@ -3,6 +3,10 @@ import QtQuick
 ApiStrategy {
     supportsStreaming: true
 
+    // Gemini sends complete functionCall parts in the stream. Count them so
+    // each one gets a compact slot for Ai.qml's tool-call accumulator.
+    property int _streamToolIndex: 0
+
     function getEndpoint(modelObj, apiKey) {
         return "https://generativelanguage.googleapis.com/v1beta/models/" + modelObj.model + ":generateContent?key=" + apiKey;
     }
@@ -37,7 +41,7 @@ ApiStrategy {
                 } else {
                     contents.push({ role: "model", parts: [{ text: msg.content }] });
                 }
-            } else if (msg.role === "function") {
+            } else if (msg.role === "function" || msg.role === "tool") {
                 contents.push({
                     role: "function",
                     parts: [{
@@ -96,6 +100,7 @@ ApiStrategy {
 
     function getStreamBody(messages, model, tools, options) {
         // Gemini streaming uses a different endpoint, not a body flag
+        _streamToolIndex = 0;
         return getBody(messages, model, tools, options);
     }
 
@@ -166,12 +171,27 @@ ApiStrategy {
                 let content = json.candidates[0].content;
                 if (content && content.parts) {
                     let text = "";
+                    let toolCalls = [];
                     for (let i = 0; i < content.parts.length; i++) {
-                        if (content.parts[i].text)
-                            text += content.parts[i].text;
+                        let part = content.parts[i];
+                        if (part.text)
+                            text += part.text;
+                        if (part.functionCall) {
+                            toolCalls.push({
+                                index: _streamToolIndex++,
+                                id: "",
+                                function: {
+                                    name: part.functionCall.name || "",
+                                    arguments: JSON.stringify(part.functionCall.args || {})
+                                }
+                            });
+                        }
                     }
                     let done = json.candidates[0].finishReason === "STOP";
-                    return { content: text, done: done, error: null };
+                    return {
+                        content: text, done: done, error: null,
+                        toolCallDelta: toolCalls.length > 0 ? toolCalls : null
+                    };
                 }
             }
             return { content: "", done: false, error: null };

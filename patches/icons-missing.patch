@@ -1,0 +1,25 @@
+--- a/modules/theme/Icons.qml
++++ b/modules/theme/Icons.qml
+@@ -62,6 +62,22 @@
+     readonly property string handGrab: ""
+     readonly property string heartbeat: ""
+     readonly property string todo: ""  // format list bulleted
++    // axless.core: icons the agent UI and stock 1.4 widgets reference but the
++    // Ambxst icon set does not define. Codes are from Phosphor Bold v2.1.2.
++    readonly property string chatCenteredDots: "\ue164"
++    readonly property string check: "\ue182"
++    readonly property string checkCircle: "\ue184"
++    readonly property string prohibit: "\ue3de"
++    readonly property string textAa: "\ue6ee"
++    readonly property string warningCircle: "\ue4e2"
++    readonly property string x: "\ue4f6"
++    readonly property string xCircle: "\ue4f8"
++    readonly property string chevronDown: "\ue136"
++    readonly property string magnifyingGlass: "\ue30c"
++    readonly property string rocket: "\ue3fc"
++    readonly property string signOut: "\ue42a"
++    readonly property string videoCamera: "\ue4da"
++    readonly property string wrench: "\ue5d4"
+     readonly property string cpu: ""
+     readonly property string gpu: ""
+     readonly property string ram: ""

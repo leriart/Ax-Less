@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "axless.core",
   "name": "Ax-Less Core",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "changelog": "CHANGELOG.md",
   "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support, including native tool calling on local models such as Ollama, a sidebar agent picker that remembers the last agent and mode, and a stop button), a hardened NothingClaw bridge (Go) with tolerant tool arguments and stale-process cleanup, an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",
@@ -201,6 +201,41 @@
     },
     {
       "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/AnthropicApiStrategy.qml",
+      "target": "modules/services/ai/strategies/AnthropicApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "2097a74c991ff2d6866ee990ecf54c340319ed8c4520358929b3a19713a208e6"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/GeminiApiStrategy.qml",
+      "target": "modules/services/ai/strategies/GeminiApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "4ab9c1c9a3002ffd193e94eb0a7a415ccea7487462faf16083ce77e375ea788e"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/GroqApiStrategy.qml",
+      "target": "modules/services/ai/strategies/GroqApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "88ba2c4f2911e7d302fc4f864810897d7386489a80fd6e8c4cc90fd858432604"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/MiniMaxApiStrategy.qml",
+      "target": "modules/services/ai/strategies/MiniMaxApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "8741d3e7891846c8cd5c67c84a48cc566d9103a1d28c56b488ed10bc8f04db4d"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/modules/services/ai/strategies/MistralApiStrategy.qml",
+      "target": "modules/services/ai/strategies/MistralApiStrategy.qml",
+      "replace": true,
+      "expectedSha256": "2e6b330213a9bf2c67a06ba88f138bfc3ad08660e8c0277cba35f7dda2d58340"
+    },
+    {
+      "type": "overlay",
       "source": "payload/scripts/mcp_stdio_bridge",
       "target": "scripts/mcp_stdio_bridge"
     },
@@ -352,6 +387,10 @@
     {
       "type": "patch",
       "source": "patches/dashboard-todo.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/icons-missing.patch"
     },
     {
       "type": "patch",
@@ -526,6 +565,32 @@
       "source": "patches/hax-launcher.patch"
     },
     {
+      "type": "overlay",
+      "source": "payload/config/defaults/compositor.js",
+      "target": "config/defaults/compositor.js",
+      "replace": true,
+      "expectedSha256": "088aa285879f2236a7becb331a48c254f260309741e357dc9ff90e4bbc247e97"
+    },
+    {
+      "type": "overlay",
+      "source": "payload/config/defaults/ai.js",
+      "target": "config/defaults/ai.js",
+      "replace": true,
+      "expectedSha256": "63a2975ac3a3efb7c26b1315fbd357f29889c0c4ae6785b906a98a87495276d3"
+    },
+    {
+      "type": "patch",
+      "source": "patches/compositor-config.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/ai-config.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/compositor-props.patch"
+    },
+    {
       "type": "patch",
       "source": "patches/sidebar-agent-mode.patch"
     },
@@ -540,6 +605,18 @@
     {
       "type": "patch",
       "source": "patches/aipanel-key-save.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/aipanel-labels.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/aipanel-local.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/aipanel-i18n.patch"
     },
     {
       "type": "overlay",
@@ -604,6 +681,14 @@
     {
       "type": "patch",
       "source": "patches/todo-i18n-2.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/ru-i18n.patch"
+    },
+    {
+      "type": "patch",
+      "source": "patches/ai-i18n.patch"
     }
   ]
 }

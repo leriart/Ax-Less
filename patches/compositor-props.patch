@@ -1,0 +1,30 @@
+--- a/modules/globals/GlobalStates.qml
++++ b/modules/globals/GlobalStates.qml
+@@ -658,7 +658,26 @@
+         "blurVibrancyDarkness", "blurSpecial", "blurPopups", "blurPopupsIgnorealpha",
+         "blurInputMethods", "blurInputMethodsIgnorealpha",
+         "blurExplicitIgnoreAlpha", "blurIgnoreAlphaValue",
+-        "shadowOffset", "shadowColorInactive"
++        "shadowOffset", "shadowColorInactive",
++        "activeOpacity", "animateManualResizes", "animateMouseWindowdragging", "cursorHideOnKeyPress",
++        "cursorHideOnTablet", "cursorHideOnTouch", "cursorInactiveTimeout", "cursorZoomFactor",
++        "disableAutoreload", "disableHyprlandLogo", "disableSplashRendering", "dwindleDefaultSplitRatio",
++        "dwindlePreserveSplit", "dwindlePseudotile", "dwindleSmartSplit", "dwindleSpecialScaleFactor",
++        "dwindleSplitWidthMultiplier", "enableHyprcursor", "floatSwitchOverrideFocus", "focusOnActivate",
++        "followMouse", "fullscreenOpacity", "gestureCloseTimeout", "inactiveOpacity",
++        "kbLayout", "kbOptions", "kbVariant", "masterMfact",
++        "masterNewStatus", "masterOrientation", "mouseAccelProfile", "mouseLeftHanded",
++        "mouseNaturalScroll", "mouseRefocus", "mouseScrollFactor", "mouseSensitivity",
++        "noHardwareCursors", "noUpdateNews", "noWarps", "numlockByDefault",
++        "persistentWarps", "repeatDelay", "repeatRate", "scrollingColumnWidth",
++        "scrollingDirection", "scrollingFollowFocus", "scrollingFullscreenOnOneColumn", "snapBorderOverlap",
++        "snapEnabled", "snapMonitorGap", "snapRespectGaps", "snapWindowGap",
++        "touchpadClickfingerBehavior", "touchpadDisableWhileTyping", "touchpadDragLock", "touchpadMiddleButtonEmulation",
++        "touchpadNaturalScroll", "touchpadScrollFactor", "touchpadTapButtonMap", "touchpadTapToClick",
++        "vfr", "vrr", "warpOnChangeWorkspace", "workspaceSwipeCancelRatio",
++        "workspaceSwipeCreateNew", "workspaceSwipeDirectionLock", "workspaceSwipeDistance", "workspaceSwipeForever",
++        "workspaceSwipeInvert", "workspaceSwipeMinSpeedToForce", "xwaylandEnabled", "xwaylandForceZeroScaling",
++        "xwaylandUseNearestNeighbor"
+     ]
+ 
+     // Create a deep copy of the current compositor config

@@ -1,0 +1,96 @@
+--- a/modules/widgets/config/AiPanel.qml
++++ b/modules/widgets/config/AiPanel.qml
+@@ -173,7 +173,7 @@
+                 spacing: 8
+ 
+                 Text {
+-                    text: "Agents"
++                    text: I18n.t("ai.agents_title")
+                     font.family: Config.theme.font
+                     font.pixelSize: 18
+                     font.weight: Font.Bold
+@@ -183,7 +183,7 @@
+                 Text {
+                     Layout.fillWidth: true
+                     wrapMode: Text.WordWrap
+-                    text: "Connect an agent to give the model its tools in agent mode."
++                    text: I18n.t("ai.agents_hint")
+                     font.family: Config.theme.font
+                     font.pixelSize: Config.theme.fontSize - 2
+                     color: Colors.outline
+@@ -250,7 +250,7 @@
+                             Text {
+                                 text: {
+                                     const l = root._liveFor(modelData.id);
+-                                    return (l && (l.status === "connected" || l.status === "connecting")) ? "Disconnect" : "Connect";
++                                    return (l && (l.status === "connected" || l.status === "connecting")) ? I18n.t("ai.agent_disconnect") : I18n.t("ai.agent_connect");
+                                 }
+                                 font.family: Config.theme.font
+                                 font.pixelSize: Config.theme.fontSize - 2
+@@ -263,7 +263,7 @@
+                             }
+ 
+                             Text {
+-                                text: "Remove"
++                                text: I18n.t("ai.agent_remove")
+                                 font.family: Config.theme.font
+                                 font.pixelSize: Config.theme.fontSize - 2
+                                 color: Colors.error
+@@ -279,21 +279,21 @@
+ 
+                 Text {
+                     Layout.topMargin: 6
+-                    text: "Add another agent"
++                    text: I18n.t("ai.agent_add_another")
+                     font.family: Config.theme.font
+                     font.pixelSize: 16
+                     font.weight: Font.Medium
+                     color: Colors.overSurface
+                 }
+ 
+-                AgentField { id: agName; placeholderText: "Name" }
+-                AgentField { id: agType; placeholderText: "Type: http-bridge | mcp-stdio | mcp-sse | command (auto if blank)" }
+-                AgentField { id: agEndpoint; placeholderText: "Endpoint (http-bridge / mcp-sse)" }
+-                AgentField { id: agCommand; placeholderText: "Command (mcp-stdio / command), e.g. uvx" }
+-                AgentField { id: agArgs; placeholderText: "Args, space separated" }
+-                AgentField { id: agTools; placeholderText: "Tools path (default /tools)" }
+-                AgentField { id: agInvoke; placeholderText: "Invoke path (default /tools)" }
+-                AgentField { id: agEnv; placeholderText: "Env, KEY=VAL,KEY2=VAL2" }
++                AgentField { id: agName; placeholderText: I18n.t("ai.agent_name") }
++                AgentField { id: agType; placeholderText: I18n.t("ai.agent_type") }
++                AgentField { id: agEndpoint; placeholderText: I18n.t("ai.agent_endpoint") }
++                AgentField { id: agCommand; placeholderText: I18n.t("ai.agent_command") }
++                AgentField { id: agArgs; placeholderText: I18n.t("ai.agent_args") }
++                AgentField { id: agTools; placeholderText: I18n.t("ai.agent_tools_path") }
++                AgentField { id: agInvoke; placeholderText: I18n.t("ai.agent_invoke_path") }
++                AgentField { id: agEnv; placeholderText: I18n.t("ai.agent_env") }
+ 
+                 StyledRect {
+                     variant: "primary"
+@@ -303,7 +303,7 @@
+                     Text {
+                         id: saveTxt
+                         anchors.centerIn: parent
+-                        text: "Add agent"
++                        text: I18n.t("ai.agent_add")
+                         font.family: Config.theme.font
+                         font.pixelSize: Config.theme.fontSize - 1
+                         color: Styling.srItem("primary")
+@@ -380,7 +380,7 @@
+                             }
+                             Button {
+                                 id: saveButton
+-                                text: (modelData === "ollama" || modelData === "lmstudio") ? (KeyStore.hasKey(modelData) ? "Configured" : "Enable") : I18n.t("common.save")
++                                text: (modelData === "ollama" || modelData === "lmstudio") ? (KeyStore.hasKey(modelData) ? I18n.t("ai.agent_configured") : I18n.t("ai.agent_enable")) : I18n.t("common.save")
+                                 visible: (modelData === "ollama" || modelData === "lmstudio") ? !KeyStore.hasKey(modelData) : true
+                                 hoverEnabled: true
+                                 leftPadding: 6
+@@ -425,7 +425,7 @@
+                             Button {
+                                 id: clearButton
+                                 visible: KeyStore.hasKey(modelData)
+-                                text: (modelData === "ollama" || modelData === "lmstudio") ? "Disable" : I18n.t("common.clear")
++                                text: (modelData === "ollama" || modelData === "lmstudio") ? I18n.t("ai.agent_disable") : I18n.t("common.clear")
+                                 leftPadding: 6
+                                 rightPadding: 6
+                                 topPadding: 4
