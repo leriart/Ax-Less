@@ -16,7 +16,7 @@ dependencies: one install gets everything.
 | Translations (en / es / ru) | done |
 
 Everything is adapted to Ambxst's own services, colours and animation model.
-Nothing here reimplements what Ambxst 1.3.10 already does natively in its Go
+Nothing here reimplements what Ambxst 1.4.x already does natively in its Go
 backend; see the repository README for the exclusion list.
 
 ## Agent platform
@@ -72,17 +72,19 @@ local models, throttled streaming, and a request watchdog.
 ## Installing
 
 ```bash
-ambxst mods install /path/to/Ax-Less/packages/axless.core
+ambxst mods install /path/to/Ax-Less
 ambxst mods enable axless.core
 ambxst reload
 ```
 
-One package, no dependencies.
+The manifest is at the repository root, so the GitHub URL installs directly.
+One package, no dependencies. Requires Ambxst 1.4.x.
 
 ## Advanced compositor panel
 
-`CompositorAdvancedPanel.qml`, registered as Settings **section 11** (10 is
-Mods).
+The stock `CompositorPanel.qml` is replaced in place (Settings **section 8**),
+so these controls live in the existing compositor menu instead of a parallel
+section. See "Single compositor menu" below.
 
 It offers only what genuinely reaches the compositor:
 
@@ -192,7 +194,7 @@ refactor and were left behind.
 assistant sidebar and in `AiPanel`.
 
 `AssistantSidebarWindow.qml` is skipped too: NothingLess moved the sidebar
-into its own `PanelWindow`, but Ambxst 1.3.x embeds it in
+into its own `PanelWindow`, but Ambxst 1.3.x/1.4.x embeds it in
 `UnifiedShellPanel.qml` behind a newer focus-grab architecture. The ported
 `AssistantSidebar.qml` keeps Ambxst's `active` / `wantsFocus` / `hitbox`
 contract, so it plugs into the existing embedding with no patch to

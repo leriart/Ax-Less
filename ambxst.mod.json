@@ -1,29 +1,36 @@
 {
-  "$schema": "../../../docs/mods/manifest.schema.json",
+  "$schema": "https://raw.githubusercontent.com/Axenide/Ambxst/main/docs/mods/manifest.schema.json",
   "manifestVersion": 1,
   "id": "axless.core",
   "name": "Ax-Less Core",
-  "version": "1.1.0",
+  "version": "1.2.0",
+  "changelog": "CHANGELOG.md",
   "description": "The NothingLess feature set as one Ambxst mod. Includes: a pluggable AI agent platform (MCP / HTTP-bridge / command agents with live tool discovery and a reworked AI engine with real tool-call support, including native tool calling on local models such as Ollama, a sidebar agent picker that remembers the last agent and mode, and a stop button), a hardened NothingClaw bridge (Go) with tolerant tool arguments and stale-process cleanup, an advanced compositor panel filtered to what the running compositor supports, a per-compositor monitor manager with drag canvas and remembered positions, a video wallpaper engine with GPU motion-vector frame interpolation and smooth crossfade transitions, a selectable Hax launcher (calculator, command mode, file search, timers, plugins) alongside the stock one, a dashboard task board with calendar, per-monitor shell positions, and full en/es/ru translations. Everything is adapted to Ambxst's native services and its own animation model.",
   "license": "AGPL-3.0",
   "author": "Leriart",
   "authorUrl": "https://github.com/leriart",
   "homepage": "https://github.com/leriart/Ax-Less",
+  "localization": {
+    "mode": "translated",
+    "defaultLanguage": "en",
+    "languages": [
+      "en",
+      "es",
+      "ru"
+    ]
+  },
   "compatibility": {
     "api": 1,
-    "ambxst": ">=1.3.10 <1.4.0",
+    "ambxst": ">=1.4.0 <1.5.0",
     "testedBaseCommits": [
-      "bc60230283a3822eec2e23c949f44990480d0f43",
-      "9a9fb6886138",
-      "4a8517b3"
+      "5db90ba000713b5cb991a2abce1b766ab47fbd2b",
+      "730f0f7bce1cc11740ac98ff3141f14bbc968fb2"
     ]
   },
   "commands": [
     "bash",
     "curl",
-    "ollama",
-    "axctl",
-    "ffmpeg"
+    "axctl"
   ],
   "permissions": [
     "Replaces the AI engine (Ai.qml) and the assistant sidebar with the agent-capable versions",
@@ -307,10 +314,6 @@
     {
       "type": "patch",
       "source": "patches/ipc-no-fork.patch"
-    },
-    {
-      "type": "patch",
-      "source": "patches/notifications-bounded.patch"
     },
     {
       "type": "patch",

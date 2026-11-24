@@ -26,7 +26,7 @@ work back, as a mod, without forking the shell.
 <a href="https://github.com/leriart/Ax-Less/blob/main/LICENSE">
   <img src="https://img.shields.io/badge/License-AGPL--3.0-3DA639?style=for-the-badge&labelColor=0A0A0A" alt="license">
 </a>
-<img src="https://img.shields.io/badge/Ambxst-1.3.10%20%E2%80%93%201.3.11-E3B341?style=for-the-badge&labelColor=0A0A0A" alt="tested Ambxst">
+<img src="https://img.shields.io/badge/Ambxst-1.4.x-E3B341?style=for-the-badge&labelColor=0A0A0A" alt="tested Ambxst">
 
 </div>
 
@@ -34,7 +34,7 @@ work back, as a mod, without forking the shell.
 
 <h2><sub><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Rocket.png" alt="Rocket" width="28" height="28" /></sub> One package, everything in it</h2>
 
-There is exactly one package: [`axless.core`](packages/axless.core). It declares
+There is exactly one package: [`axless.core`](docs/axless.core.md). It declares
 no dependencies and needs nothing outside the Ambxst tree. Four features came
 out of this port; the rest were fixes to things NothingLess assumed that Ambxst
 does differently, documented so the reasoning survives.
@@ -141,11 +141,25 @@ ships a hardcoded sudo password.
 
 <h2><sub><img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Package.png" alt="Package" width="28" height="28" /></sub> Installation</h2>
 
+The package manifest lives at the repository root, so the repository URL can be
+installed directly:
+
 ```bash
-for p in packages/*/; do ambxst mods install "$(realpath "$p")"; done
-for id in $(ls packages); do ambxst mods enable "$id"; done
+ambxst mods install https://github.com/leriart/Ax-Less
+ambxst mods enable axless.core
 ambxst reload
 ```
+
+From a local checkout, the same source is the checkout directory itself:
+
+```bash
+ambxst mods install "$(pwd)"
+ambxst mods enable axless.core
+ambxst reload
+```
+
+Requires Ambxst 1.4.x. The manager keeps the new package disabled until you
+enable it.
 
 The optional pre-rendered interpolation path uses `ffmpeg` and a Go toolchain to
 rebuild `axvideo`; prebuilt binaries ship in the mod, so neither is required for
